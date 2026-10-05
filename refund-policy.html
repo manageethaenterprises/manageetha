@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Return & Refund Policy — ManaGeetha | Manaswini Enterprises & Geetha Enterprises</title>
+  <meta name="description" content="Official Return and Refund Policy for ManaGeetha (Manaswini Enterprises & Geetha Enterprises). 7 to 10 days return policy for agricultural machinery, weeders, tillers, tools, and spare parts.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚜</text></svg>">
+  <style>
+    :root {
+      --primary: #16a34a;
+      --primary-light: #4ade80;
+      --primary-dark: #15803d;
+      --primary-glow: rgba(22, 163, 74, 0.25);
+      
+      --accent: #eab308;
+      --accent-light: #fde047;
+      --bg: #0b130b;
+      --bg-alt: #132214;
+      --card-bg: rgba(20, 36, 22, 0.88);
+      --card-hover: rgba(27, 48, 29, 0.95);
+      --border: rgba(74, 222, 128, 0.18);
+      --border-accent: rgba(22, 163, 74, 0.4);
+
+      --text1: #f0fdf4;
+      --text2: #bbf7d0;
+      --text3: #86efac;
+
+      --badge-bg: rgba(22, 163, 74, 0.2);
+      --badge-text: #4ade80;
+
+      --nav-bg: rgba(11, 19, 11, 0.92);
+      --shadow-lg: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+      --radius: 16px;
+      --transition: all 0.3s ease;
+    }
+
+    [data-theme="light"] {
+      --primary: #15803d;
+      --primary-light: #16a34a;
+      --primary-dark: #166534;
+      --primary-glow: rgba(21, 128, 61, 0.15);
+
+      --accent: #ca8a04;
+      --accent-light: #eab308;
+
+      --bg: #f4fbf5;
+      --bg-alt: #e8f7ea;
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --card-hover: #ffffff;
+      --border: #dcfce7;
+      --border-accent: rgba(22, 163, 74, 0.3);
+
+      --text1: #052e16;
+      --text2: #14532d;
+      --text3: #166534;
+
+      --badge-bg: rgba(22, 163, 74, 0.12);
+      --badge-text: #15803d;
+
+      --nav-bg: rgba(244, 251, 245, 0.92);
+      --shadow-lg: 0 20px 40px -15px rgba(22, 101, 52, 0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--text1);
+      line-height: 1.7;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Shapes */
+    .bg-shapes {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .shape {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(110px);
+      opacity: 0.25;
+      animation: floatShape 24s ease-in-out infinite alternate;
+    }
+    .shape-1 {
+      width: 550px; height: 550px;
+      background: linear-gradient(135deg, #16a34a, #84cc16);
+      top: -120px; right: -100px;
+    }
+    .shape-2 {
+      width: 500px; height: 500px;
+      background: linear-gradient(135deg, #059669, #10b981);
+      bottom: -120px; left: -100px;
+    }
+
+    /* Header Navbar */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--nav-bg);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 0;
+    }
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 6px 16px var(--primary-glow);
+    }
+    .brand-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text1);
+      letter-spacing: -0.5px;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--primary-light);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      font-weight: 700;
+      display: block;
+      margin-top: -2px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text2);
+      font-weight: 500;
+      font-size: 14px;
+      transition: var(--transition);
+    }
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--primary-light);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .theme-toggle-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text1);
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: var(--transition);
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .btn-portal-login {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #ffffff;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13.5px;
+      box-shadow: 0 6px 20px var(--primary-glow);
+      transition: var(--transition);
+    }
+    .btn-portal-login:hover {
+      transform: translateY(-2px);
+    }
+
+    .mobile-menu-toggle {
+      display: none;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text1);
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      font-size: 20px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Off-Canvas Navigation */
+    .mobile-nav-drawer {
+      position: fixed;
+      top: 0; right: -300px;
+      width: 280px; height: 100vh;
+      background: var(--bg-alt);
+      border-left: 1px solid var(--border-accent);
+      z-index: 2001;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.3s ease;
+    }
+    .mobile-nav-drawer.active { right: 0; }
+    .mobile-nav-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    }
+    .mobile-nav-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 18px; color: var(--text1); }
+    .mobile-nav-close { background: none; border: none; color: var(--text1); font-size: 22px; cursor: pointer; }
+    .mobile-nav-links { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .mobile-nav-links a { color: var(--text1); text-decoration: none; font-size: 15px; font-weight: 600; display: block; padding: 12px; border-radius: 10px; background: var(--card-bg); border: 1px solid var(--border); }
+    .mobile-nav-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; display: none; }
+    .mobile-nav-overlay.active { display: block; }
+
+    /* Page Body */
+    .page-hero {
+      position: relative;
+      z-index: 1;
+      padding: 140px 24px 40px;
+      text-align: center;
+    }
+    .page-hero h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 40px;
+      font-weight: 900;
+      color: var(--text1);
+      margin-bottom: 12px;
+      letter-spacing: -1px;
+    }
+    .page-hero p {
+      color: var(--text2);
+      font-size: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .last-updated {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 12.5px;
+      color: var(--accent-light);
+      background: rgba(234, 179, 8, 0.15);
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(234, 179, 8, 0.4);
+      font-weight: 700;
+    }
+
+    .main-container {
+      position: relative;
+      z-index: 1;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    .policy-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 44px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(12px);
+    }
+
+    .policy-section {
+      margin-bottom: 36px;
+    }
+    .policy-section:last-child {
+      margin-bottom: 0;
+    }
+    .policy-section h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--primary-light);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .policy-section h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text1);
+      margin: 18px 0 10px;
+    }
+    .policy-section p {
+      color: var(--text1);
+      font-size: 15px;
+      margin-bottom: 14px;
+      line-height: 1.75;
+    }
+    .policy-section ul, .policy-section ol {
+      margin-left: 22px;
+      margin-bottom: 16px;
+    }
+    .policy-section li {
+      color: var(--text2);
+      font-size: 14.5px;
+      margin-bottom: 10px;
+      line-height: 1.7;
+    }
+    .policy-section strong {
+      color: var(--text1);
+    }
+
+    .highlight-box {
+      background: rgba(234, 179, 8, 0.12);
+      border-left: 5px solid var(--accent);
+      padding: 22px;
+      border-radius: 12px;
+      margin: 20px 0;
+      font-size: 15.5px;
+      line-height: 1.75;
+      color: var(--text1);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 44px 0 32px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 14px;
+      background: var(--bg);
+    }
+
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .nav-actions .btn-portal-login { display: none !important; }
+      .mobile-menu-toggle { display: flex; }
+      .brand-sub { display: none; }
+    }
+    @media (max-width: 640px) {
+      .page-hero h1 { font-size: 30px; }
+      .policy-card { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Shapes -->
+  <div class="bg-shapes">
+    <div class="shape shape-1"></div>
+    <div class="shape shape-2"></div>
+  </div>
+
+  <!-- Header Navbar -->
+  <header class="navbar">
+    <div class="container nav-inner">
+      <a href="/" class="brand-logo">
+        <div class="logo-icon">🚜</div>
+        <div>
+          <span class="brand-text">Manaswini Enterprises</span>
+          <span class="brand-sub">Geetha Enterprises | ManaGeetha</span>
+        </div>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/privacy-policy.html">Privacy Policy</a></li>
+        <li><a href="/refund-policy.html" class="active">Return Policy</a></li>
+        <li><a href="/terms-of-service.html">Terms of Service</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">🌙</button>
+        <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Open Navigation Menu">☰</button>
+        <a href="/admin/index.html" class="btn-portal-login">
+          <span>Staff Login</span>
+          <span>➔</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-nav-drawer" id="mobileNavDrawer">
+    <div class="mobile-nav-header">
+      <span class="mobile-nav-title">ManaGeetha Menu</span>
+      <button class="mobile-nav-close" onclick="closeMobileMenu()">✕</button>
+    </div>
+    <ul class="mobile-nav-links">
+      <li><a href="/" onclick="closeMobileMenu()">🏠 Home</a></li>
+      <li><a href="/privacy-policy.html" onclick="closeMobileMenu()">🔒 Privacy Policy</a></li>
+      <li><a href="/refund-policy.html" onclick="closeMobileMenu()">↩️ Return & Refund Policy</a></li>
+      <li><a href="/terms-of-service.html" onclick="closeMobileMenu()">📄 Terms of Service</a></li>
+      <li><a href="mailto:info@manageetha.in" onclick="closeMobileMenu()">📧 info@manageetha.in</a></li>
+      <li><a href="/admin/index.html">🔐 Staff ERP Login</a></li>
+    </ul>
+  </div>
+  <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileMenu()"></div>
+
+  <!-- Hero Section -->
+  <section class="page-hero">
+    <h1>Return & Refund Policy</h1>
+    <p>Fair, transparent 7 to 10 Days Return & Refund Policy for Manaswini Enterprises & Geetha Enterprises (ManaGeetha platform).</p>
+    <span class="last-updated">Return Window: 7 to 10 Days</span>
+  </section>
+
+  <!-- Main Policy Content -->
+  <main class="main-container">
+    <div class="policy-card">
+
+      <!-- Section 1 -->
+      <div class="policy-section">
+        <h2>1. Policy Overview & Commitment to Farmers</h2>
+        <p>
+          At <strong>ManaGeetha</strong> (operated jointly by <strong>Manaswini Enterprises</strong> and <strong>Geetha Enterprises</strong>), we take immense pride in supplying top-tier agricultural machinery, Shrachi power weeders, power tillers, Sonalika multi-speed rotavators, Kirloskar diesel engines, Gaja tools, agri drones, threshers, and genuine spare parts across India.
+        </p>
+        <p>
+          We stand firmly behind the quality, reliability, and performance of every product we sell. If you receive a product that is defective, damaged during transit, incomplete, or incorrect compared to your invoice order, we provide a structured, transparent return and replacement mechanism as outlined in this policy.
+        </p>
+      </div>
+
+      <!-- Section 2 -->
+      <div class="policy-section">
+        <h2>2. Return & Exchange Window: 7 to 10 Days</h2>
+        <div class="highlight-box">
+          <strong>Return Period:</strong> Customers and wholesale buyers may initiate a return, replacement, or refund request within <strong>7 to 10 days</strong> from the date of physical delivery or pickup of the product.
+        </div>
+        <p>
+          To qualify for a return under our <strong>7 to 10 days window</strong>, your item must satisfy all of the following mandatory conditions:
+        </p>
+        <ul>
+          <li><strong>Unused & Unworked Condition:</strong> The agricultural machinery, power weeder, tiller, engine, or tool must be completely unused, unfueled (no petrol/diesel put in the tank), and unworked in farm fields.</li>
+          <li><strong>Original Packaging & Accessories:</strong> The item must be returned in its original box and packaging with all factory protective seals, user instruction manuals, toolkit accessories, blades, fasteners, and warranty cards intact.</li>
+          <li><strong>Valid Tax Invoice / Delivery Challan:</strong> You must present the original GST Tax Invoice or Delivery Challan (DC) issued by Manaswini Enterprises / Geetha Enterprises.</li>
+        </ul>
+      </div>
+
+      <!-- Section 3 -->
+      <div class="policy-section">
+        <h2>3. Eligible vs Non-Returnable Items</h2>
+
+        <h3>A. Eligible for Return, Replacement, or Refund</h3>
+        <ul>
+          <li><strong>Transit Damage:</strong> Heavy machinery, engines, or tools received with physical casing damage, cracked engine blocks, or broken frame components upon arrival.</li>
+          <li><strong>Manufacturing Defects:</strong> Machinery or spare parts exhibiting manufacturing flaws or non-functional engine/gearbox components upon initial pre-operation inspection.</li>
+          <li><strong>Wrong Item Delivered:</strong> Products delivered that do not match the item name, model number, or horsepower specification stated on your order bill.</li>
+          <li><strong>Incomplete Orders:</strong> Packages missing factory accessories, tillers blades, fasteners, or user kits.</li>
+        </ul>
+
+        <h3>B. Non-Returnable & Non-Refundable Items</h3>
+        <ul>
+          <li><strong>Used or Field-Tested Machinery:</strong> Any power weeder, rotavator, or engine that has been fueled, oiled, started, or operated in agricultural fields or farm soil.</li>
+          <li><strong>Electrical & Motor Damage:</strong> Electrical components, batteries, electric motors, or agri-drone circuit boards damaged due to erratic farm power supply, voltage fluctuations, improper charging, or user negligence.</li>
+          <li><strong>Custom Implements:</strong> Special-order custom attachments, custom-welded blades, or non-standard agricultural implements modified upon buyer request.</li>
+          <li><strong>Consumable Items:</strong> Opened engine oils, gear lubricants, grease, spray nozzles, belts, or air filter elements once the protective seal is broken.</li>
+          <li><strong>Expired Return Window:</strong> Return requests submitted after the expiration of the 7 to 10 days delivery period.</li>
+        </ul>
+      </div>
+
+      <!-- Section 4 -->
+      <div class="policy-section">
+        <h2>4. Step-by-Step Return Procedure</h2>
+        <p>Follow these steps to submit a return request within the 7 to 10 days window:</p>
+        <ol>
+          <li>
+            <strong>Step 1: Contact Customer Support</strong><br>
+            Reach out to our dedicated Customer Support Team within 7 to 10 days of delivery by calling <strong>+91 94916 55550</strong> or <strong>+91 97058 77888</strong>, or by emailing <code>info@manageetha.in</code>.
+          </li>
+          <li>
+            <strong>Step 2: Provide Bill & Damage Evidence</strong><br>
+            Provide your Order/Bill Number, tax invoice copy, and clear high-resolution photos or a video clip showing the transit damage or defect. (An unboxing video is strongly recommended for transit damage claims).
+          </li>
+          <li>
+            <strong>Step 3: Verification & Return Authorization</strong><br>
+            Our technical service team will verify your submission within 24–48 hours and issue a Return Authorization (RA) number along with return transport instructions.
+          </li>
+          <li>
+            <strong>Step 4: Product Pickup / Drop-off</strong><br>
+            Depending on your location, our logistics partner will collect the product from your farm/address, or you may drop the unit at the nearest Manaswini Enterprises / Geetha Enterprises branch.
+          </li>
+          <li>
+            <strong>Step 5: Warehouse Inspection & Approval</strong><br>
+            Upon receiving the unit at our central warehouse, our technical engineers will inspect the machinery to confirm unused status and defect authenticity.
+          </li>
+        </ol>
+      </div>
+
+      <!-- Section 5 -->
+      <div class="policy-section">
+        <h2>5. Refund Modes & Timelines</h2>
+        <p>
+          Once your returned product passes technical inspection, your refund will be authorized immediately:
+        </p>
+        <ul>
+          <li><strong>Prepaid Online Orders (UPI, Net Banking, Credit/Debit Cards):</strong> The approved refund amount will be credited back directly to the original payment source within <strong>5 to 7 business days</strong>.</li>
+          <li><strong>Cash on Delivery (COD) / Part Payment / Delivery Challan (DC) Orders:</strong> For COD or Part-Payment orders, refunds will be transferred via NEFT/IMPS directly to the customer's verified bank account within <strong>5 to 7 business days</strong> after receiving bank details.</li>
+          <li><strong>Replacement Dispatch:</strong> If you requested a replacement for a damaged/defective machine, the new unit will be dispatched free of freight charges within 48 hours of return verification.</li>
+          <li><strong>Freight Charges:</strong> If a return is initiated due to customer error or change of mind, actual transport freight charges incurred during dispatch and return transit will be deducted from the final refund amount.</li>
+        </ul>
+      </div>
+
+      <!-- Section 6 -->
+      <div class="policy-section">
+        <h2>6. Order Cancellations</h2>
+        <ul>
+          <li><strong>Pre-Dispatch Cancellations:</strong> You may cancel any order prior to transport dispatch without penalty for a 100% full refund.</li>
+          <li><strong>Post-Dispatch Cancellations:</strong> If you cancel an order after heavy machinery has been loaded and dispatched via logistics transport, actual transit freight charges will be deducted from the refund amount.</li>
+        </ul>
+      </div>
+
+      <!-- Section 7 -->
+      <div class="policy-section">
+        <h2>7. Manufacturer Warranty vs 10-Day Return Policy</h2>
+        <p>
+          Please note that the <strong>7 to 10 days return policy</strong> covers initial defects, transit damage, or wrong items. After the 10-day period expires, all products remain fully covered under their respective manufacturer warranties (Shrachi, Sonalika, Kirloskar, Gaja, etc.).
+        </p>
+        <p>
+          For warranty service after 10 days, our on-field mobile technicians provide on-site repair support and genuine spare parts replacement. Call our helpline (+91 94916 55550 / +91 97058 77888) to schedule a technician visit.
+        </p>
+      </div>
+
+      <!-- Section 8 -->
+      <div class="policy-section">
+        <h2>8. Contact Customer Care & Returns Desk</h2>
+        <p>For any queries, return requests, or refund tracking, please contact our team:</p>
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-top: 14px;">
+          <p style="margin-bottom: 6px;"><strong>Operating Entities:</strong> Manaswini Enterprises & Geetha Enterprises</p>
+          <p style="margin-bottom: 6px;"><strong>Brand Name:</strong> ManaGeetha (<code>manageetha.in</code>)</p>
+          <p style="margin-bottom: 6px;"><strong>Email Contact:</strong> <a href="mailto:info@manageetha.in" style="color: var(--primary-light); text-decoration: underline;">info@manageetha.in</a></p>
+          <p style="margin-bottom: 6px;"><strong>Customer Care Numbers:</strong> <a href="tel:+919491655550" style="color: var(--primary-light);">+91 94916 55550</a>, <a href="tel:+919705877888" style="color: var(--primary-light);">+91 97058 77888</a></p>
+          <p style="margin-bottom: 0;"><strong>Software Developed & Maintained by:</strong> <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: var(--primary-light); font-weight: 700; text-decoration: underline;">Inspenox</a></p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p style="font-size: 16px; font-weight: 700; color: var(--text1); margin-bottom: 8px;">
+        🚜 Manaswini Enterprises & Geetha Enterprises (ManaGeetha)
+      </p>
+      <p style="color: var(--text2); margin-bottom: 14px;">
+        Wholesale & Retail Dealer for Shrachi, Sonalika, Bharat Balers, Kirloskar, Gaja Tools & Agri Drones.
+      </p>
+      <div style="display:flex; gap:20px; justify-content:center; align-items:center; flex-wrap:wrap; margin-bottom: 16px; font-size: 14px; color: var(--text1);">
+        <span>📞 <strong>Customer Care:</strong> <a href="tel:+919491655550" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">+91 94916 55550</a>, <a href="tel:+919705877888" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">+91 97058 77888</a></span>
+        <span>📧 <strong>Email:</strong> <a href="mailto:info@manageetha.in" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">info@manageetha.in</a></span>
+      </div>
+      <div style="display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap; margin-bottom: 14px; font-size: 13px;">
+        <a href="/privacy-policy.html" style="color: var(--text2); text-decoration: underline;">Privacy Policy</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/refund-policy.html" style="color: var(--primary-light); text-decoration: underline; font-weight: 600;">Return & Refund Policy</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/terms-of-service.html" style="color: var(--text2); text-decoration: underline;">Terms of Service</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/admin/index.html" style="color: var(--primary-light); text-decoration: underline;">Staff / ERP Login Portal</a>
+      </div>
+      <p style="font-size: 12px; color: var(--text3); margin-bottom: 4px;">
+        © 2026 Manaswini Enterprises & Geetha Enterprises — All Rights Reserved
+      </p>
+      <p style="font-size: 11px; color: var(--text3); opacity: 0.85; margin-top: 6px;">
+        Developed & Maintained by <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;"><strong>Inspenox</strong></a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Theme Toggle Script matching index.html
+    const themeBtn = document.getElementById('themeToggleBtn');
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    if (themeBtn) {
+      themeBtn.textContent = savedTheme === 'light' ? '☀️' : '🌙';
+      themeBtn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        themeBtn.textContent = next === 'light' ? '☀️' : '🌙';
+      });
+    }
+
+    function toggleMobileMenu() {
+      document.getElementById('mobileNavDrawer')?.classList.add('active');
+      document.getElementById('mobileNavOverlay')?.classList.add('active');
+    }
+    function closeMobileMenu() {
+      document.getElementById('mobileNavDrawer')?.classList.remove('active');
+      document.getElementById('mobileNavOverlay')?.classList.remove('active');
+    }
+  </script>
+</body>
+</html>

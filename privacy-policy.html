@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — ManaGeetha | Manaswini Enterprises & Geetha Enterprises</title>
+  <meta name="description" content="Complete Privacy Policy for ManaGeetha (Manaswini Enterprises & Geetha Enterprises). Detailed information on personal data collection, usage, Inspenox analytics tracking, security, and user rights.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚜</text></svg>">
+  <style>
+    :root {
+      --primary: #16a34a;
+      --primary-light: #4ade80;
+      --primary-dark: #15803d;
+      --primary-glow: rgba(22, 163, 74, 0.25);
+      
+      --accent: #eab308;
+      --accent-light: #fde047;
+      --bg: #0b130b;
+      --bg-alt: #132214;
+      --card-bg: rgba(20, 36, 22, 0.88);
+      --card-hover: rgba(27, 48, 29, 0.95);
+      --border: rgba(74, 222, 128, 0.18);
+      --border-accent: rgba(22, 163, 74, 0.4);
+
+      --text1: #f0fdf4;
+      --text2: #bbf7d0;
+      --text3: #86efac;
+
+      --badge-bg: rgba(22, 163, 74, 0.2);
+      --badge-text: #4ade80;
+
+      --nav-bg: rgba(11, 19, 11, 0.92);
+      --shadow-lg: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+      --radius: 16px;
+      --transition: all 0.3s ease;
+    }
+
+    [data-theme="light"] {
+      --primary: #15803d;
+      --primary-light: #16a34a;
+      --primary-dark: #166534;
+      --primary-glow: rgba(21, 128, 61, 0.15);
+
+      --accent: #ca8a04;
+      --accent-light: #eab308;
+
+      --bg: #f4fbf5;
+      --bg-alt: #e8f7ea;
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --card-hover: #ffffff;
+      --border: #dcfce7;
+      --border-accent: rgba(22, 163, 74, 0.3);
+
+      --text1: #052e16;
+      --text2: #14532d;
+      --text3: #166534;
+
+      --badge-bg: rgba(22, 163, 74, 0.12);
+      --badge-text: #15803d;
+
+      --nav-bg: rgba(244, 251, 245, 0.92);
+      --shadow-lg: 0 20px 40px -15px rgba(22, 101, 52, 0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--text1);
+      line-height: 1.7;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Shapes */
+    .bg-shapes {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .shape {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(110px);
+      opacity: 0.25;
+      animation: floatShape 24s ease-in-out infinite alternate;
+    }
+    .shape-1 {
+      width: 550px; height: 550px;
+      background: linear-gradient(135deg, #16a34a, #84cc16);
+      top: -120px; right: -100px;
+    }
+    .shape-2 {
+      width: 500px; height: 500px;
+      background: linear-gradient(135deg, #059669, #10b981);
+      bottom: -120px; left: -100px;
+    }
+
+    /* Header Navbar */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--nav-bg);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 0;
+    }
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 6px 16px var(--primary-glow);
+    }
+    .brand-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text1);
+      letter-spacing: -0.5px;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--primary-light);
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      font-weight: 700;
+      display: block;
+      margin-top: -2px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text2);
+      font-weight: 500;
+      font-size: 14px;
+      transition: var(--transition);
+    }
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--primary-light);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .theme-toggle-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text1);
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: var(--transition);
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .btn-portal-login {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #ffffff;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13.5px;
+      box-shadow: 0 6px 20px var(--primary-glow);
+      transition: var(--transition);
+    }
+    .btn-portal-login:hover {
+      transform: translateY(-2px);
+    }
+
+    .mobile-menu-toggle {
+      display: none;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text1);
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      font-size: 20px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Off-Canvas Navigation */
+    .mobile-nav-drawer {
+      position: fixed;
+      top: 0; right: -300px;
+      width: 280px; height: 100vh;
+      background: var(--bg-alt);
+      border-left: 1px solid var(--border-accent);
+      z-index: 2001;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.3s ease;
+    }
+    .mobile-nav-drawer.active { right: 0; }
+    .mobile-nav-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    }
+    .mobile-nav-title { font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 18px; color: var(--text1); }
+    .mobile-nav-close { background: none; border: none; color: var(--text1); font-size: 22px; cursor: pointer; }
+    .mobile-nav-links { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .mobile-nav-links a { color: var(--text1); text-decoration: none; font-size: 15px; font-weight: 600; display: block; padding: 12px; border-radius: 10px; background: var(--card-bg); border: 1px solid var(--border); }
+    .mobile-nav-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; display: none; }
+    .mobile-nav-overlay.active { display: block; }
+
+    /* Page Body */
+    .page-hero {
+      position: relative;
+      z-index: 1;
+      padding: 140px 24px 40px;
+      text-align: center;
+    }
+    .page-hero h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 40px;
+      font-weight: 900;
+      color: var(--text1);
+      margin-bottom: 12px;
+      letter-spacing: -1px;
+    }
+    .page-hero p {
+      color: var(--text2);
+      font-size: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .last-updated {
+      display: inline-block;
+      margin-top: 14px;
+      font-size: 12.5px;
+      color: var(--text3);
+      background: var(--badge-bg);
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border-accent);
+      font-weight: 600;
+    }
+
+    .main-container {
+      position: relative;
+      z-index: 1;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 24px 80px;
+    }
+
+    .policy-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 44px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(12px);
+    }
+
+    .policy-section {
+      margin-bottom: 36px;
+    }
+    .policy-section:last-child {
+      margin-bottom: 0;
+    }
+    .policy-section h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--primary-light);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .policy-section h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text1);
+      margin: 18px 0 10px;
+    }
+    .policy-section p {
+      color: var(--text1);
+      font-size: 15px;
+      margin-bottom: 14px;
+      line-height: 1.75;
+    }
+    .policy-section ul, .policy-section ol {
+      margin-left: 22px;
+      margin-bottom: 16px;
+    }
+    .policy-section li {
+      color: var(--text2);
+      font-size: 14.5px;
+      margin-bottom: 10px;
+      line-height: 1.7;
+    }
+    .policy-section strong {
+      color: var(--text1);
+    }
+
+    .highlight-box {
+      background: rgba(22, 163, 74, 0.12);
+      border-left: 5px solid var(--primary-light);
+      padding: 22px;
+      border-radius: 12px;
+      margin: 20px 0;
+      font-size: 15px;
+      line-height: 1.75;
+      color: var(--text1);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 44px 0 32px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 14px;
+      background: var(--bg);
+    }
+
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .nav-actions .btn-portal-login { display: none !important; }
+      .mobile-menu-toggle { display: flex; }
+      .brand-sub { display: none; }
+    }
+    @media (max-width: 640px) {
+      .page-hero h1 { font-size: 30px; }
+      .policy-card { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Shapes -->
+  <div class="bg-shapes">
+    <div class="shape shape-1"></div>
+    <div class="shape shape-2"></div>
+  </div>
+
+  <!-- Header Navbar -->
+  <header class="navbar">
+    <div class="container nav-inner">
+      <a href="/" class="brand-logo">
+        <div class="logo-icon">🚜</div>
+        <div>
+          <span class="brand-text">Manaswini Enterprises</span>
+          <span class="brand-sub">Geetha Enterprises | ManaGeetha</span>
+        </div>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/privacy-policy.html" class="active">Privacy Policy</a></li>
+        <li><a href="/refund-policy.html">Return Policy</a></li>
+        <li><a href="/terms-of-service.html">Terms of Service</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">🌙</button>
+        <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Open Navigation Menu">☰</button>
+        <a href="/admin/index.html" class="btn-portal-login">
+          <span>Staff Login</span>
+          <span>➔</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Drawer -->
+  <div class="mobile-nav-drawer" id="mobileNavDrawer">
+    <div class="mobile-nav-header">
+      <span class="mobile-nav-title">ManaGeetha Menu</span>
+      <button class="mobile-nav-close" onclick="closeMobileMenu()">✕</button>
+    </div>
+    <ul class="mobile-nav-links">
+      <li><a href="/" onclick="closeMobileMenu()">🏠 Home</a></li>
+      <li><a href="/privacy-policy.html" onclick="closeMobileMenu()">🔒 Privacy Policy</a></li>
+      <li><a href="/refund-policy.html" onclick="closeMobileMenu()">↩️ Return & Refund Policy</a></li>
+      <li><a href="/terms-of-service.html" onclick="closeMobileMenu()">📄 Terms of Service</a></li>
+      <li><a href="mailto:info@manageetha.in" onclick="closeMobileMenu()">📧 info@manageetha.in</a></li>
+      <li><a href="/admin/index.html">🔐 Staff ERP Login</a></li>
+    </ul>
+  </div>
+  <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileMenu()"></div>
+
+  <!-- Hero Section -->
+  <section class="page-hero">
+    <h1>Privacy Policy</h1>
+    <p>Complete Privacy Policy & Data Processing Practices for Manaswini Enterprises & Geetha Enterprises (ManaGeetha platform).</p>
+    <span class="last-updated">Last Updated: September 21, 2026</span>
+  </section>
+
+  <!-- Main Policy Content -->
+  <main class="main-container">
+    <div class="policy-card">
+
+      <!-- Section 1 -->
+      <div class="policy-section">
+        <h2>1. Introduction & Operating Business Entities</h2>
+        <p>
+          Welcome to <strong>manageetha.in</strong>. This Privacy Policy sets forth the complete policies and procedures regarding the collection, use, maintenance, protection, and disclosure of personal data and information obtained from users of our website, mobile interfaces, and digital Enterprise Resource Planning (ERP) services.
+        </p>
+        <p>
+          The platform <code>manageetha.in</code> is operated jointly by <strong>Manaswini Enterprises</strong> and <strong>Geetha Enterprises</strong> (collectively referred to as <strong>"ManaGeetha"</strong>, <strong>"Company"</strong>, <strong>"we"</strong>, <strong>"us"</strong>, or <strong>"our"</strong>). We are dedicated to maintaining the confidentiality, integrity, and security of all personal, transactional, and agricultural business information entrusted to us by farmers, retail buyers, dealers, distributors, and service technicians.
+        </p>
+        <p>
+          By accessing or using our platform, placing orders for agricultural machinery, power weeders, rotavators, tillers, engines, tools, or spare parts, or scheduling technician maintenance services, you acknowledge that you have read, understood, and agreed to the practices described in this Privacy Policy.
+        </p>
+      </div>
+
+      <!-- Section 2 -->
+      <div class="policy-section">
+        <h2>2. Comprehensive Information We Collect</h2>
+        <p>
+          We collect several categories of information from and about users of our platform to provide efficient sales, logistics, technician dispatch, tax invoicing, and warranty backup services:
+        </p>
+        
+        <h3>A. Personal Identification & Contact Data</h3>
+        <ul>
+          <li><strong>Identity Records:</strong> Full Name, Business/Enterprise Name, Proprietor details, Father's Name (where required for government subsidy invoices).</li>
+          <li><strong>Contact Information:</strong> Primary and Alternate Mobile Phone Numbers, WhatsApp contact details, Official Email Address (such as communications sent to or from <code>info@manageetha.in</code>).</li>
+          <li><strong>Address & Location Information:</strong> Billing Address, Physical Delivery Address, Village/Mandal/District details, Farm location coordinates for technician field service dispatch.</li>
+          <li><strong>Tax & Regulatory Documentation:</strong> Goods and Services Tax Identification Number (GSTIN), Permanent Account Number (PAN), and official farm ownership documentation required for processing agricultural machinery subsidy schemes.</li>
+        </ul>
+
+        <h3>B. Commercial & Order Data</h3>
+        <ul>
+          <li><strong>Purchasing Records:</strong> Complete records of products purchased, including Shrachi Power Weeders, Sonalika Rotavators, Kirloskar Diesel Engines, Gaja Tools, Agri Drones, Threshers, and genuine spare parts.</li>
+          <li><strong>Transaction & Invoicing Logs:</strong> GST Tax Invoices, Delivery Challans (DC), Part Payment receipts, Cash on Delivery (COD) collection records, and bank payment confirmation receipts.</li>
+          <li><strong>Service & Maintenance Logs:</strong> Technician dispatch records, field repair histories, blade replacement schedules, and warranty claim logs.</li>
+        </ul>
+
+        <h3>C. Technical & Device Data</h3>
+        <ul>
+          <li><strong>Device Identifiers:</strong> IP Address, device hardware model, browser type and version, operating system, and language settings.</li>
+          <li><strong>Usage & Navigation Details:</strong> Pages viewed, time spent on products, search queries, clickstream data, referring website URLs, and access timestamps.</li>
+        </ul>
+      </div>
+
+      <!-- Section 3 (EXACT REQUIRED PARAGRAPH) -->
+      <div class="policy-section">
+        <h2>3. Analytics, Tracking & Inspenox Integration</h2>
+        <p>
+          To ensure optimal system performance, seamless user experience, and continuous optimization of our web and mobile services, we utilize specialized third-party analytics and technical metrics platforms.
+        </p>
+        <div class="highlight-box">
+          We partner with <strong>Inspenox</strong> to capture how you use and interact with our website through behavioral metrics, heatmaps, and session replay to improve and market our products/services. Website usage data is captured using first and third-party cookies and other tracking technologies to determine the popularity of products/services and online activity. Additionally, we use this information for site optimization, fraud/security purposes, and advertising. For more information about how Inspenox collects and uses your data, visit <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: var(--primary-light); font-weight: 700; text-decoration: underline;">https://inspenox.in</a>.
+        </div>
+      </div>
+
+      <!-- Section 4 -->
+      <div class="policy-section">
+        <h2>4. How We Use Collected Information</h2>
+        <p>Manaswini Enterprises & Geetha Enterprises process your personal data for legitimate business purposes, including:</p>
+        <ol>
+          <li><strong>Order Fulfillment & Delivery:</strong> Processing order purchases, generating GST tax invoices, preparing Delivery Challans (DC), and coordinating transportation freight for heavy agricultural machinery.</li>
+          <li><strong>Technician & Maintenance Service:</strong> Scheduling and dispatching mobile technician service teams for on-site machinery repairs, annual maintenance, and blade replacements.</li>
+          <li><strong>Government Subsidy Documentation:</strong> Preparing official tax invoices and machine serial number records required by farmers to claim government agricultural equipment subsidies.</li>
+          <li><strong>Customer Support & Communication:</strong> Responding to inquiries sent to <code>info@manageetha.in</code> or phone calls to customer care (+91 94916 55550 / +91 97058 77888), sending order tracking updates, and handling warranty claims.</li>
+          <li><strong>Platform Optimization & Security:</strong> Enhancing website speed, preventing fraudulent transactions, monitoring system stability, and conducting security audits.</li>
+          <li><strong>Legal Compliance:</strong> Complying with Indian GST regulations, statutory tax audits, and legal requirements.</li>
+        </ol>
+      </div>
+
+      <!-- Section 5 -->
+      <div class="policy-section">
+        <h2>5. Cookies & Tracking Technologies</h2>
+        <p>
+          Cookies are small text files stored on your device when you visit websites. <code>manageetha.in</code> uses cookies and similar tracking technologies for the following functions:
+        </p>
+        <ul>
+          <li><strong>Essential Cookies:</strong> Required for fundamental site security, user session authentication, and shopping cart persistence.</li>
+          <li><strong>Performance & Analytics Cookies:</strong> Used by Inspenox and internal analytics engines to evaluate website traffic, session durations, and page performance.</li>
+          <li><strong>Preference Cookies:</strong> Storing user settings such as Light/Dark mode preferences (`localStorage`).</li>
+        </ul>
+        <p>
+          You can instruct your browser to refuse all cookies or to indicate when a cookie is being sent. However, disabling essential cookies may impact your ability to use certain features of the platform.
+        </p>
+      </div>
+
+      <!-- Section 6 -->
+      <div class="policy-section">
+        <h2>6. Information Sharing & Disclosure</h2>
+        <p>
+          ManaGeetha strictly respects your privacy. We do not sell, trade, lease, or rent your personal information to third parties. We share data only under the following controlled circumstances:
+        </p>
+        <ul>
+          <li><strong>Logistics & Freight Partners:</strong> Sharing delivery names, addresses, and phone numbers with authorized transport agencies for delivering heavy machinery and spare parts.</li>
+          <li><strong>Payment Gateways & Financial Institutions:</strong> Transmitting necessary transaction details to PCI-DSS compliant banking partners, UPI providers, and payment gateways.</li>
+          <li><strong>Software Engineering & Maintenance Providers:</strong> Sharing data with <strong>Inspenox</strong> (<a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: var(--primary-light);">https://inspenox.in</a>), who develop and maintain the core ERP, database, and web infrastructure.</li>
+          <li><strong>Legal Mandates:</strong> Disclosing information when required by court orders, government authorities, or applicable laws of India.</li>
+        </ul>
+      </div>
+
+      <!-- Section 7 -->
+      <div class="policy-section">
+        <h2>7. Data Security & Storage Retention</h2>
+        <p>
+          We implement state-of-the-art security safeguards, including SSL/TLS encryption for data in transit, firewall protection, restricted role-based database access, and encrypted passwords. All customer data is stored securely on servers located in India.
+        </p>
+        <p>
+          We retain your personal information for as long as necessary to fulfill the purposes outlined in this Privacy Policy, comply with statutory tax retention periods under Indian law (minimum 8 years for invoices), and resolve disputes.
+        </p>
+      </div>
+
+      <!-- Section 8 -->
+      <div class="policy-section">
+        <h2>8. User Rights & Data Choices</h2>
+        <p>Under applicable Indian data protection laws, you possess the following rights regarding your personal information:</p>
+        <ul>
+          <li><strong>Right of Access & Correction:</strong> You may request a copy of your personal data held by us or update incorrect contact/address details.</li>
+          <li><strong>Right of Deletion:</strong> You may request the deletion of your account and personal details, subject to statutory record-retention requirements for past GST tax invoices.</li>
+          <li><strong>Communication Preferences:</strong> You can opt out of non-essential promotional SMS or emails at any time.</li>
+        </ul>
+      </div>
+
+      <!-- Section 9 -->
+      <div class="policy-section">
+        <h2>9. Contact & Grievance Redressal</h2>
+        <p>If you have any questions, concerns, complaints, or privacy requests regarding this Privacy Policy, please contact our Grievance Officer:</p>
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin-top: 14px;">
+          <p style="margin-bottom: 6px;"><strong>Operating Entities:</strong> Manaswini Enterprises & Geetha Enterprises</p>
+          <p style="margin-bottom: 6px;"><strong>Brand Name:</strong> ManaGeetha (<code>manageetha.in</code>)</p>
+          <p style="margin-bottom: 6px;"><strong>Email Contact:</strong> <a href="mailto:info@manageetha.in" style="color: var(--primary-light); text-decoration: underline;">info@manageetha.in</a></p>
+          <p style="margin-bottom: 6px;"><strong>Customer Care Numbers:</strong> <a href="tel:+919491655550" style="color: var(--primary-light);">+91 94916 55550</a>, <a href="tel:+919705877888" style="color: var(--primary-light);">+91 97058 77888</a></p>
+          <p style="margin-bottom: 0;"><strong>Software Developed & Maintained by:</strong> <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: var(--primary-light); font-weight: 700; text-decoration: underline;">Inspenox</a></p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p style="font-size: 16px; font-weight: 700; color: var(--text1); margin-bottom: 8px;">
+        🚜 Manaswini Enterprises & Geetha Enterprises (ManaGeetha)
+      </p>
+      <p style="color: var(--text2); margin-bottom: 14px;">
+        Wholesale & Retail Dealer for Shrachi, Sonalika, Bharat Balers, Kirloskar, Gaja Tools & Agri Drones.
+      </p>
+      <div style="display:flex; gap:20px; justify-content:center; align-items:center; flex-wrap:wrap; margin-bottom: 16px; font-size: 14px; color: var(--text1);">
+        <span>📞 <strong>Customer Care:</strong> <a href="tel:+919491655550" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">+91 94916 55550</a>, <a href="tel:+919705877888" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">+91 97058 77888</a></span>
+        <span>📧 <strong>Email:</strong> <a href="mailto:info@manageetha.in" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">info@manageetha.in</a></span>
+      </div>
+      <div style="display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap; margin-bottom: 14px; font-size: 13px;">
+        <a href="/privacy-policy.html" style="color: var(--primary-light); text-decoration: underline; font-weight: 600;">Privacy Policy</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/refund-policy.html" style="color: var(--text2); text-decoration: underline;">Return & Refund Policy</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/terms-of-service.html" style="color: var(--text2); text-decoration: underline;">Terms of Service</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/admin/index.html" style="color: var(--primary-light); text-decoration: underline;">Staff / ERP Login Portal</a>
+      </div>
+      <p style="font-size: 12px; color: var(--text3); margin-bottom: 4px;">
+        © 2026 Manaswini Enterprises & Geetha Enterprises — All Rights Reserved
+      </p>
+      <p style="font-size: 11px; color: var(--text3); opacity: 0.85; margin-top: 6px;">
+        Developed & Maintained by <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;"><strong>Inspenox</strong></a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Theme Toggle Script matching index.html
+    const themeBtn = document.getElementById('themeToggleBtn');
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    if (themeBtn) {
+      themeBtn.textContent = savedTheme === 'light' ? '☀️' : '🌙';
+      themeBtn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        themeBtn.textContent = next === 'light' ? '☀️' : '🌙';
+      });
+    }
+
+    function toggleMobileMenu() {
+      document.getElementById('mobileNavDrawer')?.classList.add('active');
+      document.getElementById('mobileNavOverlay')?.classList.add('active');
+    }
+    function closeMobileMenu() {
+      document.getElementById('mobileNavDrawer')?.classList.remove('active');
+      document.getElementById('mobileNavOverlay')?.classList.remove('active');
+    }
+  </script>
+</body>
+</html>

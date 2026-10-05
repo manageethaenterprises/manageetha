@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manaswini Enterprises — Wholesale & Retail Agricultural Machinery, Rotavators, Power Weeders & Tools</title>
+  <meta name="description" content="Manaswini Enterprises — Authorized Wholesale & Retail Supplier of Shrachi Power Weeders, Sonalika Rotavators, Bharat Balers, Kirloskar Engines, Agri Drones, Gaja Tools & Threshers.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚜</text></svg>">
+  <style>
+    :root {
+      --primary: #16a34a;
+      --primary-light: #4ade80;
+      --primary-dark: #15803d;
+      --primary-glow: rgba(22, 163, 74, 0.25);
+      
+      --accent: #eab308;
+      --accent-light: #fde047;
+
+      --bg: #0b130b;
+      --bg-alt: #132214;
+      --card-bg: rgba(20, 36, 22, 0.75);
+      --card-hover: rgba(27, 48, 29, 0.95);
+      --border: rgba(74, 222, 128, 0.18);
+      --border-accent: rgba(22, 163, 74, 0.4);
+
+      --text1: #f0fdf4;
+      --text2: #bbf7d0;
+      --text3: #86efac;
+
+      --badge-bg: rgba(22, 163, 74, 0.2);
+      --badge-text: #4ade80;
+
+      --nav-bg: rgba(11, 19, 11, 0.88);
+      --shadow-lg: 0 20px 40px -15px rgba(0, 0, 0, 0.6);
+      --radius: 16px;
+      --transition: all 0.3s ease;
+    }
+
+    [data-theme="light"] {
+      --primary: #15803d;
+      --primary-light: #16a34a;
+      --primary-dark: #166534;
+      --primary-glow: rgba(21, 128, 61, 0.15);
+
+      --accent: #ca8a04;
+      --accent-light: #eab308;
+
+      --bg: #f4fbf5;
+      --bg-alt: #e8f7ea;
+      --card-bg: rgba(255, 255, 255, 0.92);
+      --card-hover: #ffffff;
+      --border: #dcfce7;
+      --border-accent: rgba(22, 163, 74, 0.3);
+
+      --text1: #052e16;
+      --text2: #14532d;
+      --text3: #166534;
+
+      --badge-bg: rgba(22, 163, 74, 0.12);
+      --badge-text: #15803d;
+
+      --nav-bg: rgba(244, 251, 245, 0.92);
+      --shadow-lg: 0 20px 40px -15px rgba(22, 101, 52, 0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: var(--bg);
+      color: var(--text1);
+      line-height: 1.6;
+      transition: background-color 0.3s ease, color 0.3s ease;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Farm Background Shapes */
+    .bg-shapes {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .shape {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(110px);
+      opacity: 0.3;
+      animation: floatShape 24s ease-in-out infinite alternate;
+    }
+    .shape-1 {
+      width: 600px; height: 600px;
+      background: linear-gradient(135deg, #16a34a, #84cc16);
+      top: -150px; right: -100px;
+    }
+    .shape-2 {
+      width: 500px; height: 500px;
+      background: linear-gradient(135deg, #eab308, #10b981);
+      bottom: -100px; left: -100px;
+      animation-delay: -8s;
+    }
+    .shape-3 {
+      width: 400px; height: 400px;
+      background: linear-gradient(135deg, #06b6d4, #15803d);
+      top: 45%; left: 45%;
+      animation-delay: -16s;
+    }
+    @keyframes floatShape {
+      0% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(40px, 30px) scale(1.08); }
+      100% { transform: translate(-30px, -40px) scale(0.95); }
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1260px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Navbar */
+    header.navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--nav-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      transition: var(--transition);
+    }
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 80px;
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      color: var(--text1);
+    }
+    .logo-icon {
+      width: 46px; height: 46px;
+      background: linear-gradient(135deg, var(--primary), #84cc16);
+      color: #fff;
+      font-size: 22px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 16px var(--primary-glow);
+    }
+    .brand-text {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 21px;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--text1), var(--primary-light));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--primary-light);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-weight: 700;
+      display: block;
+      margin-top: -3px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      list-style: none;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text2);
+      font-weight: 500;
+      font-size: 14px;
+      transition: color 0.2s ease;
+    }
+    .nav-links a:hover {
+      color: var(--primary-light);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .mobile-menu-toggle {
+      display: none;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text1);
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      font-size: 20px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+    .mobile-menu-toggle:hover {
+      border-color: var(--primary);
+    }
+
+    .theme-toggle-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text1);
+      width: 42px; height: 42px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: var(--transition);
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .btn-portal-login {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #ffffff;
+      text-decoration: none;
+      padding: 11px 22px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 14px;
+      box-shadow: 0 6px 20px var(--primary-glow);
+      transition: var(--transition);
+    }
+    .btn-portal-login:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px var(--primary-glow);
+    }
+
+    /* Mobile Drawer */
+    .mobile-nav-drawer {
+      position: fixed;
+      top: 0; right: -300px;
+      width: 280px;
+      height: 100vh;
+      background: var(--bg-alt);
+      border-left: 1px solid var(--border-accent);
+      z-index: 2001;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: var(--shadow-lg);
+    }
+    .mobile-nav-drawer.active {
+      right: 0;
+    }
+    .mobile-nav-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      z-index: 2000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .mobile-nav-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mobile-nav-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .mobile-nav-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 18px;
+      color: var(--text1);
+    }
+    .mobile-nav-close {
+      background: none;
+      border: none;
+      color: var(--text1);
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .mobile-nav-links {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mobile-nav-links a {
+      color: var(--text1);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      display: block;
+      padding: 12px 16px;
+      border-radius: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      transition: var(--transition);
+    }
+    .mobile-nav-links a:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    /* Hero Section */
+    .hero {
+      padding-top: 155px;
+      padding-bottom: 80px;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 48px;
+      align-items: center;
+    }
+    .hero-content {
+      text-align: left;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      border: 1px solid var(--border-accent);
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 46px;
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -1.2px;
+      margin-bottom: 20px;
+      color: var(--text1);
+    }
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--primary-light), var(--accent-light));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p.lead {
+      font-size: 17px;
+      color: var(--text2);
+      margin-bottom: 32px;
+      font-weight: 400;
+    }
+
+    .hero-ctas {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .btn-primary-hero {
+      padding: 15px 32px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 15px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px var(--primary-glow);
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-primary-hero:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 35px var(--primary-glow);
+    }
+    .btn-secondary-hero {
+      padding: 15px 28px;
+      background: var(--card-bg);
+      color: var(--text1);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      transition: var(--transition);
+    }
+    .btn-secondary-hero:hover {
+      border-color: var(--primary);
+      transform: translateY(-3px);
+      background: var(--card-hover);
+    }
+
+    /* Hero Featured Media Card */
+    .hero-media-card {
+      position: relative;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--border-accent);
+      box-shadow: var(--shadow-lg);
+      background: var(--card-bg);
+    }
+    .hero-media-card img {
+      width: 100%;
+      height: 380px;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.5s ease;
+    }
+    .hero-media-card:hover img {
+      transform: scale(1.03);
+    }
+    .media-overlay {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 24px;
+      background: linear-gradient(to top, rgba(0,0,0,0.92), transparent);
+      color: #fff;
+    }
+    .media-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 20px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .media-overlay h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .media-overlay p {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    /* Section Styling */
+    .section {
+      padding: 80px 0;
+    }
+    .section-title {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .section-title h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      margin-bottom: 10px;
+    }
+    .section-title p {
+      color: var(--text3);
+      font-size: 16px;
+      max-width: 650px;
+      margin: 0 auto;
+    }
+
+    /* Search & Filter Controls */
+    .catalog-controls {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 36px;
+      backdrop-filter: blur(12px);
+    }
+    .search-box-container {
+      margin-bottom: 20px;
+      position: relative;
+    }
+    .search-box-container input {
+      width: 100%;
+      padding: 14px 20px 14px 46px;
+      border-radius: 12px;
+      border: 1px solid var(--border-accent);
+      background: var(--bg);
+      color: var(--text1);
+      font-size: 15px;
+      outline: none;
+      transition: var(--transition);
+    }
+    .search-box-container input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+    .search-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 18px;
+      color: var(--text3);
+      pointer-events: none;
+    }
+
+    .products-filter {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 8px 18px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      border-radius: 24px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .filter-btn.active, .filter-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .catalog-stats {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text3);
+      margin-bottom: 24px;
+      font-weight: 600;
+    }
+
+    /* Products Grid */
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 24px;
+    }
+    .product-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      overflow: hidden;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+    }
+    .product-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--border-accent);
+      box-shadow: var(--shadow-lg);
+    }
+    .product-img-wrapper {
+      position: relative;
+      height: 200px;
+      overflow: hidden;
+      background: #000;
+    }
+    .product-img-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+    }
+    .product-card:hover .product-img-wrapper img {
+      transform: scale(1.06);
+    }
+    .brand-tag {
+      position: absolute;
+      top: 12px; left: 12px;
+      padding: 3px 10px;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(8px);
+      color: #4ade80;
+      border: 1px solid rgba(74, 222, 128, 0.4);
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+    .product-body {
+      padding: 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .product-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text1);
+      line-height: 1.3;
+    }
+    .product-desc {
+      font-size: 13px;
+      color: var(--text2);
+      margin-bottom: 14px;
+      flex: 1;
+    }
+    .product-specs {
+      background: rgba(0,0,0,0.15);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12px;
+      color: var(--text3);
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+    .product-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .product-pricing {
+      display: flex;
+      flex-direction: column;
+    }
+    .pricing-type { font-size: 10px; text-transform: uppercase; color: var(--text3); font-weight: 700; }
+    .price-val { font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 800; color: var(--primary-light); }
+
+    .btn-enquire {
+      padding: 8px 16px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .btn-enquire:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+
+    /* Instagram Reels Showcase */
+    .reels-section {
+      background: linear-gradient(180deg, transparent, var(--bg-alt), transparent);
+      padding: 80px 0;
+    }
+    .reels-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .reel-card {
+      position: relative;
+      aspect-ratio: 9 / 16;
+      border-radius: 20px;
+      overflow: hidden;
+      border: 1px solid var(--border-accent);
+      background: #000;
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .reel-card:hover {
+      transform: translateY(-6px) scale(1.02);
+      border-color: var(--primary-light);
+      box-shadow: 0 20px 40px var(--primary-glow);
+    }
+    .reel-media-bg {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.88;
+    }
+    .reel-header {
+      position: absolute;
+      top: 16px; left: 16px; right: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 2;
+    }
+    .reel-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+    }
+    .reel-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #eab308, #16a34a);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      border: 2px solid #fff;
+    }
+    .reel-username {
+      font-size: 12px;
+      font-weight: 700;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    }
+    .reel-live-badge {
+      font-size: 10px;
+      padding: 3px 8px;
+      background: #ef4444;
+      color: #fff;
+      font-weight: 800;
+      border-radius: 12px;
+      text-transform: uppercase;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+    .reel-center-play {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      transition: var(--transition);
+      z-index: 2;
+    }
+    .reel-card:hover .reel-center-play {
+      transform: translate(-50%, -50%) scale(1.15);
+      background: var(--primary);
+    }
+    .reel-side-actions {
+      position: absolute;
+      right: 14px; bottom: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      z-index: 2;
+      color: #fff;
+    }
+    .action-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    }
+    .action-icon {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .reel-caption-box {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 16px;
+      background: linear-gradient(to top, rgba(0,0,0,0.95), rgba(0,0,0,0.4) 70%, transparent);
+      color: #fff;
+      z-index: 2;
+    }
+    .reel-tag {
+      display: inline-block;
+      font-size: 11px;
+      background: rgba(22, 163, 74, 0.8);
+      color: #fff;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .reel-caption {
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .reel-audio { font-size: 11px; opacity: 0.8; }
+
+    /* Services Box */
+    .services-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 28px;
+      margin-top: 20px;
+    }
+    .service-item h4 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text1);
+    }
+    .service-item p { font-size: 13.5px; color: var(--text2); }
+
+    /* Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(12px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-card-custom {
+      background: var(--bg-alt);
+      border: 1px solid var(--border-accent);
+      border-radius: 24px;
+      max-width: 500px;
+      width: 100%;
+      padding: 32px;
+      position: relative;
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: none;
+      border: none;
+      color: var(--text1);
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 44px 0 32px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 14px;
+      background: var(--bg);
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; text-align: center; }
+      .hero-content { text-align: center; }
+      .hero-ctas { justify-content: center; }
+      .hero h1 { font-size: 34px; }
+      .nav-links { display: none; }
+      .nav-actions .btn-portal-login { display: none !important; }
+      .mobile-menu-toggle { display: flex; }
+      .brand-sub { display: none; }
+    }
+
+    @media (max-width: 480px) {
+      .container { padding: 0 14px; }
+      .nav-inner { height: 68px; }
+      .brand-logo { gap: 10px; }
+      .brand-text { font-size: 17px; }
+      .logo-icon { width: 38px; height: 38px; font-size: 18px; border-radius: 10px; }
+      .nav-actions { gap: 8px; }
+      .theme-toggle-btn { width: 38px; height: 38px; font-size: 16px; border-radius: 10px; }
+      .mobile-menu-toggle { width: 38px; height: 38px; font-size: 18px; border-radius: 10px; }
+      .hero { padding-top: 105px; padding-bottom: 50px; }
+      .hero h1 { font-size: 26px; margin-bottom: 14px; }
+      .hero p.lead { font-size: 14.5px; margin-bottom: 22px; }
+      .btn-primary-hero, .btn-secondary-hero { width: 100%; justify-content: center; padding: 12px 20px; font-size: 14px; }
+      .hero-media-card img { height: 220px; }
+      .media-overlay h3 { font-size: 18px; }
+      .section { padding: 50px 0; }
+      .section-title h2 { font-size: 26px; }
+      .section-title p { font-size: 13.5px; }
+      .catalog-controls { padding: 14px; }
+      .products-grid { grid-template-columns: 1fr; gap: 16px; }
+      .products-filter { gap: 6px; }
+      .filter-btn { padding: 6px 12px; font-size: 11.5px; }
+      .services-box { padding: 20px 14px; gap: 20px; }
+      .modal-card-custom { padding: 20px 16px; border-radius: 18px; }
+    }
+
+    @media (max-width: 340px) {
+      .container { padding: 0 10px; }
+      .brand-text { font-size: 14px; }
+      .logo-icon { width: 34px; height: 34px; font-size: 16px; }
+      .theme-toggle-btn, .mobile-menu-toggle { width: 34px; height: 34px; font-size: 15px; }
+      .hero h1 { font-size: 22px; }
+      .section-title h2 { font-size: 22px; }
+      .product-title { font-size: 16px; }
+      .price-val { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Shapes -->
+  <div class="bg-shapes">
+    <div class="shape shape-1"></div>
+    <div class="shape shape-2"></div>
+    <div class="shape shape-3"></div>
+  </div>
+
+  <!-- Header Navbar -->
+  <header class="navbar">
+    <div class="container nav-inner">
+      <a href="/" class="brand-logo">
+        <div class="logo-icon">🚜</div>
+        <div>
+          <span class="brand-text">Manaswini Enterprises</span>
+          <span class="brand-sub">Wholesale & Retail Agricultural Machinery</span>
+        </div>
+      </a>
+      
+      <ul class="nav-links">
+        <li><a href="#catalog">Machinery Catalog</a></li>
+        <li><a href="#reels">Field Demos 📹</a></li>
+        <li><a href="#services">Services</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">🌙</button>
+        <button class="mobile-menu-toggle" id="mobileMenuToggle" onclick="toggleMobileMenu()" aria-label="Open Navigation Menu">☰</button>
+        <a href="/admin/index.html" class="btn-portal-login">
+          <span>Staff & Dealer Login</span>
+          <span>➔</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Off-Canvas Navigation Drawer -->
+  <div class="mobile-nav-drawer" id="mobileNavDrawer">
+    <div class="mobile-nav-header">
+      <span class="mobile-nav-title">Manaswini Menu</span>
+      <button class="mobile-nav-close" onclick="closeMobileMenu()">✕</button>
+    </div>
+    <ul class="mobile-nav-links">
+      <li><a href="#catalog" onclick="closeMobileMenu()">📦 Machinery Catalog</a></li>
+      <li><a href="#reels" onclick="closeMobileMenu()">📹 Field Video Demos</a></li>
+      <li><a href="#services" onclick="closeMobileMenu()">🛠️ Wholesale Services</a></li>
+      <li><a href="mailto:info@manageetha.in" onclick="closeMobileMenu()">📧 info@manageetha.in</a></li>
+      <li><a href="/admin/index.html">🔐 Staff / Dealer ERP Login</a></li>
+    </ul>
+  </div>
+  <div class="mobile-nav-overlay" id="mobileNavOverlay" onclick="closeMobileMenu()"></div>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span>🌾</span> Authorized Wholesale & Retail Machinery Hub
+          </div>
+          <h1>Authorized Dealer for <span>Shrachi, Sonalika, Kirloskar, Gaja & Bharat</span></h1>
+          <p class="lead">
+            Manaswini Enterprises is your primary wholesale & retail distributor for Power Tillers, Weeders, Multi-Speed Rotavators, Agri Drones, Automatic Balers, Kirloskar Pumps, Threshers, and Garden Tools.
+          </p>
+
+          <div class="hero-ctas">
+            <a href="#catalog" class="btn-primary-hero">
+              <span>Explore 50+ Products</span>
+              <span>➔</span>
+            </a>
+            <a href="/admin/index.html" class="btn-secondary-hero">Dealer / ERP Portal</a>
+          </div>
+        </div>
+
+        <div class="hero-media-card">
+          <img src="/assets/rotavator.jpg" alt="Sonalika Rotavator in Field" id="heroImg">
+          <div class="media-overlay">
+            <span class="media-badge">🔥 Featured Product</span>
+            <h3>Sonalika Multi-Speed Rotavators</h3>
+            <p>Authorized distributor for Sonalika 3ft to 8ft Rotavators & Paddy Weeders.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Product Catalog Section -->
+  <section class="section" id="catalog">
+    <div class="container">
+      <div class="section-title">
+        <h2>Wholesale & Retail Product Catalog</h2>
+        <p>Browse our complete range of certified agricultural machinery, power tillers, rotavators, engines & farm tools.</p>
+      </div>
+
+      <!-- Controls: Search & Category Filter Tabs -->
+      <div class="catalog-controls">
+        <div class="search-box-container">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="productSearchInput" placeholder="Search by product name, brand, HP, blades, pump size (e.g., Sonalika 7ft, Shrachi 13HP, Kirloskar 5HP, Gaja, Baler, Drone...)" oninput="handleSearchFilter()">
+        </div>
+
+        <div class="products-filter" id="filterTabs">
+          <button class="filter-btn active" data-cat="all" onclick="filterCategory('all', this)">All Products</button>
+          <button class="filter-btn" data-cat="shrachi" onclick="filterCategory('shrachi', this)">Shrachi Machinery</button>
+          <button class="filter-btn" data-cat="sonalika" onclick="filterCategory('sonalika', this)">Sonalika Rotavators</button>
+          <button class="filter-btn" data-cat="balers" onclick="filterCategory('balers', this)">Bharat & Redland Balers</button>
+          <button class="filter-btn" data-cat="kirloskar" onclick="filterCategory('kirloskar', this)">Kirloskar Engines</button>
+          <button class="filter-btn" data-cat="gaja" onclick="filterCategory('gaja', this)">Gaja Tools & Sprayers</button>
+          <button class="filter-btn" data-cat="threshers" onclick="filterCategory('threshers', this)">Threshers & Cutters</button>
+          <button class="filter-btn" data-cat="drones" onclick="filterCategory('drones', this)">Agri Drones & Loaders</button>
+          <button class="filter-btn" data-cat="gardentools" onclick="filterCategory('gardentools', this)">Garden Tools</button>
+        </div>
+      </div>
+
+      <div class="catalog-stats" id="catalogStats">Showing 52 Authorized Products</div>
+
+      <!-- Dynamic Product Cards Grid -->
+      <div class="products-grid" id="productsGrid">
+        <!-- Injected dynamically by JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Instagram Reel / Short Video Showcase Section -->
+  <section class="reels-section" id="reels">
+    <div class="container">
+      <div class="section-title">
+        <h2>Machinery In Action 📹</h2>
+        <p>Watch short field demo reels of our Rotavators, Power Weeders, and Machinery working live on Indian farms.</p>
+      </div>
+
+      <div class="reels-grid">
+        <!-- Reel 1 -->
+        <div class="reel-card" onclick="playReel('Sonalika 7ft Multi-Speed Rotavator Demo', 'Watch Sonalika 7ft rotavator pulverizing tough soil in 45 minutes.')">
+          <img src="/assets/rotavator.jpg" class="reel-media-bg" alt="Rotavator Reel">
+          <div class="reel-header">
+            <div class="reel-user">
+              <div class="reel-avatar">🚜</div>
+              <span class="reel-username">@ManaswiniAgri</span>
+            </div>
+            <span class="reel-live-badge">LIVE DEMO</span>
+          </div>
+          <div class="reel-center-play">▶</div>
+          <div class="reel-side-actions">
+            <div class="action-btn"><div class="action-icon">❤️</div><span>18.4K</span></div>
+            <div class="action-btn"><div class="action-icon">💬</div><span>420</span></div>
+            <div class="action-btn"><div class="action-icon">🚀</div><span>Share</span></div>
+          </div>
+          <div class="reel-caption-box">
+            <span class="reel-tag">🏷️ Sonalika Rotavator 7ft</span>
+            <p class="reel-caption">48-blade multi-speed gearbox rotavator for heavy soil tilling! 🌾</p>
+            <div class="reel-audio">♪ Original Sound - Farm Beats</div>
+          </div>
+        </div>
+
+        <!-- Reel 2 -->
+        <div class="reel-card" onclick="playReel('Shrachi 8D6 Diesel Power Weeder Demo', '7.5 HP diesel power tiller weeding sugarcane and cotton fields.')">
+          <img src="https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&w=800&q=80" class="reel-media-bg" alt="Power Weeder Reel">
+          <div class="reel-header">
+            <div class="reel-user">
+              <div class="reel-avatar">🌱</div>
+              <span class="reel-username">@ManaswiniAgri</span>
+            </div>
+            <span class="reel-live-badge">FIELD DEMO</span>
+          </div>
+          <div class="reel-center-play">▶</div>
+          <div class="reel-side-actions">
+            <div class="action-btn"><div class="action-icon">❤️</div><span>14.2K</span></div>
+            <div class="action-btn"><div class="action-icon">💬</div><span>289</span></div>
+            <div class="action-btn"><div class="action-icon">🚀</div><span>Share</span></div>
+          </div>
+          <div class="reel-caption-box">
+            <span class="reel-tag">🏷️ Shrachi Power Weeder</span>
+            <p class="reel-caption">Inter-crop weeding made effortless with Shrachi 8D6 Diesel power weeder! 💪</p>
+            <div class="reel-audio">♪ Original Sound - Field Action</div>
+          </div>
+        </div>
+
+        <!-- Reel 3 -->
+        <div class="reel-card" onclick="playReel('Gaja Chaff Cutter 5-Blade Demo', 'High capacity 3HP fodder cutter machine processing 500kg/hr.')">
+          <img src="https://images.unsplash.com/photo-1530507629858-e4977d30e9e0?auto=format&fit=crop&w=800&q=80" class="reel-media-bg" alt="Chaff Cutter Reel">
+          <div class="reel-header">
+            <div class="reel-user">
+              <div class="reel-avatar">🌾</div>
+              <span class="reel-username">@ManaswiniAgri</span>
+            </div>
+            <span class="reel-live-badge">FARM TECH</span>
+          </div>
+          <div class="reel-center-play">▶</div>
+          <div class="reel-side-actions">
+            <div class="action-btn"><div class="action-icon">❤️</div><span>9.8K</span></div>
+            <div class="action-btn"><div class="action-icon">💬</div><span>175</span></div>
+            <div class="action-btn"><div class="action-icon">🚀</div><span>Share</span></div>
+          </div>
+          <div class="reel-caption-box">
+            <span class="reel-tag">🏷️ Gaja Chaff Cutter</span>
+            <p class="reel-caption">5-blade 3HP single-phase fodder cutter for dairy farms! 🐄</p>
+            <div class="reel-audio">♪ Original Sound - Dairy Tech</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wholesale Services & Technical Backup Section -->
+  <section class="section" id="services">
+    <div class="container">
+      <div class="section-title">
+        <h2>Wholesale Distribution & Maintenance Support</h2>
+        <p>Manaswini Enterprises supports dealers, retailers, and farmers with complete sales, spare parts, and technician service backup.</p>
+      </div>
+
+      <div class="services-box">
+        <div class="service-item">
+          <h4>📦 Wholesale & Dealership Supply</h4>
+          <p>Competitive wholesale rates, bulk order discounts, and direct multi-district supply chain.</p>
+        </div>
+        <div class="service-item">
+          <h4>🔧 100% Genuine Spare Parts</h4>
+          <p>Authorized stockist for Sonalika blades, Shrachi gearboxes, Kirloskar pump spares, and baler knotters.</p>
+        </div>
+        <div class="service-item">
+          <h4>🚜 On-Field Mobile Technicians</h4>
+          <p>Our mobile service teams provide on-site repair, blade replacements, and annual machinery servicing.</p>
+        </div>
+        <div class="service-item">
+          <h4>📄 Subsidy & Invoice Documentation</h4>
+          <p>Complete GST invoices and official documentation for government agricultural machinery subsidy schemes.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer id="contact">
+    <div class="container">
+      <p style="font-size: 18px; font-weight: 700; color: var(--text1); margin-bottom: 6px;">
+        🚜 Manaswini Enterprises & Geetha Enterprises (ManaGeetha)
+      </p>
+      <p style="color: var(--text2); margin-bottom: 14px;">
+        Wholesale & Retail Dealer for Shrachi, Sonalika, Bharat Balers, Kirloskar, Gaja Tools & Agri Drones.
+      </p>
+      <div style="display:flex; gap:20px; justify-content:center; align-items:center; flex-wrap:wrap; margin-bottom: 16px; font-size: 14px; color: var(--text1);">
+        <span>📞 <strong>Customer Care:</strong> <a href="tel:+919491655550" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">+91 94916 55550</a>, <a href="tel:+919705877888" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">+91 97058 77888</a></span>
+        <span>📧 <strong>Email:</strong> <a href="mailto:info@manageetha.in" style="color: var(--primary-light); text-decoration: none; font-weight: 600;">info@manageetha.in</a></span>
+      </div>
+      <div style="display:flex; gap:16px; justify-content:center; align-items:center; flex-wrap:wrap; margin-bottom: 14px; font-size: 13px;">
+        <a href="/privacy-policy.html" style="color: var(--text2); text-decoration: underline;">Privacy Policy</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/refund-policy.html" style="color: var(--text2); text-decoration: underline;">Return & Refund Policy</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/terms-of-service.html" style="color: var(--text2); text-decoration: underline;">Terms of Service</a>
+        <span style="color: var(--border);">|</span>
+        <a href="/admin/index.html" style="color: var(--primary-light); text-decoration: underline;">Staff / ERP Login Portal</a>
+      </div>
+      <p style="font-size: 12px; color: var(--text3); margin-bottom: 4px;">
+        © 2026 Manaswini Enterprises & Geetha Enterprises — All Rights Reserved
+      </p>
+      <p style="font-size: 11px; color: var(--text3); opacity: 0.85; margin-top: 6px;">
+        Developed & Maintained by <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline;"><strong>Inspenox</strong></a>
+      </p>
+    </div>
+  </footer>
+
+  <!-- Inquiry Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-card-custom">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <h3 id="modalTitle" style="font-family: 'Outfit', sans-serif; font-size: 22px; margin-bottom: 10px; color: var(--text1);">
+        Enquire Product Quote
+      </h3>
+      <p id="modalBodyText" style="font-size: 13.5px; color: var(--text2); margin-bottom: 20px;">
+        Fill in your details to receive wholesale or retail price quotations and delivery schedules.
+      </p>
+      <form id="enquireForm" onsubmit="handleEnquireSubmit(event)">
+        <div style="margin-bottom: 14px;">
+          <label style="display:block; font-size: 12px; font-weight:600; color: var(--text2); margin-bottom: 4px;">Your Name / Dealer Shop Name</label>
+          <input type="text" id="enqName" required placeholder="Enter full name or shop name" style="width:100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text1);">
+        </div>
+        <div style="margin-bottom: 14px;">
+          <label style="display:block; font-size: 12px; font-weight:600; color: var(--text2); margin-bottom: 4px;">Phone Number</label>
+          <input type="tel" id="enqPhone" required placeholder="Enter 10-digit mobile number" style="width:100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text1);">
+        </div>
+        <div style="margin-bottom: 20px;">
+          <label style="display:block; font-size: 12px; font-weight:600; color: var(--text2); margin-bottom: 4px;">Order Type</label>
+          <select id="enqType" style="width:100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text1);">
+            <option value="Wholesale">Wholesale Bulk Order / Dealership</option>
+            <option value="Retail">Retail Purchase for Farm Use</option>
+            <option value="Service">Machinery Servicing / Spare Parts Inquiry</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-primary-hero" style="width:100%; justify-content:center;">Submit Inquiry ➔</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- JavaScript Products Dataset & Engine -->
+  <script>
+    // Theme Switcher
+    (function initTheme() {
+      const themeToggleBtn = document.getElementById('themeToggleBtn');
+      const savedTheme = localStorage.getItem('erp_theme') || 'dark';
+      
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('erp_theme', theme);
+        if (themeToggleBtn) {
+          themeToggleBtn.textContent = theme === 'dark' ? '☀️' : '🌙';
+        }
+      }
+
+      applyTheme(savedTheme);
+
+      if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+          const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          applyTheme(newTheme);
+        });
+      }
+    })();
+
+    // Mobile Menu Controls
+    function toggleMobileMenu() {
+      const drawer = document.getElementById('mobileNavDrawer');
+      const overlay = document.getElementById('mobileNavOverlay');
+      if (drawer && overlay) {
+        drawer.classList.toggle('active');
+        overlay.classList.toggle('active');
+      }
+    }
+
+    function closeMobileMenu() {
+      const drawer = document.getElementById('mobileNavDrawer');
+      const overlay = document.getElementById('mobileNavOverlay');
+      if (drawer && overlay) {
+        drawer.classList.remove('active');
+        overlay.classList.remove('active');
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // HIGH QUALITY DISTINCT AGRICULTURAL MACHINERY IMAGES MAPPING
+    // ═══════════════════════════════════════════════════════════
+    const IMG_MAP = {
+      tiller: "https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=800&q=80",
+      weeder: "https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&w=800&q=80",
+      reaper: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=800&q=80",
+      chaff: "https://images.unsplash.com/photo-1530507629858-e4977d30e9e0?auto=format&fit=crop&w=800&q=80",
+      pump: "https://images.unsplash.com/photo-1615811361523-6bd03d7748e7?auto=format&fit=crop&w=800&q=80",
+      rotavator_small: "/assets/rotavator.jpg",
+      rotavator_large: "https://images.unsplash.com/photo-1527847263472-aa5338d178b8?auto=format&fit=crop&w=800&q=80",
+      rotavator_paddy: "https://images.unsplash.com/photo-1589923188900-85dae523342b?auto=format&fit=crop&w=800&q=80",
+      baler: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80",
+      drone: "https://images.unsplash.com/photo-1527977966376-1c8408f9f108?auto=format&fit=crop&w=800&q=80",
+      loader: "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=800&q=80",
+      auger: "https://images.unsplash.com/photo-1584467735871-8e85353a8413?auto=format&fit=crop&w=800&q=80",
+      brush: "https://images.unsplash.com/photo-1622383563227-04401ab4e5ea?auto=format&fit=crop&w=800&q=80",
+      chipper: "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=800&q=80",
+      sprayer: "https://images.unsplash.com/photo-1585314062340-f1a5a7c9328d?auto=format&fit=crop&w=800&q=80",
+      seeddrill: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=800&q=80",
+      thresher: "https://images.unsplash.com/photo-1560493676-04071c5f467b?auto=format&fit=crop&w=800&q=80",
+      gardentools: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=800&q=80"
+    };
+
+    // ═══════════════════════════════════════════════════════════
+    // COMPLETE PRODUCT DATASET WITH ACCURATE MACHINERY PHOTOS
+    // ═══════════════════════════════════════════════════════════
+    const PRODUCTS_DATA = [
+      // Shrachi
+      { name: "Shrachi Power Tiller Virat 13HP", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.tiller, desc: "Heavy-duty 13HP diesel power tiller for deep tilling and wet paddy field preparation.", specs: "13 HP Engine | Multi-Blade Tilling | Heavy Duty Gearbox" },
+      { name: "Shrachi 7P3 Champ Petrol Power Weeder", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.weeder, desc: "7HP petrol engine power weeder for row crop weeding and cultivation.", specs: "7 HP Petrol | Compact Frame | Rotary Tines" },
+      { name: "Shrachi 8D6 Win Diesel Power Weeder", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.weeder, desc: "8HP Win series diesel power weeder built for tough sugarcane & cotton fields.", specs: "8 HP Diesel Engine | Win Series | Fuel Efficient" },
+      { name: "Shrachi 6D3 Champ Diesel Power Weeder", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.weeder, desc: "6HP Champ series diesel power weeder for vegetable farms & orchards.", specs: "6 HP Diesel | Champ Series | High Torque" },
+      { name: "Shrachi 8D6 Hero Diesel Power Weeder", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.weeder, desc: "8HP Hero series power cultivator with heavy-duty tilling blades.", specs: "8 HP Diesel | Hero Model | Electric/Recoil Start" },
+      { name: "Shrachi 6D3 Hero Diesel Power Weeder", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.weeder, desc: "6HP Hero series diesel cultivator for multi-crop weeding.", specs: "6 HP Diesel | Hero Series | Ergonomic Handle" },
+      { name: "Shrachi Paddy Reaper", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.reaper, desc: "Self-propelled paddy harvesting reaper for quick rice crop cutting.", specs: "Engine Driven | High Capacity | Clean Cut" },
+      { name: "Shrachi Chaff Cutter 5 Blade Model", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.chaff, desc: "5-blade heavy-duty fodder cutter machine for dairy farms.", specs: "5 Boron Blades | High Output | Safe Hopper" },
+      { name: "Shrachi WP30 Water Pumpset Champ Model", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.pump, desc: "3-inch high-flow agricultural water pump set for irrigation.", specs: "3x3 Inch Outlets | Champ Series Engine" },
+      { name: "Shrachi WP30 Water Pumpset Supreme Model", brand: "SHRACHI", cat: "shrachi", img: IMG_MAP.pump, desc: "3-inch supreme duty high head pressure water pump.", specs: "3x3 Inch Outlets | Supreme Heavy Duty" },
+
+      // Sonalika Rotavators & Mulchers
+      { name: "Sonalika Rotavator 3 Feet Single Speed Gearbox (16 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_small, desc: "Compact 3ft rotavator ideal for mini tractors & small orchards.", specs: "3 Feet Width | 16 Blades | Single Speed Gearbox" },
+      { name: "Sonalika Rotavator 3.5 Feet Single Speed Gearbox (20 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_small, desc: "3.5ft orchard & vineyard tilling rotavator.", specs: "3.5 Feet Width | 20 Blades | Single Speed Gearbox" },
+      { name: "Sonalika Rotavator 4 Feet Single Speed Gearbox (24 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_small, desc: "4ft single speed rotavator for medium HP tractors.", specs: "4 Feet Width | 24 Blades | Single Speed Gearbox" },
+      { name: "Sonalika Rotavator 5 Feet Multi Speed Gearbox 36 Blades (Challenger Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_small, desc: "Challenger series 5ft multi-speed rotavator for fine seedbed preparation.", specs: "5 Feet Width | 36 Blades | Challenger Multi-Speed" },
+      { name: "Sonalika Rotavator 5 Feet Multi Speed Gearbox 36 Blades (Medium Duty Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_small, desc: "Medium-duty 5ft multi-speed rotavator.", specs: "5 Feet Width | 36 Blades | Medium Duty Gearbox" },
+      { name: "Sonalika Rotavator 5 Feet Multi Speed Gearbox 36 Blades (4 Speed Gear Box Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_small, desc: "5ft rotavator with 4-speed selector gearbox for customized RPM control.", specs: "5 Feet Width | 36 Blades | 4-Speed Gearbox" },
+      { name: "Sonalika Rotavator 6 Feet Multi Speed Gearbox 42 Blades (Challenger Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_large, desc: "6ft heavy Challenger rotavator for 45-55 HP tractors.", specs: "6 Feet Width | 42 Blades | Challenger Multi-Speed" },
+      { name: "Sonalika Rotavator 6 Feet Multi Speed Gearbox 42 Blades (Medium Duty Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_large, desc: "6ft medium duty multi-speed rotavator.", specs: "6 Feet Width | 42 Blades | Medium Duty Multi-Speed" },
+      { name: "Sonalika Rotavator 6 Feet Multi Speed Gearbox 42 Blades (4 Speed Gear Box Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_large, desc: "6ft rotavator with 4-speed selectable gearbox.", specs: "6 Feet Width | 42 Blades | 4-Speed Gearbox" },
+      { name: "Sonalika Rotavator 7 Feet Multi Speed Gearbox 48 Blades (Challenger Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_large, desc: "7ft premium Challenger rotavator for large farmland coverage.", specs: "7 Feet Width | 48 Blades | Challenger Multi-Speed" },
+      { name: "Sonalika Rotavator 7 Feet Multi Speed Gearbox 48 Blades (Medium Duty Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_large, desc: "7ft multi-speed rotavator medium duty edition.", specs: "7 Feet Width | 48 Blades | Medium Duty Gearbox" },
+      { name: "Sonalika Rotavator 7 Feet Multi Speed Gearbox 48 Blades (4 Speed Gear Box Model)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_large, desc: "7ft rotavator with 4-speed gearbox for heavy soil tilling.", specs: "7 Feet Width | 48 Blades | 4-Speed Gearbox" },
+      { name: "Sonalika Rotavator 7 Feet Multi Speed Gearbox Paddy Weeder (60 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_paddy, desc: "7ft specialized multi-speed paddy weeder rotavator with 60 blades.", specs: "7 Feet Width | 60 Blades | Multi-Speed Paddy Weeder" },
+      { name: "Sonalika Rotavator 7 Feet Single Speed Gearbox Paddy Weeder (60 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_paddy, desc: "7ft single speed paddy weeder rotavator with 60 blades.", specs: "7 Feet Width | 60 Blades | Single Speed Paddy Weeder" },
+      { name: "Sonalika Rotavator 8 Feet Single Speed Gearbox Paddy Weeder (66 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_paddy, desc: "8ft high capacity paddy weeder rotavator for large commercial fields.", specs: "8 Feet Width | 66 Blades | Single Speed Paddy Weeder" },
+      { name: "Sonalika Rotavator 8 Feet Multi Speed Gearbox Paddy Weeder (66 Blades)", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_paddy, desc: "8ft heavy-duty multi-speed paddy rotavator with 66 blades.", specs: "8 Feet Width | 66 Blades | Multi-Speed Paddy Weeder" },
+      { name: "Sonalika Disk Rotavator 7 Plates Model Single Speed", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_paddy, desc: "7-plate heavy disk rotavator for clod breaking and tough soil.", specs: "7 Disk Plates | Single Speed | Heavy Duty Frame" },
+      { name: "Sonalika Mulcher 5 Feet", brand: "SONALIKA", cat: "sonalika", img: IMG_MAP.rotavator_paddy, desc: "5ft heavy crop residue mulcher machine for shredding cotton, sugarcane & maize stubble.", specs: "5 Feet Width | Heavy Flail Blades | Crop Shredder" },
+
+      // Bharat & Redland Balers
+      { name: "Bharat Baler Scale-less Fully Automatic Model Single Cutter Bar (Part No: 1050 Matrix)", brand: "BHARAT", cat: "balers", img: IMG_MAP.baler, desc: "Fully automatic scale-less straw baler with single cutter bar (1050 Matrix).", specs: "Part No: 1050 Matrix | Single Cutter Bar | Automatic" },
+      { name: "Bharat Baler Scale-less Fully Automatic Model Double Cutter Bar (Part No: 1050 Matrix Jet)", brand: "BHARAT", cat: "balers", img: IMG_MAP.baler, desc: "High-speed automatic scale-less baler with double cutter bar (1050 Matrix Jet).", specs: "Part No: 1050 Matrix Jet | Double Cutter Bar | High Speed" },
+      { name: "Bharat Baler Scale 1050 Smart", brand: "BHARAT", cat: "balers", img: IMG_MAP.baler, desc: "Smart scale series automatic straw baler for crop residue harvesting.", specs: "Model: 1050 Smart | Heavy Baling Chamber | Durable Knotter" },
+      { name: "Bharat Baler Scale 1050 Smart Jet", brand: "BHARAT", cat: "balers", img: IMG_MAP.baler, desc: "1050 Smart Jet edition baler with high-capacity pickup reel.", specs: "Model: 1050 Smart Jet | Fast Hydraulic Pickup" },
+      { name: "Bharat Ridge Plaster", brand: "BHARAT", cat: "balers", img: IMG_MAP.rotavator_paddy, desc: "Precision ridge plastering machine for field bunding & channel creation.", specs: "Tractor PTO Driven | High Ridge Height | Field Bunding" },
+      { name: "Redland Baler Scale Model", brand: "REDLAND", cat: "balers", img: IMG_MAP.baler, desc: "Redland scale model straw baler machine for crop residue processing.", specs: "Scale Model | Heavy Baling Mechanism | High Density Bales" },
+      { name: "Redland Baler Scale-less Model", brand: "REDLAND", cat: "balers", img: IMG_MAP.baler, desc: "Redland scale-less high speed straw baler machine.", specs: "Scale-less Model | Continuous Baling | Tractor PTO Driven" },
+
+      // Agri Drones & Bull Loaders
+      { name: "AgriCrop Drones with 3 Batteries (Indian Govt Certified)", brand: "AGRICROP", cat: "drones", img: IMG_MAP.drone, desc: "DGCA Govt-certified agricultural spraying drone with 3 smart batteries.", specs: "DGCA Certified | 3 Smart Batteries | Auto Flight & Spray" },
+      { name: "Bull Tractor Attachment Front Loader and Back Loader", brand: "BULL", cat: "drones", img: IMG_MAP.loader, desc: "Heavy-duty Bull front loader and backhoe loader attachment for tractors.", specs: "Front Loader + Backhoe | High Lift Capacity | Hydraulic Control" },
+
+      // Kirloskar
+      { name: "Kirloskar Oil Engines Varsha 4HP Diesel 3*3 Pump", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "4HP Varsha series diesel engine with 3x3 inch water suction & delivery pump.", specs: "4 HP Diesel | 3x3 Inch Pump | Varsha Series" },
+      { name: "Kirloskar Oil Engines Varsha 5HP Diesel 3*2.5 Pump", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "5HP Varsha diesel engine pump set with 3x2.5 inch outlets.", specs: "5 HP Diesel | 3x2.5 Inch Pump | Varsha Series" },
+      { name: "Kirloskar Oil Engines AK65 6.5HP Diesel 4*4 Pump", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "6.5HP AK65 diesel pump set with 4x4 inch high discharge.", specs: "6.5 HP Diesel | 4x4 Inch Pump | AK65 Engine" },
+      { name: "Kirloskar Oil Engines Supermono 5HP Diesel 4*4 Pump", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "5HP Supermono series diesel water pump set for continuous irrigation.", specs: "5 HP Diesel | 4x4 Inch Pump | Supermono Series" },
+      { name: "Kirloskar Oil Engines AV1 Xcell 8HP Diesel 4*4 Pump", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "8HP AV1 Xcell heavy duty diesel engine with 4x4 pump.", specs: "8 HP Diesel | 4x4 Inch Pump | AV1 Xcell Model" },
+      { name: "Kirloskar Oil 20.1212 Air Cooled Engine 6.5HP", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "6.5HP air-cooled industrial diesel engine.", specs: "6.5 HP | Air Cooled | Model 20.1212" },
+      { name: "Kirloskar Oil 20.1212.01 Air Cooled Engine 6.5HP", brand: "KIRLOSKAR", cat: "kirloskar", img: IMG_MAP.pump, desc: "6.5HP model 20.1212.01 air-cooled diesel engine.", specs: "6.5 HP | Air Cooled | Model 20.1212.01" },
+
+      // Gaja
+      { name: "Gaja Chaff Cutter 5 Blades 3HP Single Phase Model", brand: "GAJA", cat: "gaja", img: IMG_MAP.chaff, desc: "3HP single phase electric chaff cutter with 5 hardened blades.", specs: "3 HP Single Phase | 5 Blades | Heavy Duty Hopper" },
+      { name: "Gaja Chaff Cutter 4 Blades 3HP Single Phase Model", brand: "GAJA", cat: "gaja", img: IMG_MAP.chaff, desc: "3HP single phase 4-blade fodder cutter for dairy farms.", specs: "3 HP Single Phase | 4 Blades | Smooth Feed" },
+      { name: "Gaja Post Hole Digger 55cc", brand: "GAJA", cat: "gaja", img: IMG_MAP.auger, desc: "55cc petrol earth auger / post hole digger for fencing & tree planting.", specs: "55cc 2-Stroke | Heavy Auger Bit | Portable Digging" },
+      { name: "Gaja Brush Cutter 2-Stroke", brand: "GAJA", cat: "gaja", img: IMG_MAP.brush, desc: "2-stroke heavy duty brush cutter with nylon line and metal blade.", specs: "2-Stroke Petrol | Nylon & Metal Blade | Harness" },
+      { name: "Gaja Brush Cutter 4-Stroke", brand: "GAJA", cat: "gaja", img: IMG_MAP.brush, desc: "4-stroke low noise brush cutter for grass and weed cutting.", specs: "4-Stroke Engine | Low Vibration | High Efficiency" },
+      { name: "Gaja Wood Chipper 15HP Petrol Engine", brand: "GAJA", cat: "gaja", img: IMG_MAP.chipper, desc: "15HP commercial petrol wood chipper & shredder for tree branches.", specs: "15 HP Petrol Engine | Heavy Duty Chipping Blades" },
+      { name: "Gaja Battery Sprayer 12/16", brand: "GAJA", cat: "gaja", img: IMG_MAP.sprayer, desc: "Dual capacity 12V 16L battery operated knapsack sprayer.", specs: "12V Battery | 16 Liters | Multi Nozzle Kit" },
+      { name: "Gaja Power Sprayer 2-Stroke", brand: "GAJA", cat: "gaja", img: IMG_MAP.sprayer, desc: "Portable 2-stroke engine power sprayer for orchards.", specs: "2-Stroke Petrol Engine | High Pressure Pump" },
+      { name: "Gaja Power Sprayer 4-Stroke", brand: "GAJA", cat: "gaja", img: IMG_MAP.sprayer, desc: "4-stroke high pressure power sprayer pump set.", specs: "4-Stroke Engine | Low Fuel Consumption | High Pressure" },
+      { name: "Gaja Manual Seed Drill", brand: "GAJA", cat: "gaja", img: IMG_MAP.seeddrill, desc: "Push-type manual seed planter & fertilizer drill for small farms.", specs: "Manual Push | Adjustable Seed Metering | Uniform Depth" },
+
+      // Vardhaman & Jayagurudev Threshers
+      { name: "Vardhaman Multicrop Thresher 7 Fan Model", brand: "VARDHAMAN", cat: "threshers", img: IMG_MAP.thresher, desc: "7-fan high cleaning multicrop thresher for wheat, maize & pulses.", specs: "7 Cleaning Fans | Multicrop Capability | PTO Driven" },
+      { name: "Vardhaman Paddy Thresher 7 Fan Model", brand: "VARDHAMAN", cat: "threshers", img: IMG_MAP.thresher, desc: "7-fan high output paddy threshing machine.", specs: "7 Cleaning Fans | Specialized Paddy Drum | Clean Grain" },
+      { name: "Vardhaman Auto-Feeding Thresher Model", brand: "VARDHAMAN", cat: "threshers", img: IMG_MAP.thresher, desc: "Automatic conveyor feeding thresher for high safety & productivity.", specs: "Auto-Feeding Conveyor | Multicrop | Operator Safety" },
+      { name: "Jayagurudev Multicrop Thresher 5 Fan Model", brand: "JAYAGURUDEV", cat: "threshers", img: IMG_MAP.thresher, desc: "5-fan multi-crop thresher machine.", specs: "5 Cleaning Fans | Multicrop Drum | High Recovery" },
+      { name: "Jayagurudev Slasher", brand: "JAYAGURUDEV", cat: "threshers", img: IMG_MAP.rotavator_large, desc: "Tractor-mounted heavy rotary slasher for grass & pasture clearing.", specs: "Tractor PTO Driven | Rotary Cutter Blades | Heavy Frame" },
+
+      // Garden Tools
+      { name: "Garden Tools & Lawn Maintenance Equipments", brand: "GARDEN TOOLS", cat: "gardentools", img: IMG_MAP.gardentools, desc: "Complete range of premium garden hand tools, hedge trimmers, pruners & hose reels.", specs: "Ergonomic Hand Tools | Pruners & Trimmers | Lawn Care" }
+    ];
+
+    let currentCategory = 'all';
+    let searchQuery = '';
+
+    function renderProducts() {
+      const grid = document.getElementById('productsGrid');
+      const stats = document.getElementById('catalogStats');
+      if (!grid) return;
+
+      const filtered = PRODUCTS_DATA.filter(p => {
+        const matchesCat = currentCategory === 'all' || p.cat === currentCategory;
+        const q = searchQuery.toLowerCase();
+        const matchesQuery = !q || p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q) || p.desc.toLowerCase().includes(q) || p.specs.toLowerCase().includes(q);
+        return matchesCat && matchesQuery;
+      });
+
+      if (stats) {
+        stats.textContent = `Showing ${filtered.length} of ${PRODUCTS_DATA.length} Authorized Products`;
+      }
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align: center; padding: 48px; background: var(--card-bg); border-radius: 20px; border: 1px solid var(--border);">
+            <div style="font-size: 32px; margin-bottom: 8px;">🔍</div>
+            <h3 style="font-size: 18px; color: var(--text1); margin-bottom: 4px;">No matching agricultural products found</h3>
+            <p style="font-size: 13px; color: var(--text3);">Try searching with another keyword or clear category filters.</p>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(p => `
+        <div class="product-card">
+          <div class="product-img-wrapper">
+            <img src="${p.img}" alt="${p.name}" loading="lazy">
+            <span class="brand-tag">${p.brand}</span>
+          </div>
+          <div class="product-body">
+            <h4 class="product-title">${p.name}</h4>
+            <p class="product-desc">${p.desc}</p>
+            <div class="product-specs">⚙️ <strong>Specs:</strong> ${p.specs}</div>
+            <div class="product-footer">
+              <div class="product-pricing">
+                <span class="pricing-type">Supply Mode</span>
+                <span class="price-val">Wholesale & Retail</span>
+              </div>
+              <button class="btn-enquire" onclick="openEnquireModal('${p.name.replace(/'/g, "\\'")}')">Inquire Quote</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filterCategory(cat, btn) {
+      currentCategory = cat;
+      const buttons = document.querySelectorAll('#filterTabs .filter-btn');
+      buttons.forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderProducts();
+    }
+
+    function handleSearchFilter() {
+      const input = document.getElementById('productSearchInput');
+      searchQuery = input ? input.value : '';
+      renderProducts();
+    }
+
+    // Modal Handlers
+    function openEnquireModal(productName) {
+      document.getElementById('modalTitle').textContent = 'Inquire Quote: ' + productName;
+      document.getElementById('modalBodyText').textContent = 'Receive instant wholesale and retail price quote & availability for ' + productName;
+      document.getElementById('modalOverlay').classList.add('active');
+    }
+
+    function playReel(title, desc) {
+      document.getElementById('modalTitle').textContent = '📹 ' + title;
+      document.getElementById('modalBodyText').textContent = desc + ' Contact Manaswini Enterprises for live field demonstration appointments at your farm location.';
+      document.getElementById('modalOverlay').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('active');
+    }
+
+    function handleEnquireSubmit(e) {
+      e.preventDefault();
+      alert('Thank you for contacting Manaswini Enterprises! Our agricultural sales & technical service representative will call you shortly.');
+      closeModal();
+    }
+
+    // Initial Render
+    renderProducts();
+  </script>
+</body>
+</html>

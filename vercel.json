@@ -1,0 +1,31 @@
+{
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/api/setup", "destination": "/api/setup" },
+    { "source": "/api/auth/login", "destination": "/api/auth?action=login" },
+    { "source": "/api/auth/me", "destination": "/api/auth?action=me" },
+    { "source": "/api/auth/change-password", "destination": "/api/auth?action=change-password" },
+    { "source": "/api/employees/:id", "destination": "/api/employees?id=:id" },
+    { "source": "/api/super", "destination": "/api/super" },
+    { "source": "/api/attendance", "destination": "/api/attendance" },
+    { "source": "/api/payroll", "destination": "/api/payroll" },
+    { "source": "/api/inventory", "destination": "/api/inventory" },
+    { "source": "/api/sales", "destination": "/api/sales" },
+    { "source": "/api/services", "destination": "/api/services" },
+    { "source": "/api/accountant", "destination": "/api/accountant" },
+    { "source": "/api/marketing", "destination": "/api/marketing" },
+    { "source": "/api/reports", "destination": "/api/reports" }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,DELETE,OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" }
+      ]
+    }
+  ]
+}

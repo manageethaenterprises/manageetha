@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Business ERP</title>
+  <meta name="description" content="Multi-Tenant Business ERP Dashboard">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
+  <link rel="stylesheet" href="/admin/dashboard.css">
+</head>
+<body>
+  <!-- SIDEBAR BACKDROP OVERLAY -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-box" id="logoBox">ERP</div>
+      <div class="brand-text" id="brandText">
+        Business ERP
+        <span id="portalLabel">Dashboard</span>
+      </div>
+      <button class="sidebar-close" id="sidebarClose">✕</button>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <!-- Menus injected dynamically by JS based on role -->
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info" id="userInfo">
+        <div class="user-avatar" id="headerAvatar">U</div>
+        <div>
+          <div class="user-name" id="userName">User</div>
+          <div class="user-role-row">
+            <span class="user-role" id="userRole">role</span>
+            <span class="online-status-pill" id="sidebarOnlineStatus">
+              <span class="online-dot"></span> Online
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="developed-by" style="font-size: 10px; color: #64748b; margin-top: 10px; text-align: center;">
+        Developed & Maintained by <a href="https://inspenox.in" target="_blank" rel="noopener noreferrer" style="color: #94a3b8; text-decoration: underline;"><strong style="color: inherit;">Inspenox</strong></a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content" id="mainContent">
+    <!-- Top bar -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <button class="menu-toggle" id="menuToggle" title="Toggle Navigation Menu">☰</button>
+        <h2 class="page-title" id="pageTitle">Dashboard</h2>
+      </div>
+      <div class="topbar-right">
+        <!-- Company Switcher (Superadmin only) -->
+        <div class="company-switcher" id="companySwitcher" style="display:none;">
+          <select id="companySelect" class="company-select">
+            <option value="all">📊 All Companies</option>
+          </select>
+        </div>
+        <div class="topbar-date" id="topbarDate"></div>
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme">
+          <span class="theme-icon">🌙</span>
+          <span class="theme-label">Dark</span>
+        </button>
+        <button class="btn-logout" id="logoutBtn" title="Logout">
+          <span class="logout-icon">🚪</span>
+          <span class="logout-text">Logout</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Content Area -->
+    <div class="content-area" id="contentArea">
+      <div class="welcome-section" id="welcomeSection">
+        <div class="welcome-card">
+          <h2>👋 Welcome to Business ERP</h2>
+          <p>Select a menu item from the sidebar to get started.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast Notification -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Confirmation Modal -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none;">
+    <div class="modal-card" id="modalCard">
+      <div class="modal-header" id="modalHeader">Confirm</div>
+      <div class="modal-body" id="modalBody">Are you sure?</div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+        <button class="btn btn-danger" id="modalConfirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/dashboard.js"></script>
+</body>
+</html>

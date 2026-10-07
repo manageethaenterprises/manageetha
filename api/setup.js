@@ -1054,6 +1054,24 @@ module.exports = async function handler(req, res) {
     `;
 
     await sql`
+      CREATE TABLE IF NOT EXISTS assets_liabilities (
+        id SERIAL PRIMARY KEY,
+        company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+        type VARCHAR(20) NOT NULL CHECK (type IN ('asset', 'liability')),
+        category VARCHAR(100) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        amount NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        as_of_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        reference_number VARCHAR(100),
+        description TEXT,
+        attachment TEXT,
+        created_by INT REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS loans (
         id SERIAL PRIMARY KEY,
         company_id INT REFERENCES companies(id) ON DELETE CASCADE,
@@ -1431,8 +1449,9 @@ module.exports = async function handler(req, res) {
       { cat: 'accountant', key: 'acc_capital', label: 'Set Capital', icon: '💰', sort: 1 },
       { cat: 'accountant', key: 'acc_loans', label: 'Loans / Contra', icon: '🏦', sort: 2 },
       { cat: 'accountant', key: 'acc_expenses', label: 'Expenses', icon: '💸', sort: 3 },
-      { cat: 'accountant', key: 'acc_settings', label: 'Settings', icon: '⚙️', sort: 4 },
-      { cat: 'accountant', key: 'rpt_auditor_gst', label: 'Reports', icon: '📊', sort: 5 },
+      { cat: 'accountant', key: 'acc_assets_liabilities', label: 'Assets & Liabilities', icon: '🏛️', sort: 4 },
+      { cat: 'accountant', key: 'acc_settings', label: 'Settings', icon: '⚙️', sort: 5 },
+      { cat: 'accountant', key: 'rpt_auditor_gst', label: 'Reports', icon: '📊', sort: 6 },
       // Inventory
       { cat: 'inventory', key: 'inv_today_tasks', label: 'Today Tasks', icon: '📋', sort: 0 },
       { cat: 'inventory', key: 'inv_suppliers', label: 'Suppliers', icon: '🚚', sort: 1 },

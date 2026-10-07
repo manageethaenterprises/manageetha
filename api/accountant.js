@@ -385,6 +385,150 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, message: "Bank account removed successfully!" });
     }
 
+    // ═══════════════ ASSETS & LIABILITIES MANAGEMENT ═══════════════
+    else if (action === "assets-liabilities-list" || action === "get-assets-liabilities") {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS assets_liabilities (
+            id SERIAL PRIMARY KEY,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            type VARCHAR(20) NOT NULL CHECK (type IN ('asset', 'liability')),
+            category VARCHAR(100) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            amount NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+            as_of_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            reference_number VARCHAR(100),
+            description TEXT,
+            attachment TEXT,
+            created_by INT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+      } catch (e) {}
+
+      let items;
+      if (isAll) {
+        items = await sql`
+          SELECT al.*, c.name as company_name, u.username as created_by_user
+          FROM assets_liabilities al
+          LEFT JOIN companies c ON al.company_id = c.id
+          LEFT JOIN users u ON al.created_by = u.id
+          ORDER BY al.as_of_date DESC, al.created_at DESC
+        `;
+      } else {
+        items = await sql`
+          SELECT al.*, c.name as company_name, u.username as created_by_user
+          FROM assets_liabilities al
+          LEFT JOIN companies c ON al.company_id = c.id
+          LEFT JOIN users u ON al.created_by = u.id
+          WHERE al.company_id = ${parseInt(compQuery)}
+          ORDER BY al.as_of_date DESC, al.created_at DESC
+        `;
+      }
+
+      // Compute system live assets and liabilities summary
+      let totalBankBalance = 0;
+      let totalLoanBalance = 0;
+      try {
+        const bankSum = isAll
+          ? await sql`SELECT SUM(current_balance) as total FROM bank_accounts WHERE is_active = true`
+          : await sql`SELECT SUM(current_balance) as total FROM bank_accounts WHERE company_id = ${parseInt(compQuery)} AND is_active = true`;
+        totalBankBalance = parseFloat(bankSum[0]?.total || 0);
+
+        const loanSum = isAll
+          ? await sql`SELECT SUM(outstanding_principal) as total FROM loans WHERE status = 'active'`
+          : await sql`SELECT SUM(outstanding_principal) as total FROM loans WHERE company_id = ${parseInt(compQuery)} AND status = 'active'`;
+        totalLoanBalance = parseFloat(loanSum[0]?.total || 0);
+      } catch (e) {}
+
+      const totalCustomAssets = items.filter(i => i.type === 'asset').reduce((acc, i) => acc + parseFloat(i.amount || 0), 0);
+      const totalCustomLiabilities = items.filter(i => i.type === 'liability').reduce((acc, i) => acc + parseFloat(i.amount || 0), 0);
+
+      const summary = {
+        total_custom_assets: totalCustomAssets,
+        total_custom_liabilities: totalCustomLiabilities,
+        system_bank_balance: totalBankBalance,
+        system_loan_balance: totalLoanBalance,
+        grand_total_assets: totalCustomAssets + totalBankBalance,
+        grand_total_liabilities: totalCustomLiabilities + totalLoanBalance,
+        net_worth: (totalCustomAssets + totalBankBalance) - (totalCustomLiabilities + totalLoanBalance)
+      };
+
+      return res.status(200).json({ success: true, items, summary });
+    }
+
+    else if (action === "save-asset-liability" || action === "asset-liability-create" || action === "asset-liability-update") {
+      const userRole = (user.role || '').toLowerCase();
+      const allowedRoles = ['superadmin', 'super_admin', 'storeadmin', 'store_admin', 'accountant', 'admin', 'owner'];
+      const isSuperAdminUser = userRole === 'superadmin' || userRole === 'super_admin' || user.username === 'superadmin';
+
+      if (!allowedRoles.includes(userRole) && !isSuperAdminUser) {
+        return res.status(403).json({ error: "Access denied. Only Superadmin, Storeadmin, and Accountant can add or edit assets & liabilities." });
+      }
+
+      const { id, company_id, type, category, title, amount, as_of_date, reference_number, description, attachment } = req.body;
+
+      const compId = isSuperAdminUser ? (company_id ? parseInt(company_id) : (user.company_id || 1)) : (user.company_id || 1);
+      if (!compId || !type || !category || !title || amount === undefined || amount === null) {
+        return res.status(400).json({ error: "Company, Type (asset/liability), Category, Title, and Amount are required." });
+      }
+
+      const sanitizeType = (type || 'asset').toLowerCase() === 'liability' ? 'liability' : 'asset';
+      const parsedAmount = parseFloat(amount || 0);
+      const parsedDate = as_of_date ? as_of_date : new Date().toISOString().split('T')[0];
+
+      let result;
+      if (id && parseInt(id) > 0) {
+        result = await sql`
+          UPDATE assets_liabilities SET
+            company_id = ${compId},
+            type = ${sanitizeType},
+            category = ${category.trim()},
+            title = ${title.trim()},
+            amount = ${parsedAmount},
+            as_of_date = ${parsedDate},
+            reference_number = ${reference_number ? reference_number.trim() : null},
+            description = ${description ? description.trim() : null},
+            attachment = ${attachment ? attachment.trim() : null},
+            updated_at = NOW()
+          WHERE id = ${parseInt(id)}
+          RETURNING *
+        `;
+        return res.status(200).json({ success: true, item: result[0], message: "Asset / Liability updated successfully!" });
+      } else {
+        result = await sql`
+          INSERT INTO assets_liabilities (
+            company_id, type, category, title, amount, as_of_date,
+            reference_number, description, attachment, created_by
+          ) VALUES (
+            ${compId}, ${sanitizeType}, ${category.trim()}, ${title.trim()}, ${parsedAmount}, ${parsedDate},
+            ${reference_number ? reference_number.trim() : null}, ${description ? description.trim() : null}, ${attachment ? attachment.trim() : null}, ${user.id}
+          )
+          RETURNING *
+        `;
+        return res.status(200).json({ success: true, item: result[0], message: "Asset / Liability entry created successfully!" });
+      }
+    }
+
+    else if (action === "delete-asset-liability" || action === "asset-liability-delete") {
+      const userRole = (user.role || '').toLowerCase();
+      const allowedRoles = ['superadmin', 'super_admin', 'storeadmin', 'store_admin', 'accountant', 'admin', 'owner'];
+      const isSuperAdminUser = userRole === 'superadmin' || userRole === 'super_admin' || user.username === 'superadmin';
+
+      if (!allowedRoles.includes(userRole) && !isSuperAdminUser) {
+        return res.status(403).json({ error: "Access denied. Only Superadmin, Storeadmin, and Accountant can delete assets & liabilities." });
+      }
+
+      const itemId = parseInt(req.query.id || req.body?.id);
+      if (!itemId) return res.status(400).json({ error: "Asset / Liability ID required." });
+
+      const deleted = await sql`DELETE FROM assets_liabilities WHERE id = ${itemId} RETURNING *`;
+      if (deleted.length === 0) return res.status(404).json({ error: "Asset / Liability record not found." });
+
+      return res.status(200).json({ success: true, message: "Asset / Liability entry deleted successfully!" });
+    }
+
     else {
       return res.status(404).json({ error: `Action '${action}' not recognized` });
     }

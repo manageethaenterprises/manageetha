@@ -8,10 +8,11 @@ window.renderAccountantModule = async function (tabKey, container) {
   const isCap = tabKey === 'acc_capital' || tabKey === 'capital';
   const isLoan = tabKey === 'acc_loans' || tabKey === 'loans';
   const isExp = tabKey === 'acc_expenses' || tabKey === 'expenses';
+  const isAssetsLiab = tabKey === 'acc_assets_liabilities' || tabKey === 'assets_liabilities';
   const isSet = tabKey === 'acc_settings' || tabKey === 'settings';
   const isReports = tabKey === 'rpt_auditor_gst' || tabKey === 'reports';
 
-  const isDefaultExp = !isToday && !isCap && !isLoan && !isExp && !isSet && !isReports;
+  const isDefaultExp = !isToday && !isCap && !isLoan && !isExp && !isAssetsLiab && !isSet && !isReports;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
@@ -20,6 +21,7 @@ window.renderAccountantModule = async function (tabKey, container) {
         <button class="sub-tab ${isCap ? 'active' : ''}" data-tabkey="acc_capital">💰 Set Capital</button>
         <button class="sub-tab ${isLoan ? 'active' : ''}" data-tabkey="acc_loans">🏦 Loans / Contra</button>
         <button class="sub-tab ${(isExp || isDefaultExp) ? 'active' : ''}" data-tabkey="acc_expenses">💸 Expenses</button>
+        <button class="sub-tab ${isAssetsLiab ? 'active' : ''}" data-tabkey="acc_assets_liabilities">🏛️ Assets & Liabilities</button>
         <button class="sub-tab ${isSet ? 'active' : ''}" data-tabkey="acc_settings">⚙️ Settings</button>
         <button class="sub-tab ${isReports ? 'active' : ''}" data-tabkey="rpt_auditor_gst">📊 Reports</button>
       </div>
@@ -47,6 +49,7 @@ window.renderAccountantModule = async function (tabKey, container) {
   }
   else if (isCap) loadCapitalSubTab();
   else if (isLoan) loadLoansSubTab();
+  else if (isAssetsLiab) loadAssetsLiabilitiesSubTab();
   else if (isSet) loadSettingsSubTab();
   else if (isReports) {
     if (window.renderReportsModule) await window.renderReportsModule('rpt_auditor_gst', subArea);
@@ -58,8 +61,8 @@ window.renderAccountantModule = async function (tabKey, container) {
 if (window.registerModuleRoute) {
   window.registerModuleRoute(
     [
-      'accountant', 'expenses', 'capital', 'loans',
-      'acc_today_tasks', 'acc_capital', 'acc_loans',
+      'accountant', 'expenses', 'capital', 'loans', 'assets_liabilities',
+      'acc_today_tasks', 'acc_capital', 'acc_loans', 'acc_assets_liabilities',
       'acc_expenses', 'acc_settings', 'rpt_auditor_gst'
     ],
     window.renderAccountantModule
@@ -1269,5 +1272,568 @@ async function loadSettingsSubTab() {
   });
 
   fetchBankAccounts();
+}
+
+// ═══════════════════════════════════════════════════
+// SubTab: Assets & Liabilities Management
+// ═══════════════════════════════════════════════════
+async function loadAssetsLiabilitiesSubTab() {
+  const subContent = document.getElementById("accSubContent");
+  if (!subContent) return;
+
+  const compId = selectedCompanyId || "all";
+  const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
+  const userRole = (userObj?.role || '').toLowerCase();
+  const allowedRoles = ['superadmin', 'super_admin', 'storeadmin', 'store_admin', 'accountant', 'admin', 'owner'];
+  const canManage = allowedRoles.includes(userRole) || userObj?.username === 'superadmin';
+
+  subContent.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">🏛️ Company Assets & Liabilities Register</h3>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px;">Track Fixed Assets, Current Assets, Capital Accounts, Loans, & Current Liabilities per company.</div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="printAssetsBtn">🖨️ Print Statement</button>
+        ${canManage ? `<button class="btn btn-primary" id="addAssetLiabBtn">+ Record Asset / Liability</button>` : ''}
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:14px;margin-bottom:20px;" id="assetKpiCards">
+      <div class="card" style="padding:16px;border-left:4px solid #16a34a;background:var(--bg2);">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">📈 TOTAL ASSETS</div>
+        <div style="font-size:20px;font-weight:700;color:#16a34a;margin-top:4px;" id="kpiTotalAssets">₹0.00</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;" id="kpiAssetsSub">Custom + Live Bank Balances</div>
+      </div>
+      <div class="card" style="padding:16px;border-left:4px solid #dc2626;background:var(--bg2);">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">📉 TOTAL LIABILITIES & EQUITY</div>
+        <div style="font-size:20px;font-weight:700;color:#dc2626;margin-top:4px;" id="kpiTotalLiabilities">₹0.00</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;" id="kpiLiabilitiesSub">Capital + Loans + Duties</div>
+      </div>
+      <div class="card" style="padding:16px;border-left:4px solid #2563eb;background:var(--bg2);">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">⚖️ NET WORTH / POSITION</div>
+        <div style="font-size:20px;font-weight:700;color:#2563eb;margin-top:4px;" id="kpiNetWorth">₹0.00</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">Assets minus Liabilities</div>
+      </div>
+    </div>
+
+    <!-- Filters Bar -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+      <div style="display:flex;gap:6px;" id="assetTypeFilters">
+        <button class="btn btn-sm btn-primary filter-type-btn" data-type="all">All Entries</button>
+        <button class="btn btn-sm btn-secondary filter-type-btn" data-type="asset">🟢 Assets</button>
+        <button class="btn btn-sm btn-secondary filter-type-btn" data-type="liability">🔴 Liabilities</button>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <select class="form-control" id="assetCatFilter" style="width:200px;font-size:12px;">
+          <option value="all">All Categories</option>
+          <optgroup label="Assets">
+            <option value="Fixed Assets">Fixed Assets</option>
+            <option value="Current Assets">Current Assets</option>
+            <option value="Investments">Investments</option>
+            <option value="Other Assets">Other Assets</option>
+          </optgroup>
+          <optgroup label="Liabilities">
+            <option value="Capital Account">Capital Account</option>
+            <option value="Loans (Liability)">Loans (Liability)</option>
+            <option value="Current Liabilities">Current Liabilities</option>
+            <option value="Duties & Taxes">Duties & Taxes</option>
+            <option value="Other Liabilities">Other Liabilities</option>
+          </optgroup>
+        </select>
+        <input type="text" class="form-control" id="assetSearchInp" placeholder="🔍 Search particulars, ref #..." style="width:200px;font-size:12px;">
+      </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Company</th>
+            <th>Particulars / Name</th>
+            <th>Category</th>
+            <th>As of Date</th>
+            <th>Ref / A/c #</th>
+            <th style="text-align:right;">Amount (₹)</th>
+            <th style="min-width:110px;text-align:center;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="assetsTableBody">
+          <tr><td colspan="8" style="text-align:center;padding:24px;"><div class="spinner"></div> Loading Assets & Liabilities...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  let currentItems = [];
+  let currentSummary = {};
+  let activeTypeFilter = "all";
+
+  if (canManage) {
+    document.getElementById("addAssetLiabBtn")?.addEventListener("click", () => {
+      openAddAssetLiabilityModal(null, () => fetchAssetsLiabilities());
+    });
+  }
+
+  document.getElementById("printAssetsBtn")?.addEventListener("click", () => {
+    printAssetsLiabilitiesStatement(currentItems, currentSummary);
+  });
+
+  const typeBtns = subContent.querySelectorAll(".filter-type-btn");
+  typeBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      typeBtns.forEach(b => {
+        b.classList.remove("btn-primary");
+        b.classList.add("btn-secondary");
+      });
+      btn.classList.remove("btn-secondary");
+      btn.classList.add("btn-primary");
+      activeTypeFilter = btn.dataset.type;
+      renderTable();
+    });
+  });
+
+  document.getElementById("assetCatFilter")?.addEventListener("change", () => renderTable());
+  document.getElementById("assetSearchInp")?.addEventListener("input", () => renderTable());
+
+  async function fetchAssetsLiabilities() {
+    try {
+      const res = await fetch(`${API_BASE}/accountant?action=assets-liabilities-list&company_id=${compId}`, {
+        headers: authHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        currentItems = data.items || [];
+        currentSummary = data.summary || {};
+
+        document.getElementById("kpiTotalAssets").innerText = formatCurrency(currentSummary.grand_total_assets || 0);
+        document.getElementById("kpiTotalLiabilities").innerText = formatCurrency(currentSummary.grand_total_liabilities || 0);
+        
+        const netWorthEl = document.getElementById("kpiNetWorth");
+        const netVal = currentSummary.net_worth || 0;
+        netWorthEl.innerText = formatCurrency(netVal);
+        netWorthEl.style.color = netVal >= 0 ? "#16a34a" : "#dc2626";
+
+        renderTable();
+      } else {
+        showToast(data.error || "Failed to load assets & liabilities", "error");
+      }
+    } catch (err) {
+      showToast("Error fetching assets & liabilities: " + err.message, "error");
+    }
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById("assetsTableBody");
+    if (!tbody) return;
+
+    const catFilter = document.getElementById("assetCatFilter")?.value || "all";
+    const q = (document.getElementById("assetSearchInp")?.value || "").toLowerCase().trim();
+
+    const filtered = currentItems.filter(item => {
+      if (activeTypeFilter !== "all" && item.type !== activeTypeFilter) return false;
+      if (catFilter !== "all" && item.category !== catFilter) return false;
+      if (q) {
+        const titleMatch = (item.title || "").toLowerCase().includes(q);
+        const refMatch = (item.reference_number || "").toLowerCase().includes(q);
+        const catMatch = (item.category || "").toLowerCase().includes(q);
+        const compMatch = (item.company_name || "").toLowerCase().includes(q);
+        if (!titleMatch && !refMatch && !catMatch && !compMatch) return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text3);">No asset or liability records found.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(item => {
+      const isAsset = item.type === 'asset';
+      const badgeStyle = isAsset 
+        ? `background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;` 
+        : `background:#fef2f2;color:#dc2626;border:1px solid #fecaca;`;
+      
+      const dateStr = item.as_of_date ? item.as_of_date.split('T')[0] : '—';
+      const formattedAmt = formatCurrency(item.amount || 0);
+
+      return `
+        <tr>
+          <td>
+            <span style="display:inline-block;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;${badgeStyle}">
+              ${isAsset ? '🟢 ASSET' : '🔴 LIABILITY'}
+            </span>
+          </td>
+          <td style="font-weight:600;font-size:12px;">${esc(item.company_name || 'All Companies')}</td>
+          <td>
+            <div style="font-weight:700;color:var(--text1);font-size:13px;">${esc(item.title)}</div>
+            ${item.description ? `<div style="font-size:11px;color:var(--text3);">${esc(item.description)}</div>` : ''}
+          </td>
+          <td><span class="badge" style="background:var(--bg2);color:var(--text2);font-weight:600;">${esc(item.category)}</span></td>
+          <td style="font-size:12px;">${dateStr}</td>
+          <td style="font-size:12px;font-family:monospace;">${esc(item.reference_number || '—')}</td>
+          <td style="text-align:right;font-weight:700;font-size:13px;color:${isAsset ? '#16a34a' : '#dc2626'};">
+            ${formattedAmt}
+          </td>
+          <td style="text-align:center;">
+            ${canManage ? `
+              <button class="btn btn-sm btn-secondary edit-asset-btn" data-id="${item.id}" title="Edit Record">✏️</button>
+              <button class="btn btn-sm btn-danger delete-asset-btn" data-id="${item.id}" title="Delete Record">🗑️</button>
+            ` : `<span style="font-size:11px;color:var(--text3);">Read-Only</span>`}
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    if (canManage) {
+      tbody.querySelectorAll(".edit-asset-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const item = currentItems.find(i => i.id == btn.dataset.id);
+          if (item) openAddAssetLiabilityModal(item, () => fetchAssetsLiabilities());
+        });
+      });
+
+      tbody.querySelectorAll(".delete-asset-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const item = currentItems.find(i => i.id == btn.dataset.id);
+          if (!item) return;
+          if (!confirm(`Are you sure you want to delete "${item.title}" (${item.type.toUpperCase()})?`)) return;
+          try {
+            const res = await fetch(`${API_BASE}/accountant?action=delete-asset-liability&id=${item.id}`, {
+              method: "POST",
+              headers: authHeaders()
+            });
+            const d = await res.json();
+            if (d.success) {
+              showToast(d.message, "success");
+              fetchAssetsLiabilities();
+            } else {
+              showToast(d.error || "Delete failed", "error");
+            }
+          } catch (e) {
+            showToast("Delete error: " + e.message, "error");
+          }
+        });
+      });
+    }
+  }
+
+  fetchAssetsLiabilities();
+}
+
+// Modal: Add/Edit Asset or Liability
+function openAddAssetLiabilityModal(item = null, onSuccess = null) {
+  let modal = document.getElementById("assetLiabilityModal");
+  if (modal) modal.remove();
+
+  const isEdit = !!item;
+  const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
+  const isSuperAdmin = userObj?.role === "superadmin" || userObj?.username === "superadmin";
+
+  const compList = (window.currentCompanies && window.currentCompanies.length > 0) 
+    ? window.currentCompanies 
+    : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
+
+  const selectedCompId = item ? item.company_id : (selectedCompanyId && selectedCompanyId !== "all" ? parseInt(selectedCompanyId) : (userObj.company_id || 1));
+
+  modal = document.createElement("div");
+  modal.id = "assetLiabilityModal";
+  modal.className = "modal";
+  modal.style.display = "flex";
+
+  const defaultType = item ? item.type : "asset";
+  const defaultDate = item && item.as_of_date ? item.as_of_date.split('T')[0] : new Date().toISOString().split('T')[0];
+
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:550px;width:95%;">
+      <div class="modal-header">
+        <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
+          ${isEdit ? '✏️ Edit Asset / Liability Entry' : '➕ Record Asset or Liability'}
+        </h4>
+        <span class="close-modal" id="closeAssetModalBtn">&times;</span>
+      </div>
+
+      <form id="assetLiabilityForm" style="padding:16px 20px;">
+        <!-- Type Switcher -->
+        <div class="form-group" style="margin-bottom:16px;">
+          <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Entry Type *</label>
+          <div style="display:flex;gap:12px;">
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:2px solid #16a34a;border-radius:6px;cursor:pointer;background:#f0fdf4;font-weight:700;color:#16a34a;">
+              <input type="radio" name="entry_type" value="asset" ${defaultType === 'asset' ? 'checked' : ''} style="accent-color:#16a34a;">
+              🟢 ASSET
+            </label>
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:2px solid #dc2626;border-radius:6px;cursor:pointer;background:#fef2f2;font-weight:700;color:#dc2626;">
+              <input type="radio" name="entry_type" value="liability" ${defaultType === 'liability' ? 'checked' : ''} style="accent-color:#dc2626;">
+              🔴 LIABILITY
+            </label>
+          </div>
+        </div>
+
+        <!-- Company Select -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Company *</label>
+          <select class="form-control" name="company_id" required ${!isSuperAdmin && !isEdit ? 'disabled' : ''}>
+            ${compList.map(c => `<option value="${c.id}" ${c.id == selectedCompId ? 'selected' : ''}>${esc(c.name)}</option>`).join("")}
+          </select>
+        </div>
+
+        <!-- Category Dropdown -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Category *</label>
+          <select class="form-control" name="category" id="modalAssetCategory" required>
+          </select>
+        </div>
+
+        <!-- Particulars / Title -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Particulars / Title Name *</label>
+          <input type="text" class="form-control" name="title" value="${esc(item?.title || '')}" placeholder="e.g. Office Machinery, Land Property, Bank OD Loan" required>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <!-- Amount -->
+          <div class="form-group">
+            <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Amount (₹) *</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="amount" value="${item?.amount !== undefined ? item.amount : ''}" placeholder="0.00" required>
+          </div>
+
+          <!-- As of Date -->
+          <div class="form-group">
+            <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">As of Date *</label>
+            <input type="date" class="form-control" name="as_of_date" value="${defaultDate}" required>
+          </div>
+        </div>
+
+        <!-- Reference / Account Number -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Reference / Account # (Optional)</label>
+          <input type="text" class="form-control" name="reference_number" value="${esc(item?.reference_number || '')}" placeholder="e.g. DOC-9988, ACC-1234">
+        </div>
+
+        <!-- Description / Notes -->
+        <div class="form-group" style="margin-bottom:16px;">
+          <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Description / Notes</label>
+          <textarea class="form-control" name="description" rows="2" placeholder="Optional details...">${esc(item?.description || '')}</textarea>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn btn-secondary" id="cancelAssetModalBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveAssetModalBtn">
+            ${isEdit ? '💾 Update Record' : '➕ Save Record'}
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const form = modal.querySelector("#assetLiabilityForm");
+  const catSelect = modal.querySelector("#modalAssetCategory");
+  const typeRadios = modal.querySelectorAll("input[name='entry_type']");
+
+  function populateCategories(selectedType, currentVal = "") {
+    let options = [];
+    if (selectedType === "asset") {
+      options = [
+        "Fixed Assets",
+        "Current Assets",
+        "Investments",
+        "Other Assets"
+      ];
+    } else {
+      options = [
+        "Capital Account",
+        "Loans (Liability)",
+        "Current Liabilities",
+        "Duties & Taxes",
+        "Other Liabilities"
+      ];
+    }
+    catSelect.innerHTML = options.map(o => `<option value="${o}" ${o === currentVal ? 'selected' : ''}>${o}</option>`).join("");
+  }
+
+  populateCategories(defaultType, item?.category || "");
+
+  typeRadios.forEach(r => {
+    r.addEventListener("change", (e) => {
+      populateCategories(e.target.value);
+    });
+  });
+
+  const closeModal = () => modal.remove();
+  modal.querySelector("#closeAssetModalBtn").addEventListener("click", closeModal);
+  modal.querySelector("#cancelAssetModalBtn").addEventListener("click", closeModal);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const submitBtn = modal.querySelector("#saveAssetModalBtn");
+    setButtonLoading(submitBtn, true, isEdit ? "Updating..." : "Saving...");
+
+    const formData = new FormData(form);
+    const payload = {
+      id: isEdit ? item.id : undefined,
+      company_id: parseInt(formData.get("company_id")),
+      type: formData.get("entry_type"),
+      category: formData.get("category"),
+      title: formData.get("title"),
+      amount: parseFloat(formData.get("amount") || 0),
+      as_of_date: formData.get("as_of_date"),
+      reference_number: formData.get("reference_number"),
+      description: formData.get("description")
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/accountant?action=save-asset-liability`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, "success");
+        closeModal();
+        if (onSuccess) onSuccess();
+      } else {
+        showToast(data.error || "Failed to save entry", "error");
+      }
+    } catch (err) {
+      showToast("Error saving record: " + err.message, "error");
+    } finally {
+      setButtonLoading(submitBtn, false);
+    }
+  });
+}
+
+// Print Assets & Liabilities Statement
+function printAssetsLiabilitiesStatement(items, summary) {
+  const printWin = window.open("", "_blank", "width=900,height=1000");
+  if (!printWin) return showToast("Please allow popups to print statement", "warning");
+
+  const compList = (window.currentCompanies && window.currentCompanies.length > 0) ? window.currentCompanies : [];
+  const compIdToFind = selectedCompanyId && selectedCompanyId !== "all" ? parseInt(selectedCompanyId) : 1;
+  const matchedComp = compList.find(c => c.id == compIdToFind) || compList[0] || {};
+  const compName = matchedComp.name || 'Business ERP';
+
+  const assetsList = items.filter(i => i.type === 'asset');
+  const liabList = items.filter(i => i.type === 'liability');
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Assets & Liabilities Statement - ${esc(compName)}</title>
+      <style>
+        body { font-family: sans-serif; font-size: 12px; margin: 20px; color: #000; }
+        .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; }
+        .comp-title { font-size: 20px; font-weight: bold; }
+        .doc-title { font-size: 16px; font-weight: bold; margin-top: 4px; color: #1e3a8a; }
+        .grid-container { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .section-box { border: 1px solid #000; padding: 10px; }
+        .section-title { font-size: 14px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 5px 6px; font-size: 11px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f3f4f6; font-weight: bold; }
+        .amount-col { text-align: right; font-weight: bold; }
+        .total-row { border-top: 2px solid #000; border-bottom: 2px solid #000; font-weight: bold; font-size: 12px; }
+        @media print { .no-print { display: none; } }
+      </style>
+    </head>
+    <body>
+      <div class="no-print" style="margin-bottom:12px;text-align:right;">
+        <button onclick="window.print()" style="background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:4px;font-weight:bold;cursor:pointer;">🖨️ Print Statement</button>
+      </div>
+
+      <div class="header">
+        <div class="comp-title">${esc(compName)}</div>
+        <div class="doc-title">COMPANY ASSETS & LIABILITIES STATEMENT</div>
+        <div style="font-size:11px;margin-top:2px;">As of Date: ${new Date().toLocaleDateString('en-IN')}</div>
+      </div>
+
+      <div class="grid-container">
+        <!-- ASSETS SECTION -->
+        <div class="section-box">
+          <div class="section-title" style="color:#16a34a;">🟢 ASSETS</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Particulars</th>
+                <th>Category</th>
+                <th class="amount-col">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${assetsList.map(a => `
+                <tr>
+                  <td><b>${esc(a.title)}</b></td>
+                  <td>${esc(a.category)}</td>
+                  <td class="amount-col">${formatCurrency(a.amount || 0)}</td>
+                </tr>
+              `).join("")}
+              ${summary.system_bank_balance > 0 ? `
+                <tr style="background:#f0fdf4;">
+                  <td><b>Live System Bank Balances</b></td>
+                  <td>Current Assets</td>
+                  <td class="amount-col">${formatCurrency(summary.system_bank_balance)}</td>
+                </tr>
+              ` : ''}
+              <tr class="total-row">
+                <td colspan="2">TOTAL ASSETS</td>
+                <td class="amount-col" style="color:#16a34a;">${formatCurrency(summary.grand_total_assets || 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- LIABILITIES SECTION -->
+        <div class="section-box">
+          <div class="section-title" style="color:#dc2626;">🔴 LIABILITIES & CAPITAL</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Particulars</th>
+                <th>Category</th>
+                <th class="amount-col">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${liabList.map(l => `
+                <tr>
+                  <td><b>${esc(l.title)}</b></td>
+                  <td>${esc(l.category)}</td>
+                  <td class="amount-col">${formatCurrency(l.amount || 0)}</td>
+                </tr>
+              `).join("")}
+              ${summary.system_loan_balance > 0 ? `
+                <tr style="background:#fef2f2;">
+                  <td><b>Active System Loans</b></td>
+                  <td>Loans (Liability)</td>
+                  <td class="amount-col">${formatCurrency(summary.system_loan_balance)}</td>
+                </tr>
+              ` : ''}
+              <tr class="total-row">
+                <td colspan="2">TOTAL LIABILITIES & EQUITY</td>
+                <td class="amount-col" style="color:#dc2626;">${formatCurrency(summary.grand_total_liabilities || 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;padding:12px;border:1px solid #2563eb;background:#eff6ff;display:flex;justify-content:space-between;font-weight:bold;font-size:13px;">
+        <div>NET EQUITY / ASSET POSITION:</div>
+        <div style="color:${(summary.net_worth || 0) >= 0 ? '#16a34a' : '#dc2626'};">${formatCurrency(summary.net_worth || 0)}</div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try { printWin.document.open(); } catch(e){}
+  printWin.document.write(html);
+  printWin.document.close();
 }
 

@@ -4,6 +4,10 @@
 // ═══════════════════════════════════════════════════
 
 window.renderAccountantModule = async function (tabKey, container) {
+  // Clean up any lingering modals on tab switch
+  const oldModal = document.getElementById("assetLiabilityModal");
+  if (oldModal) oldModal.remove();
+
   const isToday = tabKey === 'acc_today_tasks' || tabKey === 'acc_tasks';
   const isCap = tabKey === 'acc_capital' || tabKey === 'capital';
   const isLoan = tabKey === 'acc_loans' || tabKey === 'loans';
@@ -1281,6 +1285,10 @@ async function loadAssetsLiabilitiesSubTab() {
   const subContent = document.getElementById("accSubContent");
   if (!subContent) return;
 
+  // Cleanup open modals if switching views
+  const oldModal = document.getElementById("assetLiabilityModal");
+  if (oldModal) oldModal.remove();
+
   const compId = selectedCompanyId || "all";
   const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
   const userRole = (userObj?.role || '').toLowerCase();
@@ -1291,7 +1299,7 @@ async function loadAssetsLiabilitiesSubTab() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
       <div>
         <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">🏛️ Company Assets & Liabilities Register</h3>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px;">Track Fixed Assets, Current Assets, Capital Accounts, Loans, & Current Liabilities per company.</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px;">Track Fixed Assets, Depreciation (%/Yr), Current Assets, Capital Accounts, Loans, & Current Liabilities per company.</div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <button class="btn btn-secondary" id="printAssetsBtn">🖨️ Print Statement</button>
@@ -1300,19 +1308,24 @@ async function loadAssetsLiabilitiesSubTab() {
     </div>
 
     <!-- Summary KPI Cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));gap:14px;margin-bottom:20px;" id="assetKpiCards">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-bottom:20px;" id="assetKpiCards">
       <div class="card" style="padding:16px;border-left:4px solid #16a34a;background:var(--bg2);">
-        <div style="font-size:12px;color:var(--text3);font-weight:600;">📈 TOTAL ASSETS</div>
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">📈 TOTAL ASSETS (NET BOOK VALUE)</div>
         <div style="font-size:20px;font-weight:700;color:#16a34a;margin-top:4px;" id="kpiTotalAssets">₹0.00</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px;" id="kpiAssetsSub">Custom + Live Bank Balances</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;" id="kpiAssetsSub">Net Value after Depreciation</div>
+      </div>
+      <div class="card" style="padding:16px;border-left:4px solid #d97706;background:var(--bg2);">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">📉 ACCUMULATED DEPRECIATION</div>
+        <div style="font-size:20px;font-weight:700;color:#d97706;margin-top:4px;" id="kpiAccumDep">₹0.00</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">Total Annual Asset Value Reductions</div>
       </div>
       <div class="card" style="padding:16px;border-left:4px solid #dc2626;background:var(--bg2);">
-        <div style="font-size:12px;color:var(--text3);font-weight:600;">📉 TOTAL LIABILITIES & EQUITY</div>
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">💳 TOTAL LIABILITIES & EQUITY</div>
         <div style="font-size:20px;font-weight:700;color:#dc2626;margin-top:4px;" id="kpiTotalLiabilities">₹0.00</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;" id="kpiLiabilitiesSub">Capital + Loans + Duties</div>
       </div>
       <div class="card" style="padding:16px;border-left:4px solid #2563eb;background:var(--bg2);">
-        <div style="font-size:12px;color:var(--text3);font-weight:600;">⚖️ NET WORTH / POSITION</div>
+        <div style="font-size:12px;color:var(--text3);font-weight:600;">⚖️ NET EQUITY / POSITION</div>
         <div style="font-size:20px;font-weight:700;color:#2563eb;margin-top:4px;" id="kpiNetWorth">₹0.00</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px;">Assets minus Liabilities</div>
       </div>
@@ -1340,6 +1353,7 @@ async function loadAssetsLiabilitiesSubTab() {
             <option value="Loans (Liability)">Loans (Liability)</option>
             <option value="Current Liabilities">Current Liabilities</option>
             <option value="Duties & Taxes">Duties & Taxes</option>
+            <option value="Suspense A/c">Suspense A/c</option>
             <option value="Other Liabilities">Other Liabilities</option>
           </optgroup>
         </select>
@@ -1356,14 +1370,15 @@ async function loadAssetsLiabilitiesSubTab() {
             <th>Company</th>
             <th>Particulars / Name</th>
             <th>Category</th>
-            <th>As of Date</th>
-            <th>Ref / A/c #</th>
-            <th style="text-align:right;">Amount (₹)</th>
+            <th>As of / Purchase Date</th>
+            <th style="text-align:right;">Purchase Cost (₹)</th>
+            <th style="text-align:right;">Depreciation (%/Yr)</th>
+            <th style="text-align:right;">Net Book Value (₹)</th>
             <th style="min-width:110px;text-align:center;">Actions</th>
           </tr>
         </thead>
         <tbody id="assetsTableBody">
-          <tr><td colspan="8" style="text-align:center;padding:24px;"><div class="spinner"></div> Loading Assets & Liabilities...</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:24px;"><div class="spinner"></div> Loading Assets & Liabilities...</td></tr>
         </tbody>
       </table>
     </div>
@@ -1411,6 +1426,7 @@ async function loadAssetsLiabilitiesSubTab() {
         currentSummary = data.summary || {};
 
         document.getElementById("kpiTotalAssets").innerText = formatCurrency(currentSummary.grand_total_assets || 0);
+        document.getElementById("kpiAccumDep").innerText = formatCurrency(currentSummary.total_accumulated_depreciation || 0);
         document.getElementById("kpiTotalLiabilities").innerText = formatCurrency(currentSummary.grand_total_liabilities || 0);
         
         const netWorthEl = document.getElementById("kpiNetWorth");
@@ -1448,7 +1464,7 @@ async function loadAssetsLiabilitiesSubTab() {
     });
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text3);">No asset or liability records found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text3);">No asset or liability records found.</td></tr>`;
       return;
     }
 
@@ -1459,7 +1475,10 @@ async function loadAssetsLiabilitiesSubTab() {
         : `background:#fef2f2;color:#dc2626;border:1px solid #fecaca;`;
       
       const dateStr = item.as_of_date ? item.as_of_date.split('T')[0] : '—';
-      const formattedAmt = formatCurrency(item.amount || 0);
+      const costVal = parseFloat(item.purchase_cost || item.amount || 0);
+      const depRate = parseFloat(item.depreciation_rate || 0);
+      const accumDep = parseFloat(item.accumulated_depreciation || 0);
+      const netVal = parseFloat(item.amount || 0);
 
       return `
         <tr>
@@ -1475,9 +1494,15 @@ async function loadAssetsLiabilitiesSubTab() {
           </td>
           <td><span class="badge" style="background:var(--bg2);color:var(--text2);font-weight:600;">${esc(item.category)}</span></td>
           <td style="font-size:12px;">${dateStr}</td>
-          <td style="font-size:12px;font-family:monospace;">${esc(item.reference_number || '—')}</td>
+          <td style="text-align:right;font-size:12px;">${formatCurrency(costVal)}</td>
+          <td style="text-align:right;font-size:12px;">
+            ${isAsset && depRate > 0 ? `
+              <div style="font-weight:700;color:#d97706;">${depRate}% / Yr</div>
+              <div style="font-size:10px;color:var(--text3);">- ${formatCurrency(accumDep)}</div>
+            ` : '<span style="color:var(--text3);">—</span>'}
+          </td>
           <td style="text-align:right;font-weight:700;font-size:13px;color:${isAsset ? '#16a34a' : '#dc2626'};">
-            ${formattedAmt}
+            ${formatCurrency(netVal)}
           </td>
           <td style="text-align:center;">
             ${canManage ? `
@@ -1525,7 +1550,7 @@ async function loadAssetsLiabilitiesSubTab() {
   fetchAssetsLiabilities();
 }
 
-// Modal: Add/Edit Asset or Liability
+// Modal: Add/Edit Asset or Liability (with Particulars Dropdown + Custom Input & Depreciation Calculator)
 function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   let modal = document.getElementById("assetLiabilityModal");
   if (modal) modal.remove();
@@ -1548,8 +1573,75 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   const defaultType = item ? item.type : "asset";
   const defaultDate = item && item.as_of_date ? item.as_of_date.split('T')[0] : new Date().toISOString().split('T')[0];
 
+  // Particulars Presets dictionary matching Tally Prime balance sheet structure
+  const particularsPresets = {
+    "Fixed Assets": [
+      "Car",
+      "Furniture",
+      "House-1",
+      "House-2",
+      "Motor Cycles",
+      "Ramachandrapuram Land",
+      "Computers & Printers",
+      "Plant & Machinery",
+      "Office Equipment",
+      "Power Tillers & Implements"
+    ],
+    "Current Assets": [
+      "Closing Stock / Opening Stock",
+      "Deposits (Asset)",
+      "Loans & Advances (Asset)",
+      "Sundry Debtors",
+      "Cash-in-Hand",
+      "Bank Accounts",
+      "Receivable 2017-18",
+      "TCS",
+      "TDS"
+    ],
+    "Investments": [
+      "Fixed Deposit (FD)",
+      "Mutual Funds",
+      "Government Bonds",
+      "Shares & Securities"
+    ],
+    "Capital Account": [
+      "NBSVV SATYANARAYNA MURTHY CAPITAL'S",
+      "NBSVV SATYANARAYNA MURTHY",
+      "Owner Equity Capital",
+      "Partner Capital Account"
+    ],
+    "Loans (Liability)": [
+      "Bank OD A/c",
+      "Secured Loans",
+      "Unsecured Loans",
+      "Vehicle Loan",
+      "Term Loan"
+    ],
+    "Current Liabilities": [
+      "Duties & Taxes",
+      "Sundry Creditors",
+      "Audit Fee Payable",
+      "Provision for Tax",
+      "Salaries & Wages Payable",
+      "GST Duty Payable"
+    ],
+    "Duties & Taxes": [
+      "Output CGST",
+      "Output SGST",
+      "Output IGST",
+      "TDS Payable",
+      "TCS Payable",
+      "Audit Fee Payable",
+      "Provision for Tax"
+    ],
+    "Suspense A/c": [
+      "Suspense Account",
+      "Difference in opening balances"
+    ]
+  };
+
   modal.innerHTML = `
-    <div class="modal-content" style="max-width:550px;width:95%;">
+    <div class="modal-content" style="max-width:580px;width:95%;max-height:90vh;overflow-y:auto;">
       <div class="modal-header">
         <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
           ${isEdit ? '✏️ Edit Asset / Liability Entry' : '➕ Record Asset or Liability'}
@@ -1588,24 +1680,57 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
           </select>
         </div>
 
-        <!-- Particulars / Title -->
+        <!-- Particulars Dropdown + Custom Input -->
         <div class="form-group" style="margin-bottom:14px;">
           <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Particulars / Title Name *</label>
-          <input type="text" class="form-control" name="title" value="${esc(item?.title || '')}" placeholder="e.g. Office Machinery, Land Property, Bank OD Loan" required>
+          <select class="form-control" id="modalParticularsSelect" style="margin-bottom:6px;">
+            <!-- Dynamic options -->
+          </select>
+          <input type="text" class="form-control" name="title" id="modalParticularsTitleInput" value="${esc(item?.title || '')}" placeholder="Type custom particulars name..." required>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
-          <!-- Amount -->
-          <div class="form-group">
-            <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Amount (₹) *</label>
-            <input type="number" step="0.01" min="0" class="form-control" name="amount" value="${item?.amount !== undefined ? item.amount : ''}" placeholder="0.00" required>
+        <!-- As of / Acquisition Date -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">As of / Acquisition Date *</label>
+          <input type="date" class="form-control" name="as_of_date" id="modalAsOfDate" value="${defaultDate}" required>
+        </div>
+
+        <!-- DEPRECIATION SECTION (Shown for Assets / Fixed Assets) -->
+        <div id="depreciationSection" style="border:1px solid #f59e0b;background:#fffbe6;padding:12px;border-radius:6px;margin-bottom:16px;">
+          <div style="font-weight:700;font-size:12px;color:#b45309;margin-bottom:8px;">📉 ASSET DEPRECIATION CALCULATOR</div>
+          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div class="form-group">
+              <label style="display:block;font-weight:600;font-size:11px;margin-bottom:3px;color:#92400e;">Purchase / Original Cost (₹)</label>
+              <input type="number" step="0.01" min="0" class="form-control" name="purchase_cost" id="modalPurchaseCost" value="${item?.purchase_cost !== undefined ? item.purchase_cost : (item?.amount || '')}" placeholder="0.00" style="font-size:12px;">
+            </div>
+
+            <div class="form-group">
+              <label style="display:block;font-weight:600;font-size:11px;margin-bottom:3px;color:#92400e;">Depreciation Rate (% / Year)</label>
+              <input type="number" step="0.01" min="0" max="100" class="form-control" name="depreciation_rate" id="modalDepRate" value="${item?.depreciation_rate !== undefined ? item.depreciation_rate : 0}" placeholder="e.g. 10%" style="font-size:12px;">
+            </div>
           </div>
 
-          <!-- As of Date -->
-          <div class="form-group">
-            <label style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">As of Date *</label>
-            <input type="date" class="form-control" name="as_of_date" value="${defaultDate}" required>
+          <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:8px 12px;border:1px solid #fcd34d;border-radius:4px;font-size:11px;">
+            <div>
+              <span style="color:var(--text3);">Calculated Accumulated Dep:</span>
+              <strong style="color:#d97706;" id="calcAccumDepTxt">₹0.00</strong>
+            </div>
+            <div>
+              <span style="color:var(--text3);">Computed Net Book Value:</span>
+              <strong style="color:#16a34a;" id="calcNetValueTxt">₹0.00</strong>
+            </div>
           </div>
+          <input type="hidden" name="accumulated_depreciation" id="modalAccumDepInput" value="${item?.accumulated_depreciation || 0}">
+        </div>
+
+        <!-- Net Book Value / Total Amount -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <label style="display:block;font-weight:700;font-size:12.5px;margin-bottom:4px;color:var(--text1);">
+            Current Amount / Net Book Value (₹) *
+          </label>
+          <input type="number" step="0.01" class="form-control" name="amount" id="modalAmountInput" value="${item?.amount !== undefined ? item.amount : ''}" placeholder="0.00" style="font-size:14px;font-weight:700;" required>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">This value will be displayed on your Balance Sheet & Financial Statements.</div>
         </div>
 
         <!-- Reference / Account Number -->
@@ -1634,9 +1759,20 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
 
   const form = modal.querySelector("#assetLiabilityForm");
   const catSelect = modal.querySelector("#modalAssetCategory");
+  const partSelect = modal.querySelector("#modalParticularsSelect");
+  const partInput = modal.querySelector("#modalParticularsTitleInput");
   const typeRadios = modal.querySelectorAll("input[name='entry_type']");
 
-  function populateCategories(selectedType, currentVal = "") {
+  const depSection = modal.querySelector("#depreciationSection");
+  const costInput = modal.querySelector("#modalPurchaseCost");
+  const rateInput = modal.querySelector("#modalDepRate");
+  const accumInput = modal.querySelector("#modalAccumDepInput");
+  const amountInput = modal.querySelector("#modalAmountInput");
+  const dateInput = modal.querySelector("#modalAsOfDate");
+  const calcAccumDepTxt = modal.querySelector("#calcAccumDepTxt");
+  const calcNetValueTxt = modal.querySelector("#calcNetValueTxt");
+
+  function populateCategories(selectedType, currentCatVal = "") {
     let options = [];
     if (selectedType === "asset") {
       options = [
@@ -1651,19 +1787,95 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
         "Loans (Liability)",
         "Current Liabilities",
         "Duties & Taxes",
+        "Suspense A/c",
         "Other Liabilities"
       ];
     }
-    catSelect.innerHTML = options.map(o => `<option value="${o}" ${o === currentVal ? 'selected' : ''}>${o}</option>`).join("");
+    catSelect.innerHTML = options.map(o => `<option value="${o}" ${o === currentCatVal ? 'selected' : ''}>${o}</option>`).join("");
+    populateParticularsDropdown(catSelect.value, item?.title || "");
+    toggleDepreciationSection(selectedType);
   }
 
-  populateCategories(defaultType, item?.category || "");
+  function populateParticularsDropdown(catVal, currentTitle = "") {
+    const list = particularsPresets[catVal] || [];
+    let optsHtml = list.map(p => `<option value="${esc(p)}" ${p === currentTitle ? 'selected' : ''}>${esc(p)}</option>`).join("");
+    optsHtml += `<option value="__custom__" ${(!list.includes(currentTitle) && currentTitle) ? 'selected' : ''}>➕ Add Custom Particulars...</option>`;
+    
+    partSelect.innerHTML = optsHtml;
+
+    if (currentTitle && !list.includes(currentTitle)) {
+      partSelect.value = "__custom__";
+      partInput.style.display = "block";
+      partInput.value = currentTitle;
+    } else if (partSelect.value === "__custom__") {
+      partInput.style.display = "block";
+      if (!currentTitle) partInput.value = "";
+    } else {
+      partInput.style.display = "none";
+      partInput.value = partSelect.value;
+    }
+  }
+
+  function toggleDepreciationSection(selectedType) {
+    if (selectedType === "asset") {
+      depSection.style.display = "block";
+    } else {
+      depSection.style.display = "none";
+      rateInput.value = 0;
+      accumInput.value = 0;
+    }
+  }
+
+  function calculateDepreciation() {
+    const cost = parseFloat(costInput.value || 0);
+    const rate = parseFloat(rateInput.value || 0);
+    const acqDate = dateInput.value ? new Date(dateInput.value) : new Date();
+    const today = new Date();
+
+    let years = (today.getTime() - acqDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+    if (isNaN(years) || years < 0) years = 0;
+    if (years === 0 && rate > 0) years = 1;
+
+    const annualDep = cost * (rate / 100);
+    const accumDep = Math.min(cost, annualDep * (years > 0 ? Math.max(1, Math.floor(years)) : 1));
+    const netVal = Math.max(0, cost - accumDep);
+
+    accumInput.value = accumDep.toFixed(2);
+    calcAccumDepTxt.innerText = formatCurrency(accumDep);
+    calcNetValueTxt.innerText = formatCurrency(netVal);
+
+    if (rate > 0 && cost > 0) {
+      amountInput.value = netVal.toFixed(2);
+    }
+  }
+
+  partSelect.addEventListener("change", () => {
+    if (partSelect.value === "__custom__") {
+      partInput.style.display = "block";
+      partInput.value = "";
+      partInput.focus();
+    } else {
+      partInput.style.display = "none";
+      partInput.value = partSelect.value;
+    }
+  });
+
+  catSelect.addEventListener("change", () => {
+    populateParticularsDropdown(catSelect.value, item?.title || "");
+  });
 
   typeRadios.forEach(r => {
     r.addEventListener("change", (e) => {
       populateCategories(e.target.value);
     });
   });
+
+  costInput.addEventListener("input", calculateDepreciation);
+  rateInput.addEventListener("input", calculateDepreciation);
+  dateInput.addEventListener("change", calculateDepreciation);
+
+  populateCategories(defaultType, item?.category || "");
+  if (item) calculateDepreciation();
 
   const closeModal = () => modal.remove();
   modal.querySelector("#closeAssetModalBtn").addEventListener("click", closeModal);
@@ -1672,6 +1884,12 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const submitBtn = modal.querySelector("#saveAssetModalBtn");
+    
+    const finalTitle = partSelect.value === "__custom__" ? partInput.value.trim() : (partInput.value || partSelect.value).trim();
+    if (!finalTitle) {
+      return showToast("Please specify a particulars / title name", "warning");
+    }
+
     setButtonLoading(submitBtn, true, isEdit ? "Updating..." : "Saving...");
 
     const formData = new FormData(form);
@@ -1680,8 +1898,12 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
       company_id: parseInt(formData.get("company_id")),
       type: formData.get("entry_type"),
       category: formData.get("category"),
-      title: formData.get("title"),
+      title: finalTitle,
       amount: parseFloat(formData.get("amount") || 0),
+      purchase_cost: parseFloat(formData.get("purchase_cost") || formData.get("amount") || 0),
+      depreciation_rate: parseFloat(formData.get("depreciation_rate") || 0),
+      depreciation_method: 'straight_line',
+      accumulated_depreciation: parseFloat(formData.get("accumulated_depreciation") || 0),
       as_of_date: formData.get("as_of_date"),
       reference_number: formData.get("reference_number"),
       description: formData.get("description")
@@ -1763,13 +1985,16 @@ function printAssetsLiabilitiesStatement(items, summary) {
               <tr>
                 <th>Particulars</th>
                 <th>Category</th>
-                <th class="amount-col">Amount (₹)</th>
+                <th class="amount-col">Net Value (₹)</th>
               </tr>
             </thead>
             <tbody>
               ${assetsList.map(a => `
                 <tr>
-                  <td><b>${esc(a.title)}</b></td>
+                  <td>
+                    <b>${esc(a.title)}</b>
+                    ${a.depreciation_rate > 0 ? `<div style="font-size:9.5px;color:#666;">(Cost: ${formatCurrency(a.purchase_cost || a.amount)}, Dep: ${a.depreciation_rate}%/Yr)</div>` : ''}
+                  </td>
                   <td>${esc(a.category)}</td>
                   <td class="amount-col">${formatCurrency(a.amount || 0)}</td>
                 </tr>

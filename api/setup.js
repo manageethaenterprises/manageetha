@@ -1061,6 +1061,10 @@ module.exports = async function handler(req, res) {
         category VARCHAR(100) NOT NULL,
         title VARCHAR(255) NOT NULL,
         amount NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        purchase_cost NUMERIC(15,2),
+        depreciation_rate NUMERIC(5,2) DEFAULT 0.00,
+        depreciation_method VARCHAR(30) DEFAULT 'straight_line',
+        accumulated_depreciation NUMERIC(15,2) DEFAULT 0.00,
         as_of_date DATE NOT NULL DEFAULT CURRENT_DATE,
         reference_number VARCHAR(100),
         description TEXT,
@@ -1070,6 +1074,13 @@ module.exports = async function handler(req, res) {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `;
+
+    try {
+      await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS purchase_cost NUMERIC(15,2)`;
+      await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS depreciation_rate NUMERIC(5,2) DEFAULT 0.00`;
+      await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS depreciation_method VARCHAR(30) DEFAULT 'straight_line'`;
+      await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS accumulated_depreciation NUMERIC(15,2) DEFAULT 0.00`;
+    } catch(e) {}
 
     await sql`
       CREATE TABLE IF NOT EXISTS loans (

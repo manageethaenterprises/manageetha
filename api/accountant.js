@@ -396,6 +396,10 @@ module.exports = async function handler(req, res) {
             category VARCHAR(100) NOT NULL,
             title VARCHAR(255) NOT NULL,
             amount NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+            purchase_cost NUMERIC(15,2),
+            depreciation_rate NUMERIC(5,2) DEFAULT 0.00,
+            depreciation_method VARCHAR(30) DEFAULT 'straight_line',
+            accumulated_depreciation NUMERIC(15,2) DEFAULT 0.00,
             as_of_date DATE NOT NULL DEFAULT CURRENT_DATE,
             reference_number VARCHAR(100),
             description TEXT,
@@ -405,6 +409,10 @@ module.exports = async function handler(req, res) {
             updated_at TIMESTAMP DEFAULT NOW()
           )
         `;
+        await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS purchase_cost NUMERIC(15,2)`;
+        await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS depreciation_rate NUMERIC(5,2) DEFAULT 0.00`;
+        await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS depreciation_method VARCHAR(30) DEFAULT 'straight_line'`;
+        await sql`ALTER TABLE assets_liabilities ADD COLUMN IF NOT EXISTS accumulated_depreciation NUMERIC(15,2) DEFAULT 0.00`;
       } catch (e) {}
 
       let items;
@@ -444,10 +452,12 @@ module.exports = async function handler(req, res) {
 
       const totalCustomAssets = items.filter(i => i.type === 'asset').reduce((acc, i) => acc + parseFloat(i.amount || 0), 0);
       const totalCustomLiabilities = items.filter(i => i.type === 'liability').reduce((acc, i) => acc + parseFloat(i.amount || 0), 0);
+      const totalAccumulatedDepreciation = items.filter(i => i.type === 'asset').reduce((acc, i) => acc + parseFloat(i.accumulated_depreciation || 0), 0);
 
       const summary = {
         total_custom_assets: totalCustomAssets,
         total_custom_liabilities: totalCustomLiabilities,
+        total_accumulated_depreciation: totalAccumulatedDepreciation,
         system_bank_balance: totalBankBalance,
         system_loan_balance: totalLoanBalance,
         grand_total_assets: totalCustomAssets + totalBankBalance,
@@ -467,7 +477,11 @@ module.exports = async function handler(req, res) {
         return res.status(403).json({ error: "Access denied. Only Superadmin, Storeadmin, and Accountant can add or edit assets & liabilities." });
       }
 
-      const { id, company_id, type, category, title, amount, as_of_date, reference_number, description, attachment } = req.body;
+      const {
+        id, company_id, type, category, title, amount, purchase_cost,
+        depreciation_rate, depreciation_method, accumulated_depreciation,
+        as_of_date, reference_number, description, attachment
+      } = req.body;
 
       const compId = isSuperAdminUser ? (company_id ? parseInt(company_id) : (user.company_id || 1)) : (user.company_id || 1);
       if (!compId || !type || !category || !title || amount === undefined || amount === null) {
@@ -476,6 +490,10 @@ module.exports = async function handler(req, res) {
 
       const sanitizeType = (type || 'asset').toLowerCase() === 'liability' ? 'liability' : 'asset';
       const parsedAmount = parseFloat(amount || 0);
+      const parsedPurchaseCost = purchase_cost !== undefined && purchase_cost !== null && purchase_cost !== "" ? parseFloat(purchase_cost) : parsedAmount;
+      const parsedDepRate = parseFloat(depreciation_rate || 0);
+      const parsedDepMethod = depreciation_method || 'straight_line';
+      const parsedAccumDep = parseFloat(accumulated_depreciation || 0);
       const parsedDate = as_of_date ? as_of_date : new Date().toISOString().split('T')[0];
 
       let result;
@@ -487,6 +505,10 @@ module.exports = async function handler(req, res) {
             category = ${category.trim()},
             title = ${title.trim()},
             amount = ${parsedAmount},
+            purchase_cost = ${parsedPurchaseCost},
+            depreciation_rate = ${parsedDepRate},
+            depreciation_method = ${parsedDepMethod},
+            accumulated_depreciation = ${parsedAccumDep},
             as_of_date = ${parsedDate},
             reference_number = ${reference_number ? reference_number.trim() : null},
             description = ${description ? description.trim() : null},
@@ -499,11 +521,13 @@ module.exports = async function handler(req, res) {
       } else {
         result = await sql`
           INSERT INTO assets_liabilities (
-            company_id, type, category, title, amount, as_of_date,
-            reference_number, description, attachment, created_by
+            company_id, type, category, title, amount, purchase_cost,
+            depreciation_rate, depreciation_method, accumulated_depreciation,
+            as_of_date, reference_number, description, attachment, created_by
           ) VALUES (
-            ${compId}, ${sanitizeType}, ${category.trim()}, ${title.trim()}, ${parsedAmount}, ${parsedDate},
-            ${reference_number ? reference_number.trim() : null}, ${description ? description.trim() : null}, ${attachment ? attachment.trim() : null}, ${user.id}
+            ${compId}, ${sanitizeType}, ${category.trim()}, ${title.trim()}, ${parsedAmount}, ${parsedPurchaseCost},
+            ${parsedDepRate}, ${parsedDepMethod}, ${parsedAccumDep},
+            ${parsedDate}, ${reference_number ? reference_number.trim() : null}, ${description ? description.trim() : null}, ${attachment ? attachment.trim() : null}, ${user.id}
           )
           RETURNING *
         `;

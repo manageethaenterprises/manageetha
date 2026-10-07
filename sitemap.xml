@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+  
+  <!-- Main Homepage: Manaswini Enterprises & Geetha Enterprises (Ramachandrapuram & Rajahmundry) -->
+  <url>
+    <loc>https://manageetha.in/</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://manageetha.in/assets/rotavator.jpg</image:loc>
+      <image:title>Sonalika Multi-Speed Rotavator — Manaswini Enterprises &amp; Geetha Enterprises</image:title>
+      <image:caption>Authorized Wholesale &amp; Retail Distributor for Sonalika Rotavators, Shrachi Power Weeders, Kirloskar Engines in Ramachandrapuram &amp; Rajahmundry.</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Manaswini Enterprises Head Office & Catalog -->
+  <url>
+    <loc>https://manageetha.in/#catalog</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Branch 1: Manaswini Enterprises Wholesale Hub -->
+  <url>
+    <loc>https://manageetha.in/#manaswini-enterprises</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.95</priority>
+  </url>
+
+  <!-- Branch 2: Geetha Enterprises Ramachandrapuram (Rcpm) -->
+  <url>
+    <loc>https://manageetha.in/#geetha-enterprises-ramachandrapuram</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.95</priority>
+  </url>
+
+  <!-- Branch 3: Geetha Enterprises Rajahmundry (Rjy) -->
+  <url>
+    <loc>https://manageetha.in/#geetha-enterprises-rajahmundry</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.95</priority>
+  </url>
+
+  <!-- Services & Subsidy Support -->
+  <url>
+    <loc>https://manageetha.in/#services</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- FAQ Section -->
+  <url>
+    <loc>https://manageetha.in/#faq</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Privacy Policy -->
+  <url>
+    <loc>https://manageetha.in/privacy-policy.html</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Refund Policy -->
+  <url>
+    <loc>https://manageetha.in/refund-policy.html</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- Terms of Service -->
+  <url>
+    <loc>https://manageetha.in/terms-of-service.html</loc>
+    <lastmod>2026-10-07</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+</urlset>

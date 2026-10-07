@@ -1,0 +1,26 @@
+# robots.txt for Manaswini Enterprises & Geetha Enterprises (manageetha.in)
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /shared/
+
+# AI & LLM Crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+# Sitemap & LLM Specification
+Sitemap: https://manageetha.in/sitemap.xml
+LLM: https://manageetha.in/llm.txt

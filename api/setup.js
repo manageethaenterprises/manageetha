@@ -604,6 +604,7 @@ module.exports = async function handler(req, res) {
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS cheque_dd_no VARCHAR(100);`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS cheque_dd_date DATE;`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS terms_conditions TEXT;`;
+    await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS receiving_bank VARCHAR(100);`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS incentive_released BOOLEAN DEFAULT FALSE;`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS incentive_release_date TIMESTAMP;`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS incentive_released_by INT;`;

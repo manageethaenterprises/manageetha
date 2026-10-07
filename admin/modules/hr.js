@@ -2440,46 +2440,107 @@ async function loadLeaveSubTab(isGenApplyLeave = false) {
   on("leaveModalCancel", "click", () => { document.getElementById("leaveModal").style.display = "none"; });
 
   if (document.getElementById("configLeaveQuotasBtn")) {
-    on("configLeaveQuotasBtn", "click", () => {
+    on("configLeaveQuotasBtn", "click", async () => {
       const container = document.getElementById("leaveTypesConfigContainer");
       if (container) {
-        container.innerHTML = `
-          <table class="data-table" style="font-size:13px;width:100%;">
-            <thead>
-              <tr>
-                <th>Leave Category Name</th>
-                <th style="width:120px;">Monthly Quota</th>
-                <th style="width:120px;">Yearly Quota</th>
-                <th style="width:110px;">Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${configuredLeaveTypes.map((t, idx) => `
-                <tr data-idx="${idx}">
-                  <td>
-                    <input type="hidden" class="lt-id" value="${t.id || ''}">
-                    <input type="text" class="form-input lt-name" value="${esc(t.name)}" required style="font-weight:600;">
-                  </td>
-                  <td>
-                    <input type="number" min="0" max="31" class="form-input lt-monthly" value="${t.monthly_quota || 0}" required>
-                  </td>
-                  <td>
-                    <input type="number" min="0" max="365" class="form-input lt-yearly" value="${t.yearly_quota || 0}" required>
-                  </td>
-                  <td>
-                    <select class="form-select lt-paid" style="font-weight:600;">
-                      <option value="true" ${t.is_paid !== false ? 'selected' : ''}>Paid</option>
-                      <option value="false" ${t.is_paid === false ? 'selected' : ''}>Unpaid</option>
-                    </select>
-                  </td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        `;
+        container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text2);"><i class="fas fa-spinner fa-spin me-2"></i> Loading leave types...</div>`;
       }
       document.getElementById("configQuotaModal").style.display = "flex";
+
+      try {
+        const ltRes = await fetch(`${API_BASE}/payroll?action=leave-types-list&company_id=${compId}`, { headers: authHeaders() });
+        const ltData = await ltRes.json();
+        if (ltData.success && Array.isArray(ltData.leave_types)) {
+          configuredLeaveTypes = ltData.leave_types;
+        } else if (ltData.error) {
+          showToast(ltData.error || "Failed to load leave types", "error");
+        }
+      } catch (e) {
+        console.error("Error fetching leave types:", e);
+      }
+
+      renderConfigQuotaTable();
     });
+  }
+
+  function renderConfigQuotaTable() {
+    const container = document.getElementById("leaveTypesConfigContainer");
+    if (!container) return;
+
+    const typesToRender = (configuredLeaveTypes && configuredLeaveTypes.length > 0) ? configuredLeaveTypes : [
+      { name: 'Casual Leave (CL)', monthly_quota: 1, yearly_quota: 12, is_paid: true },
+      { name: 'Sick Leave (SL)', monthly_quota: 1, yearly_quota: 6, is_paid: true },
+      { name: 'Earned Leave (EL)', monthly_quota: 1, yearly_quota: 6, is_paid: true },
+      { name: 'Unpaid Leave', monthly_quota: 0, yearly_quota: 0, is_paid: false }
+    ];
+
+    container.innerHTML = `
+      <table class="data-table" id="leaveQuotaTable" style="font-size:13px;width:100%;">
+        <thead>
+          <tr>
+            <th>Leave Category Name</th>
+            <th style="width:120px;">Monthly Quota</th>
+            <th style="width:120px;">Yearly Quota</th>
+            <th style="width:110px;">Type</th>
+          </tr>
+        </thead>
+        <tbody id="leaveQuotaTableBody">
+          ${typesToRender.map((t, idx) => `
+            <tr data-idx="${idx}">
+              <td>
+                <input type="hidden" class="lt-id" value="${t.id || ''}">
+                <input type="text" class="form-input lt-name" value="${esc(t.name || '')}" placeholder="Category Name" required style="font-weight:600;">
+              </td>
+              <td>
+                <input type="number" min="0" max="31" class="form-input lt-monthly" value="${t.monthly_quota ?? 0}" required>
+              </td>
+              <td>
+                <input type="number" min="0" max="365" class="form-input lt-yearly" value="${t.yearly_quota ?? 0}" required>
+              </td>
+              <td>
+                <select class="form-select lt-paid" style="font-weight:600;">
+                  <option value="true" ${t.is_paid !== false ? 'selected' : ''}>Paid</option>
+                  <option value="false" ${t.is_paid === false ? 'selected' : ''}>Unpaid</option>
+                </select>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      <div style="margin-top:10px;">
+        <button type="button" class="btn btn-sm btn-outline" id="addLeaveTypeRowBtn" style="font-weight:600;">
+          ➕ Add New Leave Category
+        </button>
+      </div>
+    `;
+
+    const addBtn = document.getElementById("addLeaveTypeRowBtn");
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        const tbody = document.getElementById("leaveQuotaTableBody");
+        if (!tbody) return;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <input type="hidden" class="lt-id" value="">
+            <input type="text" class="form-input lt-name" placeholder="Category Name (e.g. Maternity Leave)" required style="font-weight:600;">
+          </td>
+          <td>
+            <input type="number" min="0" max="31" class="form-input lt-monthly" value="1" required>
+          </td>
+          <td>
+            <input type="number" min="0" max="365" class="form-input lt-yearly" value="12" required>
+          </td>
+          <td>
+            <select class="form-select lt-paid" style="font-weight:600;">
+              <option value="true" selected>Paid</option>
+              <option value="false">Unpaid</option>
+            </select>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
   }
 
   on("configQuotaModalClose", "click", () => { document.getElementById("configQuotaModal").style.display = "none"; });

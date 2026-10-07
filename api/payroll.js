@@ -1259,13 +1259,25 @@ module.exports = async function handler(req, res) {
             created_at TIMESTAMP DEFAULT NOW()
           )
         `;
-      } catch (e) {}
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS company_id INT`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS monthly_quota INT DEFAULT 1`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS yearly_quota INT DEFAULT 12`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT true`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`;
+        await sql`UPDATE leave_types SET company_id = ${targetCompId} WHERE company_id IS NULL`;
+        await sql`UPDATE leave_types SET monthly_quota = 1 WHERE monthly_quota IS NULL`;
+        await sql`UPDATE leave_types SET yearly_quota = 12 WHERE yearly_quota IS NULL`;
+        await sql`UPDATE leave_types SET is_paid = true WHERE is_paid IS NULL`;
+        await sql`UPDATE leave_types SET is_active = true WHERE is_active IS NULL`;
+      } catch (e) {
+        console.error("leave_types table migration notice:", e.message);
+      }
 
       let types;
       if (isAllTypes) {
         types = await sql`SELECT * FROM leave_types ORDER BY id ASC`;
       } else {
-        types = await sql`SELECT * FROM leave_types WHERE company_id = ${targetCompId} ORDER BY id ASC`;
+        types = await sql`SELECT * FROM leave_types WHERE company_id = ${targetCompId} OR company_id IS NULL ORDER BY id ASC`;
         if (types.length === 0) {
           // Auto-seed default leave types for company with configurable monthly quotas
           const defaultTypes = [
@@ -1281,7 +1293,7 @@ module.exports = async function handler(req, res) {
               VALUES (${targetCompId}, ${dt.name}, ${dt.monthly}, ${dt.yearly}, ${dt.is_paid}, true)
             `;
           }
-          types = await sql`SELECT * FROM leave_types WHERE company_id = ${targetCompId} ORDER BY id ASC`;
+          types = await sql`SELECT * FROM leave_types WHERE company_id = ${targetCompId} OR company_id IS NULL ORDER BY id ASC`;
         }
       }
 
@@ -1289,19 +1301,31 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "save-leave-types" || action === "leave-types-save") {
-      if (!['superadmin', 'storeadmin', 'hr', 'hr_manager'].includes(user.role)) {
-        return res.status(403).json({ error: "Access denied. Only Superadmin, Storeadmin, and HR can configure leave quotas." });
+      const uRole = String(user.role || '').toLowerCase();
+      const allowedRoles = ['superadmin', 'admin', 'storeadmin', 'store_admin', 'hr', 'hr_manager', 'manager'];
+      if (!allowedRoles.includes(uRole)) {
+        return res.status(403).json({ error: "Access denied. Only Superadmin, Admin, Storeadmin, and HR can configure leave quotas." });
       }
 
       const { company_id, types } = req.body;
-      const compId = user.role === 'superadmin' ? (company_id ? parseInt(company_id) : (user.company_id || 1)) : (user.company_id || 1);
+      const compId = uRole === 'superadmin' ? (company_id ? parseInt(company_id) : (user.company_id || 1)) : (user.company_id || 1);
 
       if (!Array.isArray(types)) {
         return res.status(400).json({ error: "Invalid leave types data payload" });
       }
 
+      // Ensure columns exist before update
+      try {
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS company_id INT`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS monthly_quota INT DEFAULT 1`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS yearly_quota INT DEFAULT 12`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS is_paid BOOLEAN DEFAULT true`;
+        await sql`ALTER TABLE leave_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`;
+      } catch (e) {}
+
       for (const t of types) {
-        if (t.id) {
+        const typeId = t.id ? parseInt(t.id) : null;
+        if (typeId && !isNaN(typeId)) {
           await sql`
             UPDATE leave_types SET
               name = ${t.name},
@@ -1309,17 +1333,17 @@ module.exports = async function handler(req, res) {
               yearly_quota = ${parseInt(t.yearly_quota || 0)},
               is_paid = ${t.is_paid === true || t.is_paid === 'true'},
               is_active = ${t.is_active !== false}
-            WHERE id = ${parseInt(t.id)} AND (company_id = ${compId} OR ${user.role === 'superadmin'})
+            WHERE id = ${typeId}
           `;
-        } else {
+        } else if (t.name && t.name.trim()) {
           await sql`
             INSERT INTO leave_types (company_id, name, monthly_quota, yearly_quota, is_paid, is_active)
-            VALUES (${compId}, ${t.name}, ${parseInt(t.monthly_quota || 0)}, ${parseInt(t.yearly_quota || 0)}, ${t.is_paid === true || t.is_paid === 'true'}, true)
+            VALUES (${compId}, ${t.name.trim()}, ${parseInt(t.monthly_quota || 0)}, ${parseInt(t.yearly_quota || 0)}, ${t.is_paid === true || t.is_paid === 'true'}, true)
           `;
         }
       }
 
-      const updatedTypes = await sql`SELECT * FROM leave_types WHERE company_id = ${compId} ORDER BY id ASC`;
+      const updatedTypes = await sql`SELECT * FROM leave_types WHERE company_id = ${compId} OR company_id IS NULL ORDER BY id ASC`;
       return res.status(200).json({ success: true, leave_types: updatedTypes, message: "Leave quotas and types configured successfully" });
     }
 

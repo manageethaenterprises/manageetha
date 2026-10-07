@@ -1422,13 +1422,20 @@ body.dark-mode ::-webkit-scrollbar-corner {
 }
 
 /* Automatic modal body scroll container fallback if .modal-body is omitted */
-.modal-box > form > .form-grid,
-.modal-card > form > .form-grid {
+.modal-box > form,
+.modal-card > form {
   padding: 20px 22px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
+}
+
+.modal-box .form-grid,
+.modal-card .form-grid {
+  flex: none !important;
+  overflow: visible !important;
+  min-height: auto !important;
 }
 
 /* ═══════════════ CHECKBOX GRID & ROLE MATRIX ═══════════════ */

@@ -1502,7 +1502,7 @@ module.exports = async function handler(req, res) {
 
       // Sales
       { cat: 'sales', key: 'sales_today_tasks', label: 'Today Tasks', icon: '📋', sort: 0 },
-      { cat: 'sales', key: 'sales_dc_payments', label: 'Delivery Challan & Payments', icon: '🚛', sort: 1 },
+      { cat: 'sales', key: 'sales_dc_payments', label: 'Quotation, DC & Counter Bills', icon: '🚛', sort: 1 },
       { cat: 'sales', key: 'sales_invoices', label: 'Invoices', icon: '🧾', sort: 2 },
       { cat: 'sales', key: 'sales_receipts', label: 'Payment Receipts', icon: '🧾', sort: 3 },
       { cat: 'sales', key: 'sales_returns', label: 'Returns', icon: '↩️', sort: 4 },

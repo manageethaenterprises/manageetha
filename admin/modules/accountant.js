@@ -1253,8 +1253,12 @@ async function loadSettingsSubTab() {
     `;
 
     document.body.appendChild(modal);
+    document.body.style.overflow = "hidden";
 
-    const close = () => modal.remove();
+    const close = () => {
+      modal.remove();
+      document.body.style.overflow = "";
+    };
     modal.querySelector("#closeBankDetailsBtn").addEventListener("click", close);
     modal.querySelector("#dismissBankDetailsBtn").addEventListener("click", close);
     modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
@@ -1278,8 +1282,8 @@ async function loadSettingsSubTab() {
     modal.style.position = "fixed";
     modal.style.inset = "0";
     modal.style.background = "rgba(15, 23, 42, 0.75)";
-    modal.style.backdropFilter = "blur(4px)";
-    modal.style.webkitBackdropFilter = "blur(4px)";
+    modal.style.backdropFilter = "blur(8px)";
+    modal.style.webkitBackdropFilter = "blur(8px)";
     modal.style.zIndex = "999999";
     modal.style.display = "flex";
     modal.style.alignItems = "center";
@@ -1358,8 +1362,12 @@ async function loadSettingsSubTab() {
     `;
 
     document.body.appendChild(modal);
+    document.body.style.overflow = "hidden";
 
-    const close = () => modal.remove();
+    const close = () => {
+      modal.remove();
+      document.body.style.overflow = "";
+    };
     modal.querySelector("#closeBankStmtBtn").addEventListener("click", close);
     modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
 
@@ -1496,6 +1504,13 @@ async function loadSettingsSubTab() {
       }
     }
     modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeBankModal() {
+    const modal = document.getElementById("bankAccModal");
+    if (modal) modal.style.display = "none";
+    document.body.style.overflow = "";
   }
 
   function openAdjustBalModal(id, name, bal) {
@@ -1504,15 +1519,29 @@ async function loadSettingsSubTab() {
     document.getElementById("adjCurrentBalText").textContent = formatCurrency(bal);
     document.getElementById("adjValInput").value = bal;
     document.getElementById("adjReasonInput").value = "";
-    document.getElementById("adjustBalModal").style.display = "flex";
+    const modal = document.getElementById("adjustBalModal");
+    modal.style.display = "flex";
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeAdjustModal() {
+    const modal = document.getElementById("adjustBalModal");
+    if (modal) modal.style.display = "none";
+    document.body.style.overflow = "";
   }
 
   on("addBankAccBtn", "click", () => openBankModal(null));
-  on("bankAccModalClose", "click", () => { document.getElementById("bankAccModal").style.display = "none"; });
-  on("bankAccModalCancel", "click", () => { document.getElementById("bankAccModal").style.display = "none"; });
+  on("bankAccModalClose", "click", closeBankModal);
+  on("bankAccModalCancel", "click", closeBankModal);
+  document.getElementById("bankAccModal")?.addEventListener("click", (e) => {
+    if (e.target === document.getElementById("bankAccModal")) closeBankModal();
+  });
 
-  on("adjBalModalClose", "click", () => { document.getElementById("adjustBalModal").style.display = "none"; });
-  on("adjBalModalCancel", "click", () => { document.getElementById("adjustBalModal").style.display = "none"; });
+  on("adjBalModalClose", "click", closeAdjustModal);
+  on("adjBalModalCancel", "click", closeAdjustModal);
+  document.getElementById("adjustBalModal")?.addEventListener("click", (e) => {
+    if (e.target === document.getElementById("adjustBalModal")) closeAdjustModal();
+  });
 
   // Handle Bank Account Form Submit
   on("bankAccForm", "submit", async (e) => {
@@ -1553,7 +1582,7 @@ async function loadSettingsSubTab() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message, "success");
-        document.getElementById("bankAccModal").style.display = "none";
+        closeBankModal();
         fetchBankAccounts();
       } else showToast(data.error, "error");
     } catch (err) {
@@ -1602,7 +1631,7 @@ async function loadSettingsSubTab() {
       const data = await res.json();
       if (data.success) {
         showToast(data.message, "success");
-        document.getElementById("adjustBalModal").style.display = "none";
+        closeAdjustModal();
         fetchBankAccounts();
       } else showToast(data.error, "error");
     } catch (err) {

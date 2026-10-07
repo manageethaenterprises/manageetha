@@ -1008,7 +1008,7 @@ async function openSmtpModal(editData = null) {
           <div class="form-group">
             <label class="form-label" style="font-weight:600;">SMTP Password / App Password</label>
             <div style="position:relative;display:flex;align-items:center;">
-              <input type="password" id="smPassword" class="form-input" placeholder="${isEdit ? '(Unchanged)' : 'Enter password'}" style="padding-right:38px;width:100%;">
+              <input type="password" id="smPassword" class="form-input" value="${esc(editData?.smtp_password || '')}" placeholder="Enter SMTP password / App Password" style="padding-right:38px;width:100%;">
               <button type="button" id="toggleSmPassBtn" style="position:absolute;right:8px;background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-muted, #64748b);padding:4px;" title="Show/Hide Password">👁️</button>
             </div>
           </div>
@@ -1118,7 +1118,7 @@ async function openSmtpModal(editData = null) {
       smtp_port: overlay.querySelector("#smPort").value,
       smtp_secure: overlay.querySelector("#smSecure").value,
       smtp_user: testUser,
-      smtp_password: overlay.querySelector("#smPassword").value,
+      smtp_password: overlay.querySelector("#smPassword").value || editData?.smtp_password || "",
       from_email: fromEmailVal
     };
 
@@ -1175,7 +1175,7 @@ async function openSmtpModal(editData = null) {
       from_name: overlay.querySelector("#smFromName").value.trim(),
       from_email: fromEmailVal,
       smtp_user: saveUser,
-      smtp_password: overlay.querySelector("#smPassword").value,
+      smtp_password: overlay.querySelector("#smPassword").value || editData?.smtp_password || "",
       is_default: overlay.querySelector("#smIsDefault").checked
     };
 

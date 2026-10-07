@@ -18,6 +18,23 @@ function verifyToken(req) {
   try { return jwt.verify(token, JWT_SECRET); } catch { return null; }
 }
 
+const INSPENOX_FOOTER_HTML = `
+<div style="margin-top:30px;padding-top:15px;border-top:1px solid #e2e8f0;text-align:center;font-family:Arial,sans-serif;font-size:12px;color:#64748b;clear:both;">
+  Powered by <a href="https://inspenox.com" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
+</div>
+`;
+
+function appendInspenoxFooter(htmlContent) {
+  if (!htmlContent) return INSPENOX_FOOTER_HTML;
+  if (htmlContent.includes("Powered by") && htmlContent.includes("Inspenox")) {
+    return htmlContent;
+  }
+  if (htmlContent.includes("</body>")) {
+    return htmlContent.replace("</body>", `${INSPENOX_FOOTER_HTML}</body>`);
+  }
+  return htmlContent + INSPENOX_FOOTER_HTML;
+}
+
 async function createTransporter(smtp) {
   const port = parseInt(smtp.smtp_port || 587, 10);
   const sec = (smtp.smtp_secure || '').toLowerCase();
@@ -248,13 +265,16 @@ module.exports = async function handler(req, res) {
         const mailInfo = await transporter.sendMail({
           from: smtpConfig.from_name ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>` : smtpConfig.from_email,
           to: recipient,
-          subject: "⚡ Test Email from Business ERP SMTP Configuration",
+          subject: "⚡ Test Email from Inspenox Business Suite (SMTP Connection)",
           html: `
-            <div style="font-family:Arial,sans-serif;padding:20px;background:#f8fafc;border-radius:8px;">
-              <h2 style="color:#0284c7;margin-top:0;">✅ SMTP Connection Verified!</h2>
-              <p>Your SMTP email configuration (<strong>${smtpConfig.smtp_host}</strong>) is configured properly and ready to send emails.</p>
-              <hr style="border:0;border-top:1px solid #e2e8f0;margin:15px 0;">
-              <p style="font-size:12px;color:#64748b;">Sent via Business ERP Mail Client by <strong>${user.username || 'Admin'}</strong> on ${new Date().toLocaleString('en-IN')}</p>
+            <div style="font-family:Arial,sans-serif;padding:24px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;max-width:600px;margin:0 auto;">
+              <h2 style="color:#0284c7;margin-top:0;">⚡ Inspenox Business Suite — SMTP Connection Verified!</h2>
+              <p style="font-size:14px;color:#334155;line-height:1.5;">Your SMTP email configuration (<strong>${smtpConfig.smtp_host}</strong>) is configured properly and ready to send emails.</p>
+              <hr style="border:0;border-top:1px solid #cbd5e1;margin:20px 0;">
+              <p style="font-size:12px;color:#64748b;margin-bottom:15px;">Sent via Inspenox Business Suite Mail Client by <strong>${user.username || 'Admin'}</strong> on ${new Date().toLocaleString('en-IN')}</p>
+              <div style="margin-top:25px;padding-top:15px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#64748b;">
+                Powered by <a href="https://inspenox.com" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
+              </div>
             </div>
           `
         });
@@ -382,7 +402,7 @@ module.exports = async function handler(req, res) {
             cc: recipientList.length === 1 ? (cc_email || undefined) : undefined,
             bcc: recipientList.length === 1 ? (bcc_email || undefined) : undefined,
             subject: personalizedSubject,
-            html: personalizedHtml
+            html: appendInspenoxFooter(personalizedHtml)
           });
           successCount++;
         } catch (sendErr) {

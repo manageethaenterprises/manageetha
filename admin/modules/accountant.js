@@ -1567,8 +1567,18 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
 
   modal = document.createElement("div");
   modal.id = "assetLiabilityModal";
-  modal.className = "modal";
+  modal.className = "modal-overlay";
+  modal.style.position = "fixed";
+  modal.style.inset = "0";
+  modal.style.background = "rgba(15, 23, 42, 0.75)";
+  modal.style.backdropFilter = "blur(4px)";
+  modal.style.webkitBackdropFilter = "blur(4px)";
+  modal.style.zIndex = "999999";
   modal.style.display = "flex";
+  modal.style.alignItems = "center";
+  modal.style.justifyContent = "center";
+  modal.style.padding = "16px";
+  modal.style.boxSizing = "border-box";
 
   const defaultType = item ? item.type : "asset";
   const defaultDate = item && item.as_of_date ? item.as_of_date.split('T')[0] : new Date().toISOString().split('T')[0];
@@ -1641,12 +1651,12 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   };
 
   modal.innerHTML = `
-    <div class="modal-content" style="max-width:580px;width:95%;max-height:90vh;overflow-y:auto;">
-      <div class="modal-header">
+    <div class="modal-box" style="max-width:580px;width:100%;max-height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);">
         <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
           ${isEdit ? '✏️ Edit Asset / Liability Entry' : '➕ Record Asset or Liability'}
         </h4>
-        <span class="close-modal" id="closeAssetModalBtn">&times;</span>
+        <span class="close-modal" id="closeAssetModalBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
       </div>
 
       <form id="assetLiabilityForm" style="padding:16px 20px;">
@@ -1880,6 +1890,9 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   const closeModal = () => modal.remove();
   modal.querySelector("#closeAssetModalBtn").addEventListener("click", closeModal);
   modal.querySelector("#cancelAssetModalBtn").addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

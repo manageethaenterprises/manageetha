@@ -385,6 +385,67 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, message: "Bank account removed successfully!" });
     }
 
+    else if (action === "bank-statements-list") {
+      const bankAccId = parseInt(req.query.bank_account_id || req.body?.bank_account_id);
+      if (!bankAccId) return res.status(400).json({ error: "Bank Account ID required" });
+
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS bank_statements (
+            id SERIAL PRIMARY KEY,
+            bank_account_id INT REFERENCES bank_accounts(id) ON DELETE CASCADE,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            statement_period_from DATE,
+            statement_period_to DATE,
+            file_name VARCHAR(255),
+            file_url TEXT,
+            notes TEXT,
+            uploaded_by INT REFERENCES users(id) ON DELETE SET NULL,
+            uploaded_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+      } catch (e) {}
+
+      const statements = await sql`
+        SELECT s.*, u.full_name as uploaded_by_name
+        FROM bank_statements s
+        LEFT JOIN users u ON s.uploaded_by = u.id
+        WHERE s.bank_account_id = ${bankAccId}
+        ORDER BY s.uploaded_at DESC
+      `;
+
+      return res.status(200).json({ success: true, statements });
+    }
+
+    else if (action === "bank-statement-upload") {
+      const { bank_account_id, statement_period_from, statement_period_to, file_name, file_url, notes } = req.body;
+      const bankAccId = parseInt(bank_account_id);
+      if (!bankAccId || !file_url) return res.status(400).json({ error: "Bank Account ID and Statement file are required" });
+
+      const acc = await sql`SELECT company_id FROM bank_accounts WHERE id = ${bankAccId}`;
+      if (acc.length === 0) return res.status(404).json({ error: "Bank account not found" });
+
+      const inserted = await sql`
+        INSERT INTO bank_statements (
+          bank_account_id, company_id, statement_period_from, statement_period_to, file_name, file_url, notes, uploaded_by
+        ) VALUES (
+          ${bankAccId}, ${acc[0].company_id}, ${statement_period_from || null}, ${statement_period_to || null},
+          ${file_name || 'Bank_Statement'}, ${file_url}, ${notes || null}, ${user.id}
+        )
+        RETURNING *
+      `;
+
+      return res.status(200).json({ success: true, statement: inserted[0], message: "Bank statement uploaded successfully!" });
+    }
+
+    else if (action === "bank-statement-delete") {
+      const stmtId = parseInt(req.query.id || req.body?.id);
+      if (!stmtId) return res.status(400).json({ error: "Statement ID required" });
+
+      await sql`DELETE FROM bank_statements WHERE id = ${stmtId}`;
+      return res.status(200).json({ success: true, message: "Bank statement deleted successfully!" });
+    }
+
     // ═══════════════ ASSETS & LIABILITIES MANAGEMENT ═══════════════
     else if (action === "assets-liabilities-list" || action === "get-assets-liabilities") {
       try {

@@ -852,49 +852,49 @@ async function loadSettingsSubTab() {
     </datalist>
 
     <!-- BANK ACCOUNT MODAL (ADD / EDIT) -->
-    <div class="modal-overlay" id="bankAccModal" style="display:none;">
-      <div class="modal-box" style="max-width:580px;">
-        <div class="modal-header">
-          <h3 id="bankAccModalTitle">Add New Bank Account</h3>
-          <button class="modal-close" id="bankAccModalClose">&times;</button>
+    <div class="modal-overlay" id="bankAccModal" style="display:none;position:fixed;inset:0;background:rgba(15, 23, 42, 0.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:999999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+      <div class="modal-box" style="max-width:580px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+          <h3 id="bankAccModalTitle" style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">Add New Bank Account</h3>
+          <button class="modal-close" id="bankAccModalClose" style="background:none;border:none;font-size:22px;font-weight:bold;cursor:pointer;color:var(--text2);">&times;</button>
         </div>
-        <form id="bankAccForm">
+        <form id="bankAccForm" style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
           <input type="hidden" id="bEditingId" value="">
           ${isSuper ? `
-            <div class="form-group">
-              <label class="form-label">Target Company *</label>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Target Company *</label>
               <select id="bCompanyId" class="form-select" required>
                 ${(window.currentCompanies || currentCompanies || []).map(c => `<option value="${c.id}">🏢 ${esc(c.name)}</option>`).join("")}
               </select>
             </div>
           ` : ''}
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="form-group">
-              <label class="form-label">Bank Name *</label>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Bank Name *</label>
               <input type="text" id="bBankName" list="indianBankList" class="form-input" required placeholder="e.g. HDFC Bank / SBI">
             </div>
-            <div class="form-group">
-              <label class="form-label">Account Label / Holder Name</label>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Account Label / Holder Name</label>
               <input type="text" id="bAccountName" class="form-input" placeholder="e.g. Primary Operations Account">
             </div>
           </div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="form-group">
-              <label class="form-label">Account Number *</label>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Account Number *</label>
               <input type="text" id="bAccountNumber" class="form-input" required placeholder="e.g. 50100234567890">
             </div>
-            <div class="form-group">
-              <label class="form-label">IFSC Code *</label>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">IFSC Code *</label>
               <input type="text" id="bIfscCode" class="form-input" required placeholder="e.g. HDFC0001234" style="text-transform:uppercase;">
             </div>
           </div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="form-group">
-              <label class="form-label">Branch Name</label>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Branch Name</label>
               <input type="text" id="bBranchName" class="form-input" placeholder="e.g. Main Branch, MG Road">
             </div>
-            <div class="form-group">
-              <label class="form-label">Account Type</label>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Account Type</label>
               <select id="bAccountType" class="form-select">
                 <option value="Current">Current Account</option>
                 <option value="Savings">Savings Account</option>
@@ -903,29 +903,29 @@ async function loadSettingsSubTab() {
               </select>
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Branch Address / Details</label>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Branch Address / Details</label>
             <input type="text" id="bBranchAddress" class="form-input" placeholder="Full address or location notes">
           </div>
-          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="form-group">
-              <label class="form-label">Opening Balance (₹)</label>
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Opening Balance (₹)</label>
               <input type="number" step="0.01" id="bOpeningBalance" class="form-input" value="0.00" placeholder="0.00">
             </div>
-            <div class="form-group">
-              <label class="form-label">Current / Live Balance (₹)</label>
+            <div class="form-group" style="margin:0;">
+              <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Current / Live Balance (₹)</label>
               <input type="number" step="0.01" id="bCurrentBalance" class="form-input" value="0.00" placeholder="0.00">
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">UPI VPA / QR ID (Optional)</label>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">UPI VPA / QR ID (Optional)</label>
             <input type="text" id="bUpiId" class="form-input" placeholder="e.g. business@okaxis">
           </div>
           <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
             <input type="checkbox" id="bIsPrimary" style="width:16px;height:16px;cursor:pointer;">
             <label for="bIsPrimary" style="cursor:pointer;font-weight:600;color:var(--text1);font-size:13px;">⭐ Set as Primary Bank Account for this Company</label>
           </div>
-          <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
+          <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:10px;">
             <button type="button" class="btn btn-secondary" id="bankAccModalCancel">Cancel</button>
             <button type="submit" class="btn btn-primary" id="bankAccSaveBtn">💾 Save Bank Account</button>
           </div>
@@ -934,35 +934,35 @@ async function loadSettingsSubTab() {
     </div>
 
     <!-- ADJUST BALANCE MODAL -->
-    <div class="modal-overlay" id="adjustBalModal" style="display:none;">
-      <div class="modal-box" style="max-width:480px;">
-        <div class="modal-header">
-          <h3>⚖️ Adjust Bank Account Balance</h3>
-          <button class="modal-close" id="adjBalModalClose">&times;</button>
+    <div class="modal-overlay" id="adjustBalModal" style="display:none;position:fixed;inset:0;background:rgba(15, 23, 42, 0.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:999999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+      <div class="modal-box" style="max-width:480px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+          <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">⚖️ Adjust Bank Account Balance</h3>
+          <button class="modal-close" id="adjBalModalClose" style="background:none;border:none;font-size:22px;font-weight:bold;cursor:pointer;color:var(--text2);">&times;</button>
         </div>
-        <form id="adjustBalForm">
+        <form id="adjustBalForm" style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
           <input type="hidden" id="adjAccId" value="">
-          <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;font-size:13px;">
+          <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);font-size:13px;">
             <div style="font-weight:700;color:var(--primary);" id="adjAccNameText">Bank Account</div>
             <div style="margin-top:4px;color:var(--text2);">Current Recorded Balance: <strong style="color:var(--success);font-size:15px;" id="adjCurrentBalText">₹0.00</strong></div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Adjustment Mode</label>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Adjustment Mode</label>
             <select id="adjMode" class="form-select">
               <option value="set">Directly Set New Balance (₹)</option>
               <option value="add">Add / Credit Amount to Balance (+ ₹)</option>
               <option value="subtract">Subtract / Debit Amount from Balance (- ₹)</option>
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label" id="adjValLabel">New Target Balance (₹) *</label>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" id="adjValLabel" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">New Target Balance (₹) *</label>
             <input type="number" step="0.01" id="adjValInput" class="form-input" required placeholder="0.00" style="font-size:16px;font-weight:700;">
           </div>
-          <div class="form-group">
-            <label class="form-label">Reason / Notes for Balance Adjustment *</label>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label" style="display:block;font-weight:600;font-size:12px;margin-bottom:4px;">Reason / Notes for Balance Adjustment *</label>
             <input type="text" id="adjReasonInput" class="form-input" required placeholder="e.g. Bank statement reconciliation / Opening balance fix">
           </div>
-          <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:10px;">
+          <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:10px;">
             <button type="button" class="btn btn-secondary" id="adjBalModalCancel">Cancel</button>
             <button type="submit" class="btn btn-primary">⚖️ Save Adjusted Balance</button>
           </div>
@@ -1017,56 +1017,69 @@ async function loadSettingsSubTab() {
         const isPri = b.is_primary;
         const curBal = parseFloat(b.current_balance || 0);
         const openBal = parseFloat(b.opening_balance || 0);
+        const maskedAcc = b.account_number ? `•••• •••• ${b.account_number.slice(-4)}` : '••••';
+        const maskedIfsc = b.ifsc_code ? `${b.ifsc_code.slice(0, 4)}••••` : '••••';
 
         gridHtml += `
-          <div class="card" style="position:relative;border:1px solid ${isPri ? 'var(--primary)' : 'var(--border)'};background:var(--bg-primary);box-shadow:0 4px 12px rgba(0,0,0,0.05);padding:18px;">
-            ${isPri ? `
-              <div style="position:absolute;top:12px;right:12px;background:var(--primary);color:#fff;font-size:10px;font-weight:800;padding:3px 8px;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase;">
-                ⭐ Primary Bank
-              </div>
-            ` : ''}
+          <div class="card" style="position:relative;border:1px solid ${isPri ? 'var(--primary)' : 'var(--border)'};background:var(--bg-primary);box-shadow:0 4px 12px rgba(0,0,0,0.05);padding:18px;border-radius:12px;display:flex;flex-direction:column;justify-space-between;">
+            <div>
+              ${isPri ? `
+                <div style="position:absolute;top:12px;right:12px;background:var(--primary);color:#fff;font-size:10px;font-weight:800;padding:3px 8px;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase;">
+                  ⭐ Primary Bank
+                </div>
+              ` : ''}
 
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-              <div style="width:40px;height:40px;border-radius:8px;background:rgba(99, 102, 241, 0.1);display:flex;align-items:center;justify-content:center;font-size:20px;">
-                🏦
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                <div style="width:42px;height:42px;border-radius:10px;background:rgba(99, 102, 241, 0.12);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">
+                  🏦
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <h4 style="font-size:15px;font-weight:700;color:var(--text1);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(b.bank_name)}</h4>
+                  <div style="font-size:12px;color:var(--text3);margin-top:1px;">${esc(b.account_name || 'Operating Account')} • <span class="badge badge-secondary" style="font-size:10px;padding:2px 6px;">${esc(b.account_type || 'Current')}</span></div>
+                </div>
               </div>
-              <div>
-                <h4 style="font-size:15px;font-weight:700;color:var(--text1);margin:0;">${esc(b.bank_name)}</h4>
-                <div style="font-size:12px;color:var(--text3);">${esc(b.account_name || 'Operating Account')} • <span class="badge badge-secondary" style="font-size:10px;padding:2px 6px;">${esc(b.account_type || 'Current')}</span></div>
+
+              <!-- Masked Box with View Details button -->
+              <div style="background:var(--bg-secondary);padding:12px 14px;border-radius:10px;border:1px solid var(--border);margin-bottom:14px;position:relative;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">ACCOUNT NUMBER</div>
+                  <button type="button" class="btn btn-xs btn-outline show-bank-details-btn" data-id="${b.id}" style="padding:2px 8px;font-size:11px;border-radius:4px;background:var(--bg1);">
+                    👁️ Show Details
+                  </button>
+                </div>
+                <div style="font-size:16px;font-weight:800;color:var(--text1);font-family:monospace;letter-spacing:1px;margin:4px 0 8px 0;">${maskedAcc}</div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--text2);border-top:1px dashed var(--border);padding-top:8px;">
+                  <div>IFSC: <strong style="color:var(--text1);font-family:monospace;">${maskedIfsc}</strong></div>
+                  <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Branch: <strong style="color:var(--text1);">${esc(b.branch_name || 'N/A')}</strong></div>
+                </div>
+                ${b.upi_id ? `<div style="font-size:11px;color:var(--primary);margin-top:6px;">📱 UPI: <strong>${esc(b.upi_id)}</strong></div>` : ''}
+                ${b.company_name ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">🏢 Company: <strong>${esc(b.company_name)}</strong></div>` : ''}
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;padding:0 4px;">
+                <div>
+                  <div style="font-size:11px;color:var(--text3);">Opening Balance</div>
+                  <div style="font-size:13px;font-weight:600;color:var(--text2);">${formatCurrency(openBal)}</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:11px;color:var(--primary);font-weight:700;">CURRENT BALANCE</div>
+                  <div style="font-size:20px;font-weight:800;color:${curBal >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(curBal)}</div>
+                </div>
               </div>
             </div>
 
-            <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">
-              <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Account Number</div>
-              <div style="font-size:16px;font-weight:800;color:var(--text1);font-family:monospace;letter-spacing:1px;margin:2px 0 6px 0;">${esc(b.account_number)}</div>
-
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--text2);margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;">
-                <div>IFSC: <strong style="color:var(--text1);">${esc(b.ifsc_code)}</strong></div>
-                <div>Branch: <strong style="color:var(--text1);">${esc(b.branch_name || 'N/A')}</strong></div>
-              </div>
-              ${b.upi_id ? `<div style="font-size:11px;color:var(--primary);margin-top:4px;">📱 UPI: <strong>${esc(b.upi_id)}</strong></div>` : ''}
-              ${b.company_name ? `<div style="font-size:11px;color:var(--text3);margin-top:4px;">🏢 Company: <strong>${esc(b.company_name)}</strong></div>` : ''}
-            </div>
-
-            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;padding:0 4px;">
-              <div>
-                <div style="font-size:11px;color:var(--text3);">Opening Balance</div>
-                <div style="font-size:13px;font-weight:600;color:var(--text2);">${formatCurrency(openBal)}</div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-size:11px;color:var(--primary);font-weight:700;">CURRENT BALANCE</div>
-                <div style="font-size:20px;font-weight:800;color:${curBal >= 0 ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(curBal)}</div>
-              </div>
-            </div>
-
-            <div style="display:flex;gap:8px;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;">
-              <button class="btn btn-sm btn-outline adjust-bal-btn" data-id="${b.id}" data-name="${esc(b.bank_name)} (${esc(b.account_number.slice(-4))})" data-bal="${curBal}" style="flex:1;font-size:12px;">
-                ⚖️ Adjust Balance
+            <div style="display:flex;gap:6px;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;flex-wrap:wrap;">
+              <button class="btn btn-sm btn-secondary upload-stmt-btn" data-id="${b.id}" style="flex:1;font-size:11.5px;padding:6px 8px;white-space:nowrap;">
+                📄 Statement
               </button>
-              <button class="btn btn-sm btn-secondary edit-bank-btn" data-id="${b.id}" style="font-size:12px;">
+              <button class="btn btn-sm btn-outline adjust-bal-btn" data-id="${b.id}" data-name="${esc(b.bank_name)} (${esc(b.account_number.slice(-4))})" data-bal="${curBal}" style="flex:1;font-size:11.5px;padding:6px 8px;white-space:nowrap;">
+                ⚖️ Adjust
+              </button>
+              <button class="btn btn-sm btn-secondary edit-bank-btn" data-id="${b.id}" style="font-size:11.5px;padding:6px 10px;">
                 ✏️ Edit
               </button>
-              <button class="btn btn-sm btn-outline delete-bank-btn" data-id="${b.id}" style="color:var(--danger);border-color:var(--danger);font-size:12px;">
+              <button class="btn btn-sm btn-outline delete-bank-btn" data-id="${b.id}" style="color:var(--danger);border-color:var(--danger);font-size:11.5px;padding:6px 10px;">
                 🗑️
               </button>
             </div>
@@ -1078,6 +1091,20 @@ async function loadSettingsSubTab() {
       container.innerHTML = gridHtml;
 
       // Attach card button listeners
+      container.querySelectorAll(".show-bank-details-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const acc = bankAccountsList.find(a => a.id == btn.dataset.id);
+          if (acc) openBankDetailsModal(acc);
+        });
+      });
+
+      container.querySelectorAll(".upload-stmt-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const acc = bankAccountsList.find(a => a.id == btn.dataset.id);
+          if (acc) openBankStatementModal(acc);
+        });
+      });
+
       container.querySelectorAll(".edit-bank-btn").forEach(btn => {
         btn.addEventListener("click", () => {
           const accId = btn.dataset.id;
@@ -1127,6 +1154,319 @@ async function loadSettingsSubTab() {
       console.error("fetchBankAccounts error:", err);
       container.innerHTML = `<div class="alert alert-danger">Error loading bank accounts: ${esc(err.message)}</div>`;
     }
+  }
+
+  // Modal: View Unmasked Bank Details
+  function openBankDetailsModal(acc) {
+    let modal = document.getElementById("bankDetailsModal");
+    if (modal) modal.remove();
+
+    modal = document.createElement("div");
+    modal.id = "bankDetailsModal";
+    modal.className = "modal-overlay";
+    modal.style.position = "fixed";
+    modal.style.inset = "0";
+    modal.style.background = "rgba(15, 23, 42, 0.75)";
+    modal.style.backdropFilter = "blur(4px)";
+    modal.style.webkitBackdropFilter = "blur(4px)";
+    modal.style.zIndex = "999999";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.padding = "16px";
+    modal.style.boxSizing = "border-box";
+
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:480px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+          <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);display:flex;align-items:center;gap:8px;">
+            🏦 Bank Account Details
+          </h4>
+          <span class="close-modal" id="closeBankDetailsBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
+        </div>
+
+        <div style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;align-items:center;gap:12px;background:var(--bg1);padding:12px;border-radius:10px;border:1px solid var(--border);">
+            <div style="font-size:32px;">🏦</div>
+            <div>
+              <div style="font-size:16px;font-weight:700;color:var(--text1);">${esc(acc.bank_name)}</div>
+              <div style="font-size:12px;color:var(--text3);">${esc(acc.account_name || 'Operating Account')} • ${esc(acc.account_type || 'Current')} Account</div>
+              ${acc.company_name ? `<div style="font-size:11px;color:var(--primary);margin-top:2px;">🏢 ${esc(acc.company_name)}</div>` : ''}
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">FULL ACCOUNT NUMBER</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                <div style="font-size:18px;font-weight:800;color:var(--text1);font-family:monospace;letter-spacing:1px;">${esc(acc.account_number)}</div>
+                <button type="button" class="btn btn-sm btn-secondary copy-btn" data-val="${esc(acc.account_number)}" style="font-size:11px;padding:3px 8px;">📋 Copy</button>
+              </div>
+            </div>
+
+            <div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);">
+              <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">IFSC CODE</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                <div style="font-size:16px;font-weight:800;color:var(--text1);font-family:monospace;letter-spacing:1px;">${esc(acc.ifsc_code)}</div>
+                <button type="button" class="btn btn-sm btn-secondary copy-btn" data-val="${esc(acc.ifsc_code)}" style="font-size:11px;padding:3px 8px;">📋 Copy</button>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div style="background:var(--bg2);padding:10px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:11px;color:var(--text3);font-weight:600;">BRANCH NAME</div>
+                <div style="font-size:13px;font-weight:700;color:var(--text1);margin-top:2px;">${esc(acc.branch_name || 'N/A')}</div>
+              </div>
+              <div style="background:var(--bg2);padding:10px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:11px;color:var(--text3);font-weight:600;">BRANCH ADDRESS</div>
+                <div style="font-size:12px;color:var(--text2);margin-top:2px;">${esc(acc.branch_address || 'N/A')}</div>
+              </div>
+            </div>
+
+            ${acc.upi_id ? `
+              <div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">UPI ID / VPA</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+                  <div style="font-size:14px;font-weight:700;color:var(--primary);">${esc(acc.upi_id)}</div>
+                  <button type="button" class="btn btn-sm btn-secondary copy-btn" data-val="${esc(acc.upi_id)}" style="font-size:11px;padding:3px 8px;">📋 Copy</button>
+                </div>
+              </div>
+            ` : ''}
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+              <div style="background:#f8fafc;padding:12px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:11px;color:var(--text3);">OPENING BALANCE</div>
+                <div style="font-size:15px;font-weight:700;color:var(--text1);margin-top:2px;">${formatCurrency(parseFloat(acc.opening_balance || 0))}</div>
+              </div>
+              <div style="background:#f0fdf4;padding:12px;border-radius:8px;border:1px solid #bbf7d0;">
+                <div style="font-size:11px;color:#16a34a;font-weight:700;">CURRENT LIVE BALANCE</div>
+                <div style="font-size:18px;font-weight:800;color:#16a34a;margin-top:2px;">${formatCurrency(parseFloat(acc.current_balance || 0))}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+            <button type="button" class="btn btn-secondary" id="dismissBankDetailsBtn">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.querySelector("#closeBankDetailsBtn").addEventListener("click", close);
+    modal.querySelector("#dismissBankDetailsBtn").addEventListener("click", close);
+    modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+
+    modal.querySelectorAll(".copy-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(btn.dataset.val);
+        showToast("Copied to clipboard!", "success");
+      });
+    });
+  }
+
+  // Modal: Bank Statement Upload & History
+  function openBankStatementModal(acc) {
+    let modal = document.getElementById("bankStatementModal");
+    if (modal) modal.remove();
+
+    modal = document.createElement("div");
+    modal.id = "bankStatementModal";
+    modal.className = "modal-overlay";
+    modal.style.position = "fixed";
+    modal.style.inset = "0";
+    modal.style.background = "rgba(15, 23, 42, 0.75)";
+    modal.style.backdropFilter = "blur(4px)";
+    modal.style.webkitBackdropFilter = "blur(4px)";
+    modal.style.zIndex = "999999";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.padding = "16px";
+    modal.style.boxSizing = "border-box";
+
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+          <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
+            📄 Bank Statements — ${esc(acc.bank_name)} (${esc(acc.account_number.slice(-4))})
+          </h4>
+          <span class="close-modal" id="closeBankStmtBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
+        </div>
+
+        <div style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;">
+          <!-- Upload Box -->
+          <div style="border:1px solid var(--border);border-radius:10px;padding:16px;background:var(--bg1);">
+            <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              📤 Upload New Bank Statement Document
+            </div>
+
+            <form id="stmtUploadForm">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                <div class="form-group" style="margin:0;">
+                  <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Statement Period From</label>
+                  <input type="date" class="form-control" id="stmtFromDate" style="font-size:12px;">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Statement Period To</label>
+                  <input type="date" class="form-control" id="stmtToDate" style="font-size:12px;">
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:10px;">
+                <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Select Statement File (PDF, Excel, CSV, Image) *</label>
+                <input type="file" class="form-control" id="stmtFileInput" accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg" required style="font-size:12px;">
+              </div>
+
+              <div class="form-group" style="margin-bottom:12px;">
+                <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Remarks / Notes (Optional)</label>
+                <input type="text" class="form-control" id="stmtNotesInput" placeholder="e.g. Q3 October 2026 Bank Reconciliation Statement" style="font-size:12px;">
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;">
+                <button type="submit" class="btn btn-primary btn-sm" id="uploadStmtSubmitBtn">
+                  📤 Upload Statement
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- History Table -->
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:8px;">📋 Uploaded Statements History</div>
+            <div class="table-container" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+              <table class="data-table" style="font-size:12px;">
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th>File Name</th>
+                    <th>Uploaded Date</th>
+                    <th>Uploaded By</th>
+                    <th style="text-align:center;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="bankStmtsTableBody">
+                  <tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3);"><div class="spinner"></div> Loading statements...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.querySelector("#closeBankStmtBtn").addEventListener("click", close);
+    modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+
+    async function loadStatements() {
+      const tbody = modal.querySelector("#bankStmtsTableBody");
+      try {
+        const res = await fetch(`${API_BASE}/accountant?action=bank-statements-list&bank_account_id=${acc.id}`, { headers: authHeaders() });
+        const data = await res.json();
+        if (data.success && data.statements) {
+          if (data.statements.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3);">No uploaded bank statements found.</td></tr>`;
+            return;
+          }
+
+          tbody.innerHTML = data.statements.map(s => {
+            const periodStr = (s.statement_period_from || s.statement_period_to)
+              ? `${s.statement_period_from ? s.statement_period_from.split('T')[0] : 'Start'} to ${s.statement_period_to ? s.statement_period_to.split('T')[0] : 'End'}`
+              : '—';
+            const dateStr = s.uploaded_at ? s.uploaded_at.split('T')[0] : '—';
+
+            return `
+              <tr>
+                <td><strong style="color:var(--text1);">${periodStr}</strong></td>
+                <td>
+                  <div style="font-weight:600;">${esc(s.file_name)}</div>
+                  ${s.notes ? `<div style="font-size:10px;color:var(--text3);">${esc(s.notes)}</div>` : ''}
+                </td>
+                <td>${dateStr}</td>
+                <td>${esc(s.uploaded_by_name || 'System')}</td>
+                <td style="text-align:center;white-space:nowrap;">
+                  <a href="${s.file_url}" target="_blank" download="${esc(s.file_name)}" class="btn btn-xs btn-secondary" style="padding:2px 6px;margin-right:4px;" title="View or Download File">👁️ View</a>
+                  <button type="button" class="btn btn-xs btn-danger delete-stmt-btn" data-id="${s.id}" style="padding:2px 6px;" title="Delete Statement">🗑️</button>
+                </td>
+              </tr>
+            `;
+          }).join("");
+
+          tbody.querySelectorAll(".delete-stmt-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              if (!confirm("Delete this statement record?")) return;
+              try {
+                const r = await fetch(`${API_BASE}/accountant?action=bank-statement-delete&id=${btn.dataset.id}`, {
+                  method: "POST",
+                  headers: authHeaders()
+                });
+                const d = await r.json();
+                if (d.success) {
+                  showToast(d.message, "success");
+                  loadStatements();
+                } else showToast(d.error || "Delete failed", "error");
+              } catch (e) { showToast(e.message, "error"); }
+            });
+          });
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger);">Error loading statements: ${esc(err.message)}</td></tr>`;
+      }
+    }
+
+    loadStatements();
+
+    modal.querySelector("#stmtUploadForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fileInput = modal.querySelector("#stmtFileInput");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        showToast("Please choose a statement file to upload", "warning");
+        return;
+      }
+
+      const submitBtn = modal.querySelector("#uploadStmtSubmitBtn");
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Uploading...`;
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        const fileUrl = evt.target.result;
+        const payload = {
+          bank_account_id: acc.id,
+          statement_period_from: modal.querySelector("#stmtFromDate").value || null,
+          statement_period_to: modal.querySelector("#stmtToDate").value || null,
+          file_name: file.name,
+          file_url: fileUrl,
+          notes: modal.querySelector("#stmtNotesInput").value.trim() || null
+        };
+
+        try {
+          const res = await fetch(`${API_BASE}/accountant?action=bank-statement-upload`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify(payload)
+          });
+          const d = await res.json();
+          if (d.success) {
+            showToast(d.message, "success");
+            modal.querySelector("#stmtUploadForm").reset();
+            loadStatements();
+          } else showToast(d.error || "Upload failed", "error");
+        } catch (err) {
+          showToast("Upload error: " + err.message, "error");
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = `📤 Upload Statement`;
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   // Modal open/close helpers
@@ -1651,15 +1991,15 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   };
 
   modal.innerHTML = `
-    <div class="modal-box" style="max-width:580px;width:100%;max-height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);">
+    <div class="modal-box" style="max-width:580px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
         <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
           ${isEdit ? '✏️ Edit Asset / Liability Entry' : '➕ Record Asset or Liability'}
         </h4>
         <span class="close-modal" id="closeAssetModalBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
       </div>
 
-      <form id="assetLiabilityForm" style="padding:16px 20px;">
+      <form id="assetLiabilityForm" style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
         <!-- Type Switcher -->
         <div class="form-group" style="margin-bottom:16px;">
           <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Entry Type *</label>

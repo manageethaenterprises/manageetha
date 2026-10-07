@@ -846,6 +846,21 @@ module.exports = async function handler(req, res) {
     try { await sql`ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL;`; } catch(e){}
 
     await sql`
+      CREATE TABLE IF NOT EXISTS bank_statements (
+        id SERIAL PRIMARY KEY,
+        bank_account_id INT REFERENCES bank_accounts(id) ON DELETE CASCADE,
+        company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+        statement_period_from DATE,
+        statement_period_to DATE,
+        file_name VARCHAR(255),
+        file_url TEXT,
+        notes TEXT,
+        uploaded_by INT REFERENCES users(id) ON DELETE SET NULL,
+        uploaded_at TIMESTAMP DEFAULT NOW()
+      )
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS bank_payment_details (
         id SERIAL PRIMARY KEY,
         payment_id INT REFERENCES payments(id) ON DELETE CASCADE,

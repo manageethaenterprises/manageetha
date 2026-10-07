@@ -1220,8 +1220,15 @@ window.generateQRCodeSVG = function (text, size = 80) {
 };
 
 // ── Helper: Print Tax Invoice (Dual Copies: Original & Customer Copy) ──
-function printTaxInvoice(sale, items, payments = [], returns = []) {
-  const printWin = window.open('', '_blank', 'width=950,height=1050');
+function printTaxInvoice(sale, items, payments = [], returns = [], existingWin = null) {
+  let printWin = existingWin;
+  if (!printWin || printWin.closed) {
+    printWin = window.open('', '_blank', 'width=950,height=1050');
+  }
+  if (!printWin) {
+    if (typeof showToast === 'function') showToast("⚠️ Pop-up window was blocked by your browser! Please allow pop-ups for this website.", "warning");
+    return;
+  }
   const compIdToFind = sale.company_id || (selectedCompanyId && selectedCompanyId !== "all" ? parseInt(selectedCompanyId) : 1);
   const compList = (window.currentCompanies && window.currentCompanies.length > 0) ? window.currentCompanies : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
   const matchedComp = compList.find(c => c.id == compIdToFind) || compList[0] || {};
@@ -1673,8 +1680,15 @@ function printTaxInvoice(sale, items, payments = [], returns = []) {
 }
 
 // ── Helper: Print Custom Invoice ──
-function printCustomInvoice(sale, items = []) {
-  const printWin = window.open('', '_blank', 'width=950,height=1050');
+function printCustomInvoice(sale, items = [], existingWin = null) {
+  let printWin = existingWin;
+  if (!printWin || printWin.closed) {
+    printWin = window.open('', '_blank', 'width=950,height=1050');
+  }
+  if (!printWin) {
+    if (typeof showToast === 'function') showToast("⚠️ Pop-up window was blocked by your browser! Please allow pop-ups for this website.", "warning");
+    return;
+  }
   const compIdToFind = sale.company_id || (selectedCompanyId && selectedCompanyId !== "all" ? parseInt(selectedCompanyId) : 1);
   const compList = (window.currentCompanies && window.currentCompanies.length > 0) ? window.currentCompanies : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
   const matchedComp = compList.find(c => c.id == compIdToFind) || compList[0] || {};
@@ -2904,8 +2918,15 @@ function openCustomInvoiceModal(onSuccess) {
 }
 
 // ── Helper: Print Delivery Challan (Dual Copies: Original & Customer Copy) ──
-function printDeliveryChallan(sale, items, payments = [], returns = []) {
-  const printWin = window.open('', '_blank', 'width=900,height=1000');
+function printDeliveryChallan(sale, items, payments = [], returns = [], existingWin = null) {
+  let printWin = existingWin;
+  if (!printWin || printWin.closed) {
+    printWin = window.open('', '_blank', 'width=900,height=1000');
+  }
+  if (!printWin) {
+    if (typeof showToast === 'function') showToast("⚠️ Pop-up window was blocked by your browser! Please allow pop-ups for this website.", "warning");
+    return;
+  }
   const compIdToFind = sale.company_id || (selectedCompanyId && selectedCompanyId !== "all" ? parseInt(selectedCompanyId) : 1);
   const compList = (window.currentCompanies && window.currentCompanies.length > 0) ? window.currentCompanies : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
   const matchedComp = compList.find(c => c.id == compIdToFind) || compList[0] || {};
@@ -5736,12 +5757,22 @@ async function loadHistorySubTab() {
         tbody.querySelectorAll(".printDcBtn").forEach(btn => {
           btn.addEventListener("click", async () => {
             const sId = btn.dataset.id;
+            const printWin = window.open('', '_blank', 'width=900,height=1000');
+            if (printWin) {
+              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch(e){}
+            }
             setButtonLoading(btn, true, "Loading...");
             try {
               const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
               const d = await r.json();
-              if (d.success) printDeliveryChallan(d.sale, d.items, d.payments, d.returns);
+              if (d.success) {
+                printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
+              } else {
+                if (printWin) printWin.close();
+                showToast("Failed to fetch DC details", "error");
+              }
             } catch (e) {
+              if (printWin) printWin.close();
               showToast("Failed to fetch DC details", "error");
             } finally {
               setButtonLoading(btn, false);
@@ -5752,12 +5783,22 @@ async function loadHistorySubTab() {
         tbody.querySelectorAll(".printInvBtn").forEach(btn => {
           btn.addEventListener("click", async () => {
             const sId = btn.dataset.id;
+            const printWin = window.open('', '_blank', 'width=950,height=1050');
+            if (printWin) {
+              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#4f46e5;'><h2>⏳ Loading Tax Invoice...</h2></body></html>"); } catch(e){}
+            }
             setButtonLoading(btn, true, "Loading...");
             try {
               const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
               const d = await r.json();
-              if (d.success) printTaxInvoice(d.sale, d.items, d.payments, d.returns);
+              if (d.success) {
+                printTaxInvoice(d.sale, d.items, d.payments, d.returns, printWin);
+              } else {
+                if (printWin) printWin.close();
+                showToast("Failed to fetch Invoice details", "error");
+              }
             } catch (e) {
+              if (printWin) printWin.close();
               showToast("Failed to fetch Invoice details", "error");
             } finally {
               setButtonLoading(btn, false);
@@ -5903,12 +5944,22 @@ async function loadInvoicesSubTab() {
             btn.addEventListener("click", async () => {
               const sId = btn.dataset.saleid;
               if (!sId) return;
+              const printWin = window.open('', '_blank', 'width=900,height=1000');
+              if (printWin) {
+                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch(e){}
+              }
               setButtonLoading(btn, true, "Loading...");
               try {
                 const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
                 const d = await r.json();
-                if (d.success) printDeliveryChallan(d.sale, d.items, d.payments, d.returns);
+                if (d.success) {
+                  printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
+                } else {
+                  if (printWin) printWin.close();
+                  showToast("Failed to fetch DC details", "error");
+                }
               } catch (e) {
+                if (printWin) printWin.close();
                 showToast("Failed to fetch DC details", "error");
               } finally {
                 setButtonLoading(btn, false);
@@ -6036,18 +6087,26 @@ async function loadInvoicesSubTab() {
           btn.addEventListener("click", async () => {
             const sId = btn.dataset.saleid;
             if (!sId) return;
+            const printWin = window.open('', '_blank', 'width=950,height=1050');
+            if (printWin) {
+              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#4f46e5;'><h2>⏳ Loading Tax Invoice...</h2></body></html>"); } catch(e){}
+            }
             setButtonLoading(btn, true, "Loading...");
             try {
               const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
               const d = await r.json();
               if (d.success) {
                 if (d.sale && d.sale.is_custom) {
-                  printCustomInvoice(d.sale, d.items);
+                  printCustomInvoice(d.sale, d.items, printWin);
                 } else {
-                  printTaxInvoice(d.sale, d.items, d.payments, d.returns);
+                  printTaxInvoice(d.sale, d.items, d.payments, d.returns, printWin);
                 }
+              } else {
+                if (printWin) printWin.close();
+                showToast("Failed to fetch Invoice details", "error");
               }
             } catch (e) {
+              if (printWin) printWin.close();
               showToast("Failed to fetch Invoice details", "error");
             } finally {
               setButtonLoading(btn, false);
@@ -6059,12 +6118,22 @@ async function loadInvoicesSubTab() {
           btn.addEventListener("click", async () => {
             const sId = btn.dataset.saleid;
             if (!sId) return;
+            const printWin = window.open('', '_blank', 'width=900,height=1000');
+            if (printWin) {
+              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch(e){}
+            }
             setButtonLoading(btn, true, "Loading...");
             try {
               const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
               const d = await r.json();
-              if (d.success) printDeliveryChallan(d.sale, d.items, d.payments, d.returns);
+              if (d.success) {
+                printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
+              } else {
+                if (printWin) printWin.close();
+                showToast("Failed to fetch DC details", "error");
+              }
             } catch (e) {
+              if (printWin) printWin.close();
               showToast("Failed to fetch DC details", "error");
             } finally {
               setButtonLoading(btn, false);

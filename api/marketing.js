@@ -20,7 +20,7 @@ function verifyToken(req) {
 
 const INSPENOX_FOOTER_HTML = `
 <div style="margin-top:30px;padding-top:15px;border-top:1px solid #e2e8f0;text-align:center;font-family:Arial,sans-serif;font-size:12px;color:#64748b;clear:both;">
-  Powered by <a href="https://inspenox.com" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
+  Powered by <a href="https://inspenox.in/products/business-suite" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
 </div>
 `;
 
@@ -262,6 +262,7 @@ module.exports = async function handler(req, res) {
         await transporter.verify();
 
         // Try sending test email
+        const istTimeStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
         const mailInfo = await transporter.sendMail({
           from: smtpConfig.from_name ? `"${smtpConfig.from_name}" <${smtpConfig.from_email}>` : smtpConfig.from_email,
           to: recipient,
@@ -271,9 +272,9 @@ module.exports = async function handler(req, res) {
               <h2 style="color:#0284c7;margin-top:0;">⚡ Inspenox Business Suite — SMTP Connection Verified!</h2>
               <p style="font-size:14px;color:#334155;line-height:1.5;">Your SMTP email configuration (<strong>${smtpConfig.smtp_host}</strong>) is configured properly and ready to send emails.</p>
               <hr style="border:0;border-top:1px solid #cbd5e1;margin:20px 0;">
-              <p style="font-size:12px;color:#64748b;margin-bottom:15px;">Sent via Inspenox Business Suite Mail Client by <strong>${user.username || 'Admin'}</strong> on ${new Date().toLocaleString('en-IN')}</p>
+              <p style="font-size:12px;color:#64748b;margin-bottom:15px;">Sent via Inspenox Business Suite Mail Client by <strong>${user.username || 'Admin'}</strong> on ${istTimeStr}</p>
               <div style="margin-top:25px;padding-top:15px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#64748b;">
-                Powered by <a href="https://inspenox.com" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
+                Powered by <a href="https://inspenox.in/products/business-suite" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
               </div>
             </div>
           `
@@ -364,7 +365,7 @@ module.exports = async function handler(req, res) {
       let failureCount = 0;
       let lastError = null;
 
-      const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const todayStr = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' });
       const senderName = user.username || smtpProfile.from_name || "Admin";
 
       for (const targetEmail of recipientList) {

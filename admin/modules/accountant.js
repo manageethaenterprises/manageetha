@@ -1276,6 +1276,8 @@ async function loadSettingsSubTab() {
     let modal = document.getElementById("bankStatementModal");
     if (modal) modal.remove();
 
+    const todayStr = new Date().toISOString().split('T')[0];
+
     modal = document.createElement("div");
     modal.id = "bankStatementModal";
     modal.className = "modal-overlay";
@@ -1311,11 +1313,11 @@ async function loadSettingsSubTab() {
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                 <div class="form-group" style="margin:0;">
                   <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Statement Period From</label>
-                  <input type="date" class="form-control" id="stmtFromDate" style="font-size:12px;">
+                  <input type="date" class="form-control" id="stmtFromDate" value="${todayStr}" style="font-size:12px;">
                 </div>
                 <div class="form-group" style="margin:0;">
                   <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Statement Period To</label>
-                  <input type="date" class="form-control" id="stmtToDate" style="font-size:12px;">
+                  <input type="date" class="form-control" id="stmtToDate" value="${todayStr}" style="font-size:12px;">
                 </div>
               </div>
 
@@ -1437,11 +1439,16 @@ async function loadSettingsSubTab() {
         return;
       }
 
+      const file = fileInput.files[0];
+      if (file.size > 2.5 * 1024 * 1024) {
+        showToast("File size exceeds 2.5 MB limit. Please choose a smaller or compressed file.", "error");
+        return;
+      }
+
       const submitBtn = modal.querySelector("#uploadStmtSubmitBtn");
       submitBtn.disabled = true;
       submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Uploading...`;
 
-      const file = fileInput.files[0];
       const reader = new FileReader();
       reader.onload = async (evt) => {
         const fileUrl = evt.target.result;

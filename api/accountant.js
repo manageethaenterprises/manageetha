@@ -407,7 +407,7 @@ module.exports = async function handler(req, res) {
       } catch (e) {}
 
       const statements = await sql`
-        SELECT s.*, u.full_name as uploaded_by_name
+        SELECT s.*, COALESCE(u.username, 'User') as uploaded_by_name
         FROM bank_statements s
         LEFT JOIN users u ON s.uploaded_by = u.id
         WHERE s.bank_account_id = ${bankAccId}

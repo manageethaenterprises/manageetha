@@ -257,6 +257,15 @@ module.exports = async function handler(req, res) {
 
       const recipient = (test_email || user.email || smtpConfig.from_email).trim();
 
+      let userCompanyName = "";
+      try {
+        let compIdToFetch = smtpConfig.company_id || user.company_id || 1;
+        const compRow = await sql`SELECT name FROM companies WHERE id = ${compIdToFetch}`;
+        if (compRow.length > 0 && compRow[0].name) {
+          userCompanyName = compRow[0].name;
+        }
+      } catch (e) {}
+
       try {
         const transporter = await createTransporter(smtpConfig);
         await transporter.verify();
@@ -272,7 +281,7 @@ module.exports = async function handler(req, res) {
               <h2 style="color:#0284c7;margin-top:0;">⚡ Inspenox Business Suite — SMTP Connection Verified!</h2>
               <p style="font-size:14px;color:#334155;line-height:1.5;">Your SMTP email configuration (<strong>${smtpConfig.smtp_host}</strong>) is configured properly and ready to send emails.</p>
               <hr style="border:0;border-top:1px solid #cbd5e1;margin:20px 0;">
-              <p style="font-size:12px;color:#64748b;margin-bottom:15px;">Sent via Inspenox Business Suite Mail Client by <strong>${user.username || 'Admin'}</strong> on ${istTimeStr}</p>
+              <p style="font-size:12px;color:#64748b;margin-bottom:15px;">Sent via Inspenox Business Suite Mail Client ${userCompanyName ? `for <strong>${userCompanyName}</strong> ` : ''}by <strong>${user.username || 'Admin'}</strong> on ${istTimeStr}</p>
               <div style="margin-top:25px;padding-top:15px;border-top:1px solid #e2e8f0;text-align:center;font-size:12px;color:#64748b;">
                 Powered by <a href="https://inspenox.in/products/business-suite" target="_blank" style="color:#2563eb;font-weight:bold;text-decoration:none;">Inspenox Business Suite</a>
               </div>

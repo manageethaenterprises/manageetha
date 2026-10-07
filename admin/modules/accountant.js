@@ -3,6 +3,27 @@
 // Capital Management (Locked by Superadmin toggle), Operating Expenses, Business Loans
 // ═══════════════════════════════════════════════════
 
+function showModalError(container, msg) {
+  if (!container) return;
+  let errBox = container.querySelector(".modal-error-alert");
+  if (!errBox) {
+    errBox = document.createElement("div");
+    errBox.className = "modal-error-alert";
+    errBox.style.cssText = "background:var(--error);color:#ffffff;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(239,68,68,0.25);";
+    const body = container.querySelector("form") || container.querySelector(".modal-body") || container;
+    if (body) body.prepend(errBox);
+  }
+  errBox.innerHTML = `<i class="fas fa-exclamation-triangle"></i> <span>${esc(msg)}</span>`;
+  errBox.style.display = "flex";
+  errBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function hideModalError(container) {
+  if (!container) return;
+  const errBox = container.querySelector(".modal-error-alert");
+  if (errBox) errBox.style.display = "none";
+}
+
 window.renderAccountantModule = async function (tabKey, container) {
   // Clean up any lingering modals on tab switch
   const oldModal = document.getElementById("assetLiabilityModal");
@@ -852,9 +873,9 @@ async function loadSettingsSubTab() {
     </datalist>
 
     <!-- BANK ACCOUNT MODAL (ADD / EDIT) -->
-    <div class="modal-overlay" id="bankAccModal" style="display:none;position:fixed;inset:0;background:rgba(15, 23, 42, 0.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:999999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-      <div class="modal-box" style="max-width:580px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+    <div class="modal-overlay" id="bankAccModal" style="display:none;position:fixed;inset:0;background:rgba(15, 23, 42, 0.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:999999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+      <div class="modal-box" style="max-width:580px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary);color:var(--text1);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
           <h3 id="bankAccModalTitle" style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">Add New Bank Account</h3>
           <button class="modal-close" id="bankAccModalClose" style="background:none;border:none;font-size:22px;font-weight:bold;cursor:pointer;color:var(--text2);">&times;</button>
         </div>
@@ -934,15 +955,15 @@ async function loadSettingsSubTab() {
     </div>
 
     <!-- ADJUST BALANCE MODAL -->
-    <div class="modal-overlay" id="adjustBalModal" style="display:none;position:fixed;inset:0;background:rgba(15, 23, 42, 0.75);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:999999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
-      <div class="modal-box" style="max-width:480px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+    <div class="modal-overlay" id="adjustBalModal" style="display:none;position:fixed;inset:0;background:rgba(15, 23, 42, 0.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:999999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+      <div class="modal-box" style="max-width:480px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary);color:var(--text1);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
           <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">⚖️ Adjust Bank Account Balance</h3>
           <button class="modal-close" id="adjBalModalClose" style="background:none;border:none;font-size:22px;font-weight:bold;cursor:pointer;color:var(--text2);">&times;</button>
         </div>
         <form id="adjustBalForm" style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
           <input type="hidden" id="adjAccId" value="">
-          <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);font-size:13px;">
+          <div style="background:var(--bg-primary);padding:12px;border-radius:8px;border:1px solid var(--border);font-size:13px;">
             <div style="font-weight:700;color:var(--primary);" id="adjAccNameText">Bank Account</div>
             <div style="margin-top:4px;color:var(--text2);">Current Recorded Balance: <strong style="color:var(--success);font-size:15px;" id="adjCurrentBalText">₹0.00</strong></div>
           </div>
@@ -1043,7 +1064,7 @@ async function loadSettingsSubTab() {
               <div style="background:var(--bg-secondary);padding:12px 14px;border-radius:10px;border:1px solid var(--border);margin-bottom:14px;position:relative;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                   <div style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">ACCOUNT NUMBER</div>
-                  <button type="button" class="btn btn-xs btn-outline show-bank-details-btn" data-id="${b.id}" style="padding:2px 8px;font-size:11px;border-radius:4px;background:var(--bg1);">
+                  <button type="button" class="btn btn-xs show-bank-details-btn" data-id="${b.id}" style="padding:3px 10px;font-size:11px;border-radius:4px;background:var(--bg-primary);color:var(--text1);border:1px solid var(--border);cursor:pointer;">
                     👁️ Show Details
                   </button>
                 </div>
@@ -1071,15 +1092,15 @@ async function loadSettingsSubTab() {
 
             <div style="display:flex;gap:6px;border-top:1px solid var(--border);padding-top:12px;margin-top:4px;flex-wrap:wrap;">
               <button class="btn btn-sm btn-secondary upload-stmt-btn" data-id="${b.id}" style="flex:1;font-size:11.5px;padding:6px 8px;white-space:nowrap;">
-                📄 Statement
+                📄 Upload Statement
               </button>
-              <button class="btn btn-sm btn-outline adjust-bal-btn" data-id="${b.id}" data-name="${esc(b.bank_name)} (${esc(b.account_number.slice(-4))})" data-bal="${curBal}" style="flex:1;font-size:11.5px;padding:6px 8px;white-space:nowrap;">
+              <button class="btn btn-sm btn-secondary adjust-bal-btn" data-id="${b.id}" data-name="${esc(b.bank_name)} (${esc(b.account_number.slice(-4))})" data-bal="${curBal}" style="flex:1;font-size:11.5px;padding:6px 8px;white-space:nowrap;">
                 ⚖️ Adjust
               </button>
               <button class="btn btn-sm btn-secondary edit-bank-btn" data-id="${b.id}" style="font-size:11.5px;padding:6px 10px;">
                 ✏️ Edit
               </button>
-              <button class="btn btn-sm btn-outline delete-bank-btn" data-id="${b.id}" style="color:var(--danger);border-color:var(--danger);font-size:11.5px;padding:6px 10px;">
+              <button class="btn btn-sm btn-outline-danger delete-bank-btn" data-id="${b.id}" style="font-size:11.5px;padding:6px 10px;" title="Delete Bank Account">
                 🗑️
               </button>
             </div>
@@ -1167,8 +1188,8 @@ async function loadSettingsSubTab() {
     modal.style.position = "fixed";
     modal.style.inset = "0";
     modal.style.background = "rgba(15, 23, 42, 0.75)";
-    modal.style.backdropFilter = "blur(4px)";
-    modal.style.webkitBackdropFilter = "blur(4px)";
+    modal.style.backdropFilter = "blur(8px)";
+    modal.style.webkitBackdropFilter = "blur(8px)";
     modal.style.zIndex = "999999";
     modal.style.display = "flex";
     modal.style.alignItems = "center";
@@ -1177,16 +1198,16 @@ async function loadSettingsSubTab() {
     modal.style.boxSizing = "border-box";
 
     modal.innerHTML = `
-      <div class="modal-box" style="max-width:480px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+      <div class="modal-box" style="max-width:480px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary);color:var(--text1);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
           <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);display:flex;align-items:center;gap:8px;">
             🏦 Bank Account Details
           </h4>
-          <span class="close-modal" id="closeBankDetailsBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
+          <span class="close-modal" id="closeBankDetailsBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;color:var(--text2);">&times;</span>
         </div>
 
         <div style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
-          <div style="display:flex;align-items:center;gap:12px;background:var(--bg1);padding:12px;border-radius:10px;border:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:12px;background:var(--bg-primary);padding:12px;border-radius:10px;border:1px solid var(--border);">
             <div style="font-size:32px;">🏦</div>
             <div>
               <div style="font-size:16px;font-weight:700;color:var(--text1);">${esc(acc.bank_name)}</div>
@@ -1196,7 +1217,7 @@ async function loadSettingsSubTab() {
           </div>
 
           <div style="display:flex;flex-direction:column;gap:10px;">
-            <div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);">
+            <div style="background:var(--bg-primary);padding:12px;border-radius:8px;border:1px solid var(--border);">
               <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">FULL ACCOUNT NUMBER</div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
                 <div style="font-size:18px;font-weight:800;color:var(--text1);font-family:monospace;letter-spacing:1px;">${esc(acc.account_number)}</div>
@@ -1204,7 +1225,7 @@ async function loadSettingsSubTab() {
               </div>
             </div>
 
-            <div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);">
+            <div style="background:var(--bg-primary);padding:12px;border-radius:8px;border:1px solid var(--border);">
               <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">IFSC CODE</div>
               <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
                 <div style="font-size:16px;font-weight:800;color:var(--text1);font-family:monospace;letter-spacing:1px;">${esc(acc.ifsc_code)}</div>
@@ -1213,18 +1234,18 @@ async function loadSettingsSubTab() {
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-              <div style="background:var(--bg2);padding:10px;border-radius:8px;border:1px solid var(--border);">
+              <div style="background:var(--bg-primary);padding:10px;border-radius:8px;border:1px solid var(--border);">
                 <div style="font-size:11px;color:var(--text3);font-weight:600;">BRANCH NAME</div>
                 <div style="font-size:13px;font-weight:700;color:var(--text1);margin-top:2px;">${esc(acc.branch_name || 'N/A')}</div>
               </div>
-              <div style="background:var(--bg2);padding:10px;border-radius:8px;border:1px solid var(--border);">
+              <div style="background:var(--bg-primary);padding:10px;border-radius:8px;border:1px solid var(--border);">
                 <div style="font-size:11px;color:var(--text3);font-weight:600;">BRANCH ADDRESS</div>
                 <div style="font-size:12px;color:var(--text2);margin-top:2px;">${esc(acc.branch_address || 'N/A')}</div>
               </div>
             </div>
 
             ${acc.upi_id ? `
-              <div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);">
+              <div style="background:var(--bg-primary);padding:12px;border-radius:8px;border:1px solid var(--border);">
                 <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;">UPI ID / VPA</div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
                   <div style="font-size:14px;font-weight:700;color:var(--primary);">${esc(acc.upi_id)}</div>
@@ -1234,13 +1255,13 @@ async function loadSettingsSubTab() {
             ` : ''}
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
-              <div style="background:#f8fafc;padding:12px;border-radius:8px;border:1px solid var(--border);">
-                <div style="font-size:11px;color:var(--text3);">OPENING BALANCE</div>
+              <div style="background:var(--bg-primary);padding:12px;border-radius:8px;border:1px solid var(--border);">
+                <div style="font-size:11px;color:var(--text3);font-weight:700;">OPENING BALANCE</div>
                 <div style="font-size:15px;font-weight:700;color:var(--text1);margin-top:2px;">${formatCurrency(parseFloat(acc.opening_balance || 0))}</div>
               </div>
-              <div style="background:#f0fdf4;padding:12px;border-radius:8px;border:1px solid #bbf7d0;">
-                <div style="font-size:11px;color:#16a34a;font-weight:700;">CURRENT LIVE BALANCE</div>
-                <div style="font-size:18px;font-weight:800;color:#16a34a;margin-top:2px;">${formatCurrency(parseFloat(acc.current_balance || 0))}</div>
+              <div style="background:var(--success-bg);padding:12px;border-radius:8px;border:1px solid var(--success);">
+                <div style="font-size:11px;color:var(--success);font-weight:700;">CURRENT LIVE BALANCE</div>
+                <div style="font-size:18px;font-weight:800;color:var(--success);margin-top:2px;">${formatCurrency(parseFloat(acc.current_balance || 0))}</div>
               </div>
             </div>
           </div>
@@ -1294,17 +1315,17 @@ async function loadSettingsSubTab() {
     modal.style.boxSizing = "border-box";
 
     modal.innerHTML = `
-      <div class="modal-box" style="max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+      <div class="modal-box" style="max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
           <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
             📄 Bank Statements — ${esc(acc.bank_name)} (${esc(acc.account_number.slice(-4))})
           </h4>
-          <span class="close-modal" id="closeBankStmtBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
+          <span class="close-modal" id="closeBankStmtBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;color:var(--text2);">&times;</span>
         </div>
 
         <div style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;">
           <!-- Upload Box -->
-          <div style="border:1px solid var(--border);border-radius:10px;padding:16px;background:var(--bg1);">
+          <div style="border:1px solid var(--border);border-radius:10px;padding:16px;background:var(--bg-primary);">
             <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
               📤 Upload New Bank Statement Document
             </div>
@@ -1394,11 +1415,11 @@ async function loadSettingsSubTab() {
               <tr>
                 <td><strong style="color:var(--text1);">${periodStr}</strong></td>
                 <td>
-                  <div style="font-weight:600;">${esc(s.file_name)}</div>
+                  <div style="font-weight:600;color:var(--text1);">${esc(s.file_name)}</div>
                   ${s.notes ? `<div style="font-size:10px;color:var(--text3);">${esc(s.notes)}</div>` : ''}
                 </td>
-                <td>${dateStr}</td>
-                <td>${esc(s.uploaded_by_name || 'System')}</td>
+                <td style="color:var(--text2);">${dateStr}</td>
+                <td style="color:var(--text2);">${esc(s.uploaded_by_name || 'System')}</td>
                 <td style="text-align:center;white-space:nowrap;">
                   <a href="${s.file_url}" target="_blank" download="${esc(s.file_name)}" class="btn btn-xs btn-secondary" style="padding:2px 6px;margin-right:4px;" title="View or Download File">👁️ View</a>
                   <button type="button" class="btn btn-xs btn-danger delete-stmt-btn" data-id="${s.id}" style="padding:2px 6px;" title="Delete Statement">🗑️</button>
@@ -1419,8 +1440,14 @@ async function loadSettingsSubTab() {
                 if (d.success) {
                   showToast(d.message, "success");
                   loadStatements();
-                } else showToast(d.error || "Delete failed", "error");
-              } catch (e) { showToast(e.message, "error"); }
+                } else {
+                  showModalError(modal, d.error || "Delete failed");
+                  showToast(d.error || "Delete failed", "error");
+                }
+              } catch (e) {
+                showModalError(modal, e.message);
+                showToast(e.message, "error");
+              }
             });
           });
         }
@@ -1433,14 +1460,17 @@ async function loadSettingsSubTab() {
 
     modal.querySelector("#stmtUploadForm").addEventListener("submit", async (e) => {
       e.preventDefault();
+      hideModalError(modal);
       const fileInput = modal.querySelector("#stmtFileInput");
       if (!fileInput.files || fileInput.files.length === 0) {
+        showModalError(modal, "Please choose a statement file to upload");
         showToast("Please choose a statement file to upload", "warning");
         return;
       }
 
       const file = fileInput.files[0];
       if (file.size > 2.5 * 1024 * 1024) {
+        showModalError(modal, "File size exceeds 2.5 MB limit. Please choose a smaller or compressed file.");
         showToast("File size exceeds 2.5 MB limit. Please choose a smaller or compressed file.", "error");
         return;
       }
@@ -1469,11 +1499,16 @@ async function loadSettingsSubTab() {
           });
           const d = await res.json();
           if (d.success) {
+            hideModalError(modal);
             showToast(d.message, "success");
             modal.querySelector("#stmtUploadForm").reset();
             loadStatements();
-          } else showToast(d.error || "Upload failed", "error");
+          } else {
+            showModalError(modal, d.error || "Upload failed");
+            showToast(d.error || "Upload failed", "error");
+          }
         } catch (err) {
+          showModalError(modal, "Upload error: " + err.message);
           showToast("Upload error: " + err.message, "error");
         } finally {
           submitBtn.disabled = false;
@@ -1553,6 +1588,8 @@ async function loadSettingsSubTab() {
   // Handle Bank Account Form Submit
   on("bankAccForm", "submit", async (e) => {
     e.preventDefault();
+    const modal = document.getElementById("bankAccModal");
+    hideModalError(modal);
     const submitBtn = document.getElementById("bankAccSaveBtn") || e.target.querySelector('button[type="submit"]');
     if (submitBtn && submitBtn.disabled) return;
     const origHtml = submitBtn ? submitBtn.innerHTML : "💾 Save Bank Account";
@@ -1588,11 +1625,16 @@ async function loadSettingsSubTab() {
       });
       const data = await res.json();
       if (data.success) {
+        hideModalError(modal);
         showToast(data.message, "success");
         closeBankModal();
         fetchBankAccounts();
-      } else showToast(data.error, "error");
+      } else {
+        showModalError(modal, data.error || "Save failed");
+        showToast(data.error || "Save failed", "error");
+      }
     } catch (err) {
+      showModalError(modal, "Error saving bank account: " + err.message);
       showToast("Error saving bank account: " + err.message, "error");
     } finally {
       if (submitBtn) {
@@ -1605,6 +1647,8 @@ async function loadSettingsSubTab() {
   // Handle Adjust Balance Form Submit
   on("adjustBalForm", "submit", async (e) => {
     e.preventDefault();
+    const modal = document.getElementById("adjustBalModal");
+    hideModalError(modal);
     const submitBtn = e.target.querySelector('button[type="submit"]');
     if (submitBtn && submitBtn.disabled) return;
     const origHtml = submitBtn ? submitBtn.innerHTML : "⚖️ Save Adjusted Balance";
@@ -1637,11 +1681,16 @@ async function loadSettingsSubTab() {
       });
       const data = await res.json();
       if (data.success) {
+        hideModalError(modal);
         showToast(data.message, "success");
         closeAdjustModal();
         fetchBankAccounts();
-      } else showToast(data.error, "error");
+      } else {
+        showModalError(modal, data.error || "Adjustment failed");
+        showToast(data.error || "Adjustment failed", "error");
+      }
     } catch (err) {
+      showModalError(modal, "Error adjusting balance: " + err.message);
       showToast("Error adjusting balance: " + err.message, "error");
     } finally {
       if (submitBtn) {
@@ -2027,25 +2076,25 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
   };
 
   modal.innerHTML = `
-    <div class="modal-box" style="max-width:580px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary, #ffffff);border:1px solid var(--border, #cbd5e1);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border, #cbd5e1);background:var(--bg1, #f8fafc);flex-shrink:0;">
+    <div class="modal-box" style="max-width:580px;width:100%;max-height:90vh;display:flex;flex-direction:column;background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
         <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
           ${isEdit ? '✏️ Edit Asset / Liability Entry' : '➕ Record Asset or Liability'}
         </h4>
-        <span class="close-modal" id="closeAssetModalBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;">&times;</span>
+        <span class="close-modal" id="closeAssetModalBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;color:var(--text2);">&times;</span>
       </div>
 
       <form id="assetLiabilityForm" style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
         <!-- Type Switcher -->
         <div class="form-group" style="margin-bottom:16px;">
-          <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;">Entry Type *</label>
+          <label style="display:block;font-weight:600;font-size:13px;margin-bottom:6px;color:var(--text1);">Entry Type *</label>
           <div style="display:flex;gap:12px;">
-            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:2px solid #16a34a;border-radius:6px;cursor:pointer;background:#f0fdf4;font-weight:700;color:#16a34a;">
-              <input type="radio" name="entry_type" value="asset" ${defaultType === 'asset' ? 'checked' : ''} style="accent-color:#16a34a;">
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:2px solid var(--success);border-radius:6px;cursor:pointer;background:var(--success-bg);font-weight:700;color:var(--success);">
+              <input type="radio" name="entry_type" value="asset" ${defaultType === 'asset' ? 'checked' : ''} style="accent-color:var(--success);">
               🟢 ASSET
             </label>
-            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:2px solid #dc2626;border-radius:6px;cursor:pointer;background:#fef2f2;font-weight:700;color:#dc2626;">
-              <input type="radio" name="entry_type" value="liability" ${defaultType === 'liability' ? 'checked' : ''} style="accent-color:#dc2626;">
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:2px solid var(--error);border-radius:6px;cursor:pointer;background:var(--error-bg);font-weight:700;color:var(--error);">
+              <input type="radio" name="entry_type" value="liability" ${defaultType === 'liability' ? 'checked' : ''} style="accent-color:var(--error);">
               🔴 LIABILITY
             </label>
           </div>
@@ -2272,10 +2321,12 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    hideModalError(modal);
     const submitBtn = modal.querySelector("#saveAssetModalBtn");
     
     const finalTitle = partSelect.value === "__custom__" ? partInput.value.trim() : (partInput.value || partSelect.value).trim();
     if (!finalTitle) {
+      showModalError(modal, "Please specify a particulars / title name");
       return showToast("Please specify a particulars / title name", "warning");
     }
 
@@ -2306,13 +2357,16 @@ function openAddAssetLiabilityModal(item = null, onSuccess = null) {
       });
       const data = await res.json();
       if (data.success) {
+        hideModalError(modal);
         showToast(data.message, "success");
         closeModal();
         if (onSuccess) onSuccess();
       } else {
+        showModalError(modal, data.error || "Failed to save entry");
         showToast(data.error || "Failed to save entry", "error");
       }
     } catch (err) {
+      showModalError(modal, "Error saving record: " + err.message);
       showToast("Error saving record: " + err.message, "error");
     } finally {
       setButtonLoading(submitBtn, false);

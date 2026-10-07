@@ -1444,7 +1444,7 @@ module.exports = async function handler(req, res) {
       // HR
       { cat: 'hr', key: 'hr_today_tasks', label: 'Today Tasks', icon: '📋', sort: 0 },
       { cat: 'hr', key: 'hr_employees', label: 'Employees', icon: '👤', sort: 1 },
-      { cat: 'hr', key: 'hr_dealers', label: 'dealers', icon: '🏪', sort: 2 },
+      { cat: 'hr', key: 'hr_dealers', label: 'Dealers', icon: '🏪', sort: 2 },
       { cat: 'hr', key: 'hr_financers', label: 'Financers', icon: '🏛️', sort: 3 },
       { cat: 'hr', key: 'hr_customers', label: 'Customers', icon: '🧑', sort: 4 },
       { cat: 'hr', key: 'hr_attendance', label: 'Attendance', icon: '📅', sort: 5 },

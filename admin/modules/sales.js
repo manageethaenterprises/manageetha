@@ -717,6 +717,7 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -957,6 +958,7 @@ function printIncentiveVoucher(leadName, salesList, itemsList = []) {
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(htmlDoc);
   printWin.document.close();
 }
@@ -1675,6 +1677,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -2128,6 +2131,7 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -3206,6 +3210,7 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -3426,6 +3431,7 @@ window.printIncentiveVoucher = function(leadName, salesList = [], itemsList = []
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 };
@@ -6441,6 +6447,7 @@ function printPaymentReceipt(r, returns = []) {
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -6997,6 +7004,7 @@ function printSalesReturnReceipt(returnData, saleData, productData, companyData)
     </html>
   `;
 
+  try { printWin.document.open(); } catch(e){}
   printWin.document.write(html);
   printWin.document.close();
 }

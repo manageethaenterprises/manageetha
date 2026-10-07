@@ -976,9 +976,7 @@ function renderPage3ReturnAttachment(sale, returns = [], companyObj = {}) {
   const totalRefunded = returns.reduce((sum, r) => sum + parseFloat(r.refund_amount || 0), 0);
 
   return `
-    <div class="page-break" style="page-break-before: always; break-before: page;"></div>
-    
-    <div style="padding: 20px; font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; max-width: 900px; margin: 0 auto; page-break-before: always;">
+    <div style="padding: 20px; font-family: 'Segoe UI', Arial, sans-serif; color: #000; background: #fff; max-width: 900px; margin: 0 auto; page-break-before: always; break-before: page;">
       <!-- Header Stamp & Notice -->
       <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #dc3545; padding-bottom: 8px; margin-bottom: 12px;">
         <div style="font-weight:bold; font-size:15px; color:#dc3545; letter-spacing:0.5px;">PAGE 3: SALES RETURN & REFUND ATTACHMENT VOUCHER</div>

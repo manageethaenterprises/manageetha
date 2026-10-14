@@ -586,6 +586,12 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
   const printWin = window.open('', '_blank', 'width=900,height=1000');
   if (!printWin) return showToast("Please allow popups to generate quotation", "warning");
 
+  let rawHyp = partyDetails.hypothecation || partyDetails.hypothication || '';
+  if (!rawHyp && partyDetails.payment_mode === 'finance') {
+    rawHyp = partyDetails.financer_name;
+  }
+  const cleanHypText = rawHyp ? rawHyp.replace(/^hypoth[a-z]+:\s*/i, '').trim().toUpperCase() : '';
+
   const compIdToFind = (selectedCompanyId && selectedCompanyId !== "all") ? parseInt(selectedCompanyId) : 1;
   const compList = (window.currentCompanies && window.currentCompanies.length > 0) ? window.currentCompanies : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
   const matchedComp = compList.find(c => c.id == compIdToFind) || compList[0] || {};
@@ -691,8 +697,15 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
             <div><strong>Issued Date:</strong> ${quoteDate}</div>
             <div><strong>Validity:</strong> 30 Days from date of issue</div>
             <div><strong>Supply Type:</strong> ${esc(partyDetails.supply_type || 'Direct Sale')}</div>
+            ${partyDetails.payment_mode ? `<div><strong>Payment Mode:</strong> ${esc(partyDetails.payment_mode === 'finance' ? 'Finance (Bajaj / TVS)' : partyDetails.payment_mode === 'bank' ? 'Bank Transfer' : partyDetails.payment_mode.toUpperCase())}</div>` : ''}
           </div>
         </div>
+
+        ${cleanHypText ? `
+          <div style="border:1.5px solid #000;padding:6px 10px;margin-bottom:12px;font-weight:bold;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:#000;background:#fff;">
+            HYPOTHICATION: ${esc(cleanHypText)}
+          </div>
+        ` : ''}
 
         <table>
           <thead>
@@ -4574,10 +4587,29 @@ async function loadSalesPOSSubTab() {
           <button type="button" class="btn btn-sm btn-outline" id="quickAddFinBtn" style="height:38px;">+ Add Financer</button>
         </div>
         <div class="form-group" style="margin-top:8px;">
+          <label class="form-label" style="font-weight:700;color:var(--primary);">🏦 Hypothecation Clause / Financer Details (for Quotation & Sale) *</label>
+          <input type="text" id="posHypothecation" class="form-input" placeholder="e.g. TVS CREDIT SERVICE LTD, VISHAKAPATNAM" style="text-transform:uppercase;font-weight:700;">
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Auto-filled from selected financer or enter custom branch/financer</div>
+        </div>
+        <div class="form-group" style="margin-top:8px;">
           <label class="form-label">Financed Amount (₹)</label>
           <input type="number" step="0.01" id="posFinancedAmt" class="form-input" placeholder="0.00">
         </div>
       `;
+
+      const finSel = document.getElementById("posFinancerId");
+      const hypInp = document.getElementById("posHypothecation");
+      const syncFinHyp = () => {
+        const v = finSel?.value;
+        const matched = financersList.find(f => f.id == v);
+        if (matched && hypInp) {
+          const loc = (matched.address || matched.city || '').trim();
+          hypInp.value = `${matched.name}${loc ? ', ' + loc : ''}`.toUpperCase();
+        } else if (finSel && finSel.selectedIndex > 0 && hypInp) {
+          hypInp.value = finSel.options[finSel.selectedIndex].text.replace(/\s*\(.*?\)\s*$/, '').toUpperCase();
+        }
+      };
+      finSel?.addEventListener("change", syncFinHyp);
 
       on("quickAddFinBtn", "click", () => {
         openAddFinancerModal(async (newFin) => {
@@ -4587,6 +4619,7 @@ async function loadSalesPOSSubTab() {
             finSel.innerHTML = `<option value="">-- Select Registered Financer --</option>` +
               financersList.map(f => `<option value="${f.id}">${esc(f.name)} (${esc(f.type || 'Finance')})</option>`).join("");
             finSel.value = newFin.id;
+            syncFinHyp();
           }
         });
       });
@@ -5428,6 +5461,31 @@ async function loadSalesPOSSubTab() {
     const custName = document.getElementById("posCustName")?.value.trim();
     if (!custName) return showToast("Enter customer name to generate quotation", "error");
 
+    const payMode = document.getElementById("posPayMode")?.value || "cash";
+    let hypVal = (document.getElementById("posHypothecation")?.value || document.getElementById("posBankHypothecation")?.value || "").trim();
+
+    if (!hypVal && payMode === "finance") {
+      const finSel = document.getElementById("posFinancerId");
+      if (finSel && finSel.value) {
+        const matchedFin = financersList.find(f => f.id == finSel.value);
+        if (matchedFin) {
+          const loc = (matchedFin.address || matchedFin.city || '').trim();
+          hypVal = `${matchedFin.name}${loc ? ', ' + loc : ''}`.toUpperCase();
+        } else if (finSel.selectedIndex > 0) {
+          hypVal = finSel.options[finSel.selectedIndex].text.replace(/\s*\(.*?\)\s*$/, '').toUpperCase();
+        }
+      }
+      if (!hypVal) {
+        const entered = prompt("Enter Financer / Bank Hypothecation for this Quotation (e.g. TVS CREDIT SERVICE LTD, VISHAKAPATNAM):", "TVS CREDIT SERVICE LTD, VISHAKAPATNAM");
+        if (entered) hypVal = entered.trim();
+      }
+    } else if (!hypVal && payMode === "bank") {
+      const recBankSel = document.getElementById("posRecBankSelect");
+      if (recBankSel && recBankSel.value) {
+        hypVal = recBankSel.options[recBankSel.selectedIndex]?.text?.trim() || "";
+      }
+    }
+
     const partyDetails = {
       customer_name: custName,
       father_name: document.getElementById("posFatherName")?.value.trim(),
@@ -5435,7 +5493,9 @@ async function loadSalesPOSSubTab() {
       mandal: document.getElementById("posMandal")?.value.trim(),
       cell_phone: document.getElementById("posCellPhone")?.value.trim(),
       customer_gstin: document.getElementById("posCustGstin")?.value.trim(),
-      supply_type: document.getElementById("posSupplyType")?.value
+      supply_type: document.getElementById("posSupplyType")?.value,
+      payment_mode: payMode,
+      hypothecation: hypVal
     };
 
     const grandInp = document.getElementById("posGrandTotalInput");

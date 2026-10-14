@@ -236,15 +236,26 @@ module.exports = async function handler(req, res) {
         const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
         const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
 
-        rows = await sql`
-          SELECT c.*, p.name as parent_name
-          FROM companies c
-          LEFT JOIN companies p ON c.parent_company_id = p.id
-          WHERE c.id = ${rootId}
-             OR c.parent_company_id = ${rootId}
-             OR (${gstinVal ? sql`c.gstin IS NOT NULL AND c.gstin != '' AND LOWER(TRIM(c.gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
-          ORDER BY c.id ASC
-        `;
+        if (gstinVal) {
+          rows = await sql`
+            SELECT c.*, p.name as parent_name
+            FROM companies c
+            LEFT JOIN companies p ON c.parent_company_id = p.id
+            WHERE c.id = ${rootId}
+               OR c.parent_company_id = ${rootId}
+               OR (c.gstin IS NOT NULL AND c.gstin != '' AND LOWER(TRIM(c.gstin)) = LOWER(TRIM(${gstinVal})))
+            ORDER BY c.id ASC
+          `;
+        } else {
+          rows = await sql`
+            SELECT c.*, p.name as parent_name
+            FROM companies c
+            LEFT JOIN companies p ON c.parent_company_id = p.id
+            WHERE c.id = ${rootId}
+               OR c.parent_company_id = ${rootId}
+            ORDER BY c.id ASC
+          `;
+        }
       } else {
         rows = [];
       }

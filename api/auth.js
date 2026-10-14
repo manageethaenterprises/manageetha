@@ -132,13 +132,22 @@ function getISTTime(d = new Date()) {
         const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
         const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
 
-        companies = await sql`
-          SELECT * FROM companies 
-          WHERE id = ${rootId}
-             OR parent_company_id = ${rootId}
-             OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
-          ORDER BY id ASC
-        `;
+        if (gstinVal) {
+          companies = await sql`
+            SELECT * FROM companies 
+            WHERE id = ${rootId}
+               OR parent_company_id = ${rootId}
+               OR (gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal})))
+            ORDER BY id ASC
+          `;
+        } else {
+          companies = await sql`
+            SELECT * FROM companies 
+            WHERE id = ${rootId}
+               OR parent_company_id = ${rootId}
+            ORDER BY id ASC
+          `;
+        }
       }
 
       return res.status(200).json({
@@ -273,13 +282,22 @@ function getISTTime(d = new Date()) {
         const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
         const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
 
-        companies = await sql`
-          SELECT * FROM companies 
-          WHERE id = ${rootId}
-             OR parent_company_id = ${rootId}
-             OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
-          ORDER BY id ASC
-        `;
+        if (gstinVal) {
+          companies = await sql`
+            SELECT * FROM companies 
+            WHERE id = ${rootId}
+               OR parent_company_id = ${rootId}
+               OR (gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal})))
+            ORDER BY id ASC
+          `;
+        } else {
+          companies = await sql`
+            SELECT * FROM companies 
+            WHERE id = ${rootId}
+               OR parent_company_id = ${rootId}
+            ORDER BY id ASC
+          `;
+        }
       }
 
       return res.status(200).json({

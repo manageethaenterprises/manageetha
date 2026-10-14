@@ -587,8 +587,12 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
   if (!printWin) return showToast("Please allow popups to generate quotation", "warning");
 
   let rawHyp = partyDetails.hypothecation || partyDetails.hypothication || '';
-  if (!rawHyp && partyDetails.payment_mode === 'finance') {
-    rawHyp = partyDetails.financer_name;
+  if (!rawHyp) {
+    if (partyDetails.payment_mode === 'finance') {
+      rawHyp = partyDetails.financer_name || '';
+    } else if (partyDetails.payment_mode === 'bank') {
+      rawHyp = partyDetails.receiving_bank || '';
+    }
   }
   const cleanHypText = rawHyp ? rawHyp.replace(/^hypoth[a-z]+:\s*/i, '').trim().toUpperCase() : '';
 
@@ -697,7 +701,7 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
             <div><strong>Issued Date:</strong> ${quoteDate}</div>
             <div><strong>Validity:</strong> 30 Days from date of issue</div>
             <div><strong>Supply Type:</strong> ${esc(partyDetails.supply_type || 'Direct Sale')}</div>
-            ${partyDetails.payment_mode ? `<div><strong>Payment Mode:</strong> ${esc(partyDetails.payment_mode === 'finance' ? 'Finance (Bajaj / TVS)' : partyDetails.payment_mode === 'bank' ? 'Bank Transfer' : partyDetails.payment_mode.toUpperCase())}</div>` : ''}
+            ${partyDetails.payment_mode ? `<div><strong>Payment Mode:</strong> ${esc(partyDetails.payment_mode === 'finance' ? 'Finance (Bajaj / TVS)' : partyDetails.payment_mode === 'bank' ? 'Bank Transfer' : partyDetails.payment_mode === 'upi' ? 'UPI' : partyDetails.payment_mode === 'credit' ? 'Credit' : 'Cash')}</div>` : ''}
           </div>
         </div>
 
@@ -4100,6 +4104,15 @@ async function loadSalesPOSSubTab() {
             </div>
           </div>
 
+          <!-- HYPOTHICATION (AVAILABLE FOR ALL PAYMENT MODES) -->
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label" style="font-weight:700;color:var(--primary);display:flex;justify-content:space-between;align-items:center;">
+              <span>🏦 Hypothecation / Financer / Bank Details (for Quotation)</span>
+              <span style="font-size:11px;font-weight:normal;color:var(--text3);text-transform:none;">Appears on Quotation above table</span>
+            </label>
+            <input type="text" id="posHypothecation" class="form-input" placeholder="e.g. TVS CREDIT SERVICE LTD, VISHAKAPATNAM / SBI / FINANCER NAME" style="text-transform:uppercase;font-weight:700;">
+          </div>
+
           <!-- INITIAL PAID AMOUNT & SETTLEMENT TYPE INPUT FOR ALL PAYMENT MODES -->
           <div class="form-group" style="background:var(--bg-secondary);padding:14px;border-radius:10px;border:2px solid var(--primary-glow);margin:12px 0;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -4585,11 +4598,6 @@ async function loadSalesPOSSubTab() {
             </select>
           </div>
           <button type="button" class="btn btn-sm btn-outline" id="quickAddFinBtn" style="height:38px;">+ Add Financer</button>
-        </div>
-        <div class="form-group" style="margin-top:8px;">
-          <label class="form-label" style="font-weight:700;color:var(--primary);">🏦 Hypothecation Clause / Financer Details (for Quotation & Sale) *</label>
-          <input type="text" id="posHypothecation" class="form-input" placeholder="e.g. TVS CREDIT SERVICE LTD, VISHAKAPATNAM" style="text-transform:uppercase;font-weight:700;">
-          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Auto-filled from selected financer or enter custom branch/financer</div>
         </div>
         <div class="form-group" style="margin-top:8px;">
           <label class="form-label">Financed Amount (₹)</label>
@@ -5462,27 +5470,25 @@ async function loadSalesPOSSubTab() {
     if (!custName) return showToast("Enter customer name to generate quotation", "error");
 
     const payMode = document.getElementById("posPayMode")?.value || "cash";
-    let hypVal = (document.getElementById("posHypothecation")?.value || document.getElementById("posBankHypothecation")?.value || "").trim();
+    let hypVal = (document.getElementById("posHypothecation")?.value || "").trim();
 
-    if (!hypVal && payMode === "finance") {
-      const finSel = document.getElementById("posFinancerId");
-      if (finSel && finSel.value) {
-        const matchedFin = financersList.find(f => f.id == finSel.value);
-        if (matchedFin) {
-          const loc = (matchedFin.address || matchedFin.city || '').trim();
-          hypVal = `${matchedFin.name}${loc ? ', ' + loc : ''}`.toUpperCase();
-        } else if (finSel.selectedIndex > 0) {
-          hypVal = finSel.options[finSel.selectedIndex].text.replace(/\s*\(.*?\)\s*$/, '').toUpperCase();
+    if (!hypVal) {
+      if (payMode === "finance") {
+        const finSel = document.getElementById("posFinancerId");
+        if (finSel && finSel.value) {
+          const matchedFin = financersList.find(f => f.id == finSel.value);
+          if (matchedFin) {
+            const loc = (matchedFin.address || matchedFin.city || '').trim();
+            hypVal = `${matchedFin.name}${loc ? ', ' + loc : ''}`.toUpperCase();
+          } else if (finSel.selectedIndex > 0) {
+            hypVal = finSel.options[finSel.selectedIndex].text.replace(/\s*\(.*?\)\s*$/, '').toUpperCase();
+          }
         }
-      }
-      if (!hypVal) {
-        const entered = prompt("Enter Financer / Bank Hypothecation for this Quotation (e.g. TVS CREDIT SERVICE LTD, VISHAKAPATNAM):", "TVS CREDIT SERVICE LTD, VISHAKAPATNAM");
-        if (entered) hypVal = entered.trim();
-      }
-    } else if (!hypVal && payMode === "bank") {
-      const recBankSel = document.getElementById("posRecBankSelect");
-      if (recBankSel && recBankSel.value) {
-        hypVal = recBankSel.options[recBankSel.selectedIndex]?.text?.trim() || "";
+      } else if (payMode === "bank") {
+        const recBankSel = document.getElementById("posRecBankSelect");
+        if (recBankSel && recBankSel.value) {
+          hypVal = recBankSel.options[recBankSel.selectedIndex]?.text?.trim() || "";
+        }
       }
     }
 

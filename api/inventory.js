@@ -581,13 +581,23 @@ module.exports = async function handler(req, res) {
           const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
           const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
 
-          const allowed = await sql`
-            SELECT id FROM companies 
-            WHERE id = ${requestedCompId} 
-              AND (id = ${rootId} 
-                   OR parent_company_id = ${rootId} 
-                   OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`}))
-          `;
+          let allowed;
+          if (gstinVal) {
+            allowed = await sql`
+              SELECT id FROM companies 
+              WHERE id = ${requestedCompId} 
+                AND (id = ${rootId} 
+                     OR parent_company_id = ${rootId} 
+                     OR (gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))))
+            `;
+          } else {
+            allowed = await sql`
+              SELECT id FROM companies 
+              WHERE id = ${requestedCompId} 
+                AND (id = ${rootId} 
+                     OR parent_company_id = ${rootId})
+            `;
+          }
           if (allowed.length > 0) {
             targetCompId = requestedCompId;
           } else {
@@ -826,12 +836,21 @@ module.exports = async function handler(req, res) {
         const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
         const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
 
-        const familyRows = await sql`
-          SELECT id FROM companies 
-          WHERE id = ${rootId} 
-             OR parent_company_id = ${rootId}
-             OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
-        `;
+        let familyRows;
+        if (gstinVal) {
+          familyRows = await sql`
+            SELECT id FROM companies 
+            WHERE id = ${rootId} 
+               OR parent_company_id = ${rootId}
+               OR (gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal})))
+          `;
+        } else {
+          familyRows = await sql`
+            SELECT id FROM companies 
+            WHERE id = ${rootId} 
+               OR parent_company_id = ${rootId}
+          `;
+        }
         const allFamilyIds = familyRows.map(r => r.id);
         if (!allFamilyIds.includes(userCompId)) allFamilyIds.push(userCompId);
 

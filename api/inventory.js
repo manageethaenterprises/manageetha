@@ -567,10 +567,35 @@ module.exports = async function handler(req, res) {
       const isSuperAdmin = (userRole === "superadmin");
 
       let targetCompId = null;
-      if (!isSuperAdmin) {
-        targetCompId = safeInt(user.company_id) || 1;
-      } else if (!isAll && compQuery && compQuery !== 'all') {
-        targetCompId = safeInt(compQuery);
+      if (isSuperAdmin) {
+        if (!isAll && compQuery && compQuery !== 'all') {
+          targetCompId = safeInt(compQuery);
+        }
+      } else {
+        const userCompId = safeInt(user.company_id) || 1;
+        const requestedCompId = safeInt(compQuery);
+        if (requestedCompId && requestedCompId !== userCompId) {
+          // Check if requestedCompId belongs to user's company family
+          const uCompRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
+          const uComp = uCompRows[0];
+          const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
+          const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
+
+          const allowed = await sql`
+            SELECT id FROM companies 
+            WHERE id = ${requestedCompId} 
+              AND (id = ${rootId} 
+                   OR parent_company_id = ${rootId} 
+                   OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`}))
+          `;
+          if (allowed.length > 0) {
+            targetCompId = requestedCompId;
+          } else {
+            targetCompId = userCompId;
+          }
+        } else {
+          targetCompId = userCompId;
+        }
       }
 
       let rows;
@@ -781,65 +806,163 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ INTER-BRANCH TRANSFERS ═══════════════
     else if (action === "inter-branch-list") {
-      const cId = safeInt(req.query.company_id || user.company_id);
-      let rows;
-      if (!cId || isAll) {
-        rows = await sql`
-          SELECT t.*, 
-                 t.transfer_number as transfer_code,
-                 t.vehicle_details as vehicle_no,
-                 t.driver_info as driver_name,
-                 t.receipt_attachment_url as receipt_image,
-                 t.dispatch_date_time as dispatched_at,
-                 t.received_date_time as received_at,
-                 fc.name as from_company_name, 
-                 fc.gstin as from_company_gstin,
-                 fc.phone as from_company_phone,
-                 fc.address as from_company_address,
-                 fc.hsn_code as from_company_hsn,
-                 tc.name as to_company_name,
-                 tc.gstin as to_company_gstin,
-                 tc.phone as to_company_phone,
-                 tc.address as to_company_address,
-                 COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
-                 COALESCE(p.gst_rate, 18) as gst_rate,
-                 COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
-                 p.current_stock as source_current_stock
-          FROM inter_branch_transfers t
-          LEFT JOIN companies fc ON t.from_company_id = fc.id
-          LEFT JOIN companies tc ON t.to_company_id = tc.id
-          LEFT JOIN products p ON t.product_id = p.id
-          ORDER BY t.created_at DESC
-        `;
+      const statusFilter = req.query.status || "all";
+      const requestedCompId = safeInt(req.query.company_id);
+      const userRole = (user.role || "").toLowerCase();
+      const isSuperAdmin = (userRole === "superadmin");
+
+      let targetCompanyIds = [];
+
+      if (isSuperAdmin) {
+        if (requestedCompId && !isAll) {
+          targetCompanyIds = [requestedCompId];
+          const childBranches = await sql`SELECT id FROM companies WHERE parent_company_id = ${requestedCompId}`;
+          childBranches.forEach(b => { if (!targetCompanyIds.includes(b.id)) targetCompanyIds.push(b.id); });
+        }
       } else {
-        rows = await sql`
-          SELECT t.*, 
-                 t.transfer_number as transfer_code,
-                 t.vehicle_details as vehicle_no,
-                 t.driver_info as driver_name,
-                 t.receipt_attachment_url as receipt_image,
-                 t.dispatch_date_time as dispatched_at,
-                 t.received_date_time as received_at,
-                 fc.name as from_company_name, 
-                 fc.gstin as from_company_gstin,
-                 fc.phone as from_company_phone,
-                 fc.address as from_company_address,
-                 fc.hsn_code as from_company_hsn,
-                 tc.name as to_company_name,
-                 tc.gstin as to_company_gstin,
-                 tc.phone as to_company_phone,
-                 tc.address as to_company_address,
-                 COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
-                 COALESCE(p.gst_rate, 18) as gst_rate,
-                 COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
-                 p.current_stock as source_current_stock
-          FROM inter_branch_transfers t
-          LEFT JOIN companies fc ON t.from_company_id = fc.id
-          LEFT JOIN companies tc ON t.to_company_id = tc.id
-          LEFT JOIN products p ON t.product_id = p.id
-          WHERE t.from_company_id = ${cId} OR t.to_company_id = ${cId}
-          ORDER BY t.created_at DESC
+        const userCompId = safeInt(user.company_id) || 1;
+        const compRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
+        const uComp = compRows[0];
+        const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
+        const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
+
+        const familyRows = await sql`
+          SELECT id FROM companies 
+          WHERE id = ${rootId} 
+             OR parent_company_id = ${rootId}
+             OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
         `;
+        const allFamilyIds = familyRows.map(r => r.id);
+        if (!allFamilyIds.includes(userCompId)) allFamilyIds.push(userCompId);
+
+        if (requestedCompId && allFamilyIds.includes(requestedCompId)) {
+          targetCompanyIds = [requestedCompId];
+        } else {
+          targetCompanyIds = allFamilyIds;
+        }
+      }
+
+      let rows;
+      if (targetCompanyIds.length > 0) {
+        if (statusFilter !== "all") {
+          rows = await sql`
+            SELECT t.*, 
+                   t.transfer_number as transfer_code,
+                   t.vehicle_details as vehicle_no,
+                   t.driver_info as driver_name,
+                   t.receipt_attachment_url as receipt_image,
+                   t.dispatch_date_time as dispatched_at,
+                   t.received_date_time as received_at,
+                   fc.name as from_company_name, 
+                   fc.gstin as from_company_gstin,
+                   fc.phone as from_company_phone,
+                   fc.address as from_company_address,
+                   fc.hsn_code as from_company_hsn,
+                   tc.name as to_company_name,
+                   tc.gstin as to_company_gstin,
+                   tc.phone as to_company_phone,
+                   tc.address as to_company_address,
+                   COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
+                   COALESCE(p.gst_rate, 18) as gst_rate,
+                   COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
+                   p.current_stock as source_current_stock
+            FROM inter_branch_transfers t
+            LEFT JOIN companies fc ON t.from_company_id = fc.id
+            LEFT JOIN companies tc ON t.to_company_id = tc.id
+            LEFT JOIN products p ON t.product_id = p.id
+            WHERE t.status = ${statusFilter}
+              AND (t.from_company_id = ANY(${targetCompanyIds}) OR t.to_company_id = ANY(${targetCompanyIds}))
+            ORDER BY t.created_at DESC
+          `;
+        } else {
+          rows = await sql`
+            SELECT t.*, 
+                   t.transfer_number as transfer_code,
+                   t.vehicle_details as vehicle_no,
+                   t.driver_info as driver_name,
+                   t.receipt_attachment_url as receipt_image,
+                   t.dispatch_date_time as dispatched_at,
+                   t.received_date_time as received_at,
+                   fc.name as from_company_name, 
+                   fc.gstin as from_company_gstin,
+                   fc.phone as from_company_phone,
+                   fc.address as from_company_address,
+                   fc.hsn_code as from_company_hsn,
+                   tc.name as to_company_name,
+                   tc.gstin as to_company_gstin,
+                   tc.phone as to_company_phone,
+                   tc.address as to_company_address,
+                   COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
+                   COALESCE(p.gst_rate, 18) as gst_rate,
+                   COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
+                   p.current_stock as source_current_stock
+            FROM inter_branch_transfers t
+            LEFT JOIN companies fc ON t.from_company_id = fc.id
+            LEFT JOIN companies tc ON t.to_company_id = tc.id
+            LEFT JOIN products p ON t.product_id = p.id
+            WHERE (t.from_company_id = ANY(${targetCompanyIds}) OR t.to_company_id = ANY(${targetCompanyIds}))
+            ORDER BY t.created_at DESC
+          `;
+        }
+      } else {
+        if (statusFilter !== "all") {
+          rows = await sql`
+            SELECT t.*, 
+                   t.transfer_number as transfer_code,
+                   t.vehicle_details as vehicle_no,
+                   t.driver_info as driver_name,
+                   t.receipt_attachment_url as receipt_image,
+                   t.dispatch_date_time as dispatched_at,
+                   t.received_date_time as received_at,
+                   fc.name as from_company_name, 
+                   fc.gstin as from_company_gstin,
+                   fc.phone as from_company_phone,
+                   fc.address as from_company_address,
+                   fc.hsn_code as from_company_hsn,
+                   tc.name as to_company_name,
+                   tc.gstin as to_company_gstin,
+                   tc.phone as to_company_phone,
+                   tc.address as to_company_address,
+                   COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
+                   COALESCE(p.gst_rate, 18) as gst_rate,
+                   COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
+                   p.current_stock as source_current_stock
+            FROM inter_branch_transfers t
+            LEFT JOIN companies fc ON t.from_company_id = fc.id
+            LEFT JOIN companies tc ON t.to_company_id = tc.id
+            LEFT JOIN products p ON t.product_id = p.id
+            WHERE t.status = ${statusFilter}
+            ORDER BY t.created_at DESC
+          `;
+        } else {
+          rows = await sql`
+            SELECT t.*, 
+                   t.transfer_number as transfer_code,
+                   t.vehicle_details as vehicle_no,
+                   t.driver_info as driver_name,
+                   t.receipt_attachment_url as receipt_image,
+                   t.dispatch_date_time as dispatched_at,
+                   t.received_date_time as received_at,
+                   fc.name as from_company_name, 
+                   fc.gstin as from_company_gstin,
+                   fc.phone as from_company_phone,
+                   fc.address as from_company_address,
+                   fc.hsn_code as from_company_hsn,
+                   tc.name as to_company_name,
+                   tc.gstin as to_company_gstin,
+                   tc.phone as to_company_phone,
+                   tc.address as to_company_address,
+                   COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
+                   COALESCE(p.gst_rate, 18) as gst_rate,
+                   COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
+                   p.current_stock as source_current_stock
+            FROM inter_branch_transfers t
+            LEFT JOIN companies fc ON t.from_company_id = fc.id
+            LEFT JOIN companies tc ON t.to_company_id = tc.id
+            LEFT JOIN products p ON t.product_id = p.id
+            ORDER BY t.created_at DESC
+          `;
+        }
       }
       return res.status(200).json({ success: true, transfers: rows });
     }
@@ -882,6 +1005,25 @@ module.exports = async function handler(req, res) {
 
       if (!isSameFamily) {
         return res.status(400).json({ error: "Stock transfer is only allowed between branches of the same company (matching parent group or GSTIN)." });
+      }
+
+      // If not superadmin, verify that user belongs to this company family
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "superadmin") {
+        const userCompId = safeInt(user.company_id) || 1;
+        const uCompRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
+        const uComp = uCompRows[0];
+        const rootUser = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
+        const userInFamily = (
+          userCompId === fCompId ||
+          userCompId === tCompId ||
+          rootUser === rootFrom ||
+          rootUser === rootTo ||
+          (uComp?.gstin && cFrom.gstin && uComp.gstin.trim().toLowerCase() === cFrom.gstin.trim().toLowerCase())
+        );
+        if (!userInFamily) {
+          return res.status(403).json({ error: "Unauthorized. You can only dispatch stock between branches in your own company group." });
+        }
       }
 
       const prodRows = await sql`SELECT * FROM products WHERE id = ${pId} AND company_id = ${fCompId}`;
@@ -940,15 +1082,27 @@ module.exports = async function handler(req, res) {
       const recNotes = req.body?.receiving_notes || body.receiving_notes || null;
       const receiveTime = req.body?.received_date_time ? new Date(req.body.received_date_time) : new Date();
 
-      // Find matching product in destination company (by name, model, hsn_sac)
-      let destProd = await sql`
-        SELECT * FROM products 
-        WHERE company_id = ${transfer.to_company_id} 
-          AND LOWER(name) = LOWER(${transfer.product_name})
-          AND (model IS NULL OR LOWER(model) = LOWER(${transfer.model || ''}))
-          AND is_active = true
-        LIMIT 1
-      `;
+      // Find matching product in destination company (by name and model)
+      let destProd = [];
+      if (transfer.model) {
+        destProd = await sql`
+          SELECT * FROM products 
+          WHERE company_id = ${transfer.to_company_id} 
+            AND LOWER(name) = LOWER(${transfer.product_name})
+            AND LOWER(model) = LOWER(${transfer.model})
+            AND is_active = true
+          LIMIT 1
+        `;
+      } else {
+        destProd = await sql`
+          SELECT * FROM products 
+          WHERE company_id = ${transfer.to_company_id} 
+            AND LOWER(name) = LOWER(${transfer.product_name})
+            AND (model IS NULL OR model = '')
+            AND is_active = true
+          LIMIT 1
+        `;
+      }
 
       if (destProd.length > 0) {
         // Increase stock at destination
@@ -1003,8 +1157,8 @@ module.exports = async function handler(req, res) {
       const userRole = (user.role || "").toLowerCase();
 
       if (action === "inter-branch-delete") {
-        if (userRole !== 'superadmin') {
-          return res.status(403).json({ error: "Only Super Admin can delete transfer records." });
+        if (userRole !== 'superadmin' && userRole !== 'storeadmin' && userRole !== 'admin') {
+          return res.status(403).json({ error: "Only Super Admin and Store Admin can delete transfer records." });
         }
         await sql`DELETE FROM inter_branch_transfers WHERE id = ${transferId}`;
         return res.status(200).json({ success: true, message: "Transfer record deleted successfully." });
@@ -1018,7 +1172,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ success: true, message: `Transfer cancelled and ${transfer.quantity} units restored to source branch.` });
       }
 
-      if (userRole === 'superadmin') {
+      if (userRole === 'superadmin' || userRole === 'storeadmin' || userRole === 'admin') {
         await sql`DELETE FROM inter_branch_transfers WHERE id = ${transferId}`;
         return res.status(200).json({ success: true, message: "Transfer record deleted successfully." });
       } else {
@@ -2421,240 +2575,6 @@ module.exports = async function handler(req, res) {
 
       else {
         return res.status(400).json({ error: "Invalid report type specified" });
-      }
-    }
-
-    // ═══════════════ INTER-BRANCH STOCK TRANSFERS ═══════════════
-    else if (action === "inter-branch-list") {
-      const statusFilter = req.query.status || "all";
-      let rows;
-      if (statusFilter !== "all") {
-        rows = await sql`
-          SELECT t.*, 
-                 t.transfer_number as transfer_code,
-                 t.vehicle_details as vehicle_no,
-                 t.driver_info as driver_name,
-                 t.receipt_attachment_url as receipt_image,
-                 t.dispatch_date_time as dispatched_at,
-                 t.received_date_time as received_at,
-                 fc.name as from_company_name, 
-                 fc.gstin as from_company_gstin,
-                 fc.phone as from_company_phone,
-                 fc.address as from_company_address,
-                 fc.hsn_code as from_company_hsn,
-                 tc.name as to_company_name,
-                 tc.gstin as to_company_gstin,
-                 tc.phone as to_company_phone,
-                 tc.address as to_company_address,
-                 COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
-                 COALESCE(p.gst_rate, 18) as gst_rate,
-                 COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
-                 p.current_stock as source_current_stock
-          FROM inter_branch_transfers t
-          LEFT JOIN companies fc ON t.from_company_id = fc.id
-          LEFT JOIN companies tc ON t.to_company_id = tc.id
-          LEFT JOIN products p ON t.product_id = p.id
-          WHERE t.status = ${statusFilter} AND (t.from_company_id = ${safeInt(compQuery) || 1} OR t.to_company_id = ${safeInt(compQuery) || 1} OR ${isAll})
-          ORDER BY t.created_at DESC
-        `;
-      } else {
-        rows = await sql`
-          SELECT t.*, 
-                 t.transfer_number as transfer_code,
-                 t.vehicle_details as vehicle_no,
-                 t.driver_info as driver_name,
-                 t.receipt_attachment_url as receipt_image,
-                 t.dispatch_date_time as dispatched_at,
-                 t.received_date_time as received_at,
-                 fc.name as from_company_name, 
-                 fc.gstin as from_company_gstin,
-                 fc.phone as from_company_phone,
-                 fc.address as from_company_address,
-                 fc.hsn_code as from_company_hsn,
-                 tc.name as to_company_name,
-                 tc.gstin as to_company_gstin,
-                 tc.phone as to_company_phone,
-                 tc.address as to_company_address,
-                 COALESCE(NULLIF(p.hsn_sac, ''), NULLIF(fc.hsn_code, ''), NULLIF(t.hsn_sac, ''), '') as hsn_code,
-                 COALESCE(p.gst_rate, 18) as gst_rate,
-                 COALESCE(p.selling_rate, p.purchase_rate, 0) as unit_price,
-                 p.current_stock as source_current_stock
-          FROM inter_branch_transfers t
-          LEFT JOIN companies fc ON t.from_company_id = fc.id
-          LEFT JOIN companies tc ON t.to_company_id = tc.id
-          LEFT JOIN products p ON t.product_id = p.id
-          WHERE (t.from_company_id = ${safeInt(compQuery) || 1} OR t.to_company_id = ${safeInt(compQuery) || 1} OR ${isAll})
-          ORDER BY t.created_at DESC
-        `;
-      }
-      return res.status(200).json({ success: true, transfers: rows });
-    }
-
-    else if (action === "inter-branch-dispatch") {
-      const { from_company_id, to_company_id, product_id, quantity, transport_charges, vehicle_no, vehicle_details, driver_name, driver_phone, driver_info, notes, dispatch_notes } = body;
-      const fromComp = safeInt(from_company_id);
-      const toComp = safeInt(to_company_id);
-      const prodId = safeInt(product_id);
-      const qty = safeInt(quantity);
-
-      if (!fromComp || !toComp || !prodId || !qty || qty <= 0) {
-        return res.status(400).json({ error: "Source Branch, Destination Branch, Product, and Valid Quantity required." });
-      }
-      if (fromComp === toComp) {
-        return res.status(400).json({ error: "Source branch and Destination branch cannot be the same." });
-      }
-
-      // Check if both branches belong to the same company family (same parent group or GSTIN)
-      const compRows2 = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id IN (${fromComp}, ${toComp})`;
-      if (compRows2.length < 2) {
-        return res.status(400).json({ error: "Invalid source or destination branch selected." });
-      }
-      const cFrom2 = compRows2.find(c => c.id === fromComp);
-      const cTo2 = compRows2.find(c => c.id === toComp);
-
-      const rootFrom2 = cFrom2.parent_company_id ? parseInt(cFrom2.parent_company_id) : parseInt(cFrom2.id);
-      const rootTo2 = cTo2.parent_company_id ? parseInt(cTo2.parent_company_id) : parseInt(cTo2.id);
-
-      const isSameFamily2 = (
-        rootFrom2 === rootTo2 ||
-        (cFrom2.parent_company_id && parseInt(cFrom2.parent_company_id) === parseInt(cTo2.id)) ||
-        (cTo2.parent_company_id && parseInt(cTo2.parent_company_id) === parseInt(cFrom2.id)) ||
-        (cFrom2.gstin && cTo2.gstin && cFrom2.gstin.trim().toLowerCase() === cTo2.gstin.trim().toLowerCase())
-      );
-
-      if (!isSameFamily2) {
-        return res.status(400).json({ error: "Stock transfer is only allowed between branches of the same company (matching parent group or GSTIN)." });
-      }
-
-      // Check product stock at source branch
-      const prods = await sql`SELECT * FROM products WHERE id = ${prodId} AND company_id = ${fromComp}`;
-      if (prods.length === 0) return res.status(404).json({ error: "Product not found in source branch stock." });
-
-      const prod = prods[0];
-      if ((prod.current_stock || 0) < qty) {
-        return res.status(400).json({ error: `Insufficient stock at source branch. Current stock: ${prod.current_stock || 0}` });
-      }
-
-      // Deduct stock from source branch immediately with concurrency check
-      await sql`UPDATE products SET current_stock = GREATEST(0, current_stock - ${qty}) WHERE id = ${prodId} AND current_stock >= ${qty}`;
-
-      // Generate unique transfer code
-      const transferCode = `TRF-${Date.now().toString().slice(-6)}`;
-      const vehDetailsVal = vehicle_no || vehicle_details || null;
-      const driverInfoStr = driver_info || [driver_name, driver_phone].filter(Boolean).join(" | ") || null;
-      const notesVal = notes || dispatch_notes || null;
-
-      const newTransfer = await sql`
-        INSERT INTO inter_branch_transfers (
-          transfer_number, from_company_id, to_company_id, product_id,
-          product_name, brand, model, hsn_sac, quantity,
-          transport_charges, vehicle_details, driver_info, dispatch_notes,
-          dispatched_by_user_id, status
-        ) VALUES (
-          ${transferCode}, ${fromComp}, ${toComp}, ${prodId},
-          ${prod.name}, ${prod.brand || null}, ${prod.model || null}, ${prod.hsn_sac || null}, ${qty},
-          ${parseFloat(transport_charges || 0)}, ${vehDetailsVal}, ${driverInfoStr}, ${notesVal},
-          ${user.id || null}, 'in_transit'
-        ) RETURNING *
-      `;
-
-      return res.status(200).json({
-        success: true,
-        message: `Stock dispatched! ${qty} units deducted from source branch. Transfer code: ${transferCode}`,
-        transfer: newTransfer[0]
-      });
-    }
-
-    else if (action === "inter-branch-receive") {
-      const { transfer_id, receiving_vehicle_no, receipt_image, receiving_notes } = req.body;
-      const trfId = safeInt(transfer_id);
-      if (!trfId) return res.status(400).json({ error: "Transfer ID required." });
-
-      const transfers = await sql`SELECT * FROM inter_branch_transfers WHERE id = ${trfId}`;
-      if (transfers.length === 0) return res.status(404).json({ error: "Transfer record not found." });
-
-      const trf = transfers[0];
-      if (trf.status === 'received') return res.status(400).json({ error: "Transfer has already been received." });
-      if (trf.status === 'cancelled') return res.status(400).json({ error: "Cannot receive a cancelled transfer." });
-
-      // Add stock to destination branch
-      let destProds = [];
-      if (trf.model) {
-        destProds = await sql`SELECT * FROM products WHERE company_id = ${trf.to_company_id} AND name = ${trf.product_name} AND model = ${trf.model} LIMIT 1`;
-      } else {
-        destProds = await sql`SELECT * FROM products WHERE company_id = ${trf.to_company_id} AND name = ${trf.product_name} LIMIT 1`;
-      }
-
-      if (destProds.length > 0) {
-        // Update existing stock at destination branch
-        await sql`UPDATE products SET current_stock = current_stock + ${trf.quantity} WHERE id = ${destProds[0].id}`;
-      } else {
-        // Clone source product to destination branch catalog
-        const srcProds = await sql`SELECT * FROM products WHERE id = ${trf.product_id}`;
-        const srcP = srcProds[0] || {};
-        const nextSkuNum = await getNextSkuNumber(sql, trf.to_company_id);
-        const assignedSku = `SKU-${String(nextSkuNum + 1).padStart(3, '0')}`;
-
-        await sql`
-          INSERT INTO products (
-            company_id, supplier_id, sku, name, brand, model, hsn_sac, gst_rate,
-            purchase_rate, purchase_rate_incl_tax, transport_expenses, selling_percentage,
-            selling_rate, mrp, current_stock, min_stock, rack_no, is_active
-          ) VALUES (
-            ${trf.to_company_id}, ${srcP.supplier_id || null}, ${assignedSku}, ${trf.product_name}, ${trf.brand || null}, ${trf.model || null}, ${trf.hsn_sac || null}, ${srcP.gst_rate || 18},
-            ${srcP.purchase_rate || 0}, ${srcP.purchase_rate_incl_tax || 0}, ${srcP.transport_expenses || 0}, ${srcP.selling_percentage || 0},
-            ${srcP.selling_rate || 0}, ${srcP.mrp || 0}, ${trf.quantity}, ${srcP.min_stock || 5}, ${srcP.rack_no || null}, true
-          )
-        `;
-      }
-
-      // Update transfer status
-      await sql`
-        UPDATE inter_branch_transfers
-        SET status = 'received',
-            received_date_time = NOW(),
-            receiving_vehicle_details = ${receiving_vehicle_no || null},
-            receipt_attachment_url = ${receipt_image || null},
-            receiving_notes = ${receiving_notes || null},
-            received_by_user_id = ${user.id || null}
-        WHERE id = ${trfId}
-      `;
-
-      return res.status(200).json({ success: true, message: `Stock received! ${trf.quantity} units added to destination branch stock.` });
-    }
-
-    else if (action === "inter-branch-cancel" || action === "inter-branch-delete") {
-      const trfId = safeInt(req.query.id || req.query.transfer_id || body.id || body.transfer_id);
-      if (!trfId) return res.status(400).json({ error: "Transfer ID required." });
-
-      const transfers = await sql`SELECT * FROM inter_branch_transfers WHERE id = ${trfId}`;
-      if (transfers.length === 0) return res.status(404).json({ error: "Transfer record not found." });
-
-      const trf = transfers[0];
-
-      if (action === "inter-branch-delete") {
-        const role = (user.role || "").toLowerCase();
-        if (role !== 'superadmin' && role !== 'storeadmin' && role !== 'admin') {
-          return res.status(403).json({ error: "Only Superadmin and Store Admin can delete transfer records." });
-        }
-        await sql`DELETE FROM inter_branch_transfers WHERE id = ${trfId}`;
-        return res.status(200).json({ success: true, message: "Transfer record deleted successfully." });
-      }
-
-      if (trf.status === 'in_transit') {
-        if (trf.product_id) {
-          await sql`UPDATE products SET current_stock = current_stock + ${trf.quantity} WHERE id = ${trf.product_id}`;
-        }
-        await sql`UPDATE inter_branch_transfers SET status = 'cancelled' WHERE id = ${trfId}`;
-        return res.status(200).json({ success: true, message: `Transfer cancelled and ${trf.quantity} units restored to source branch stock.` });
-      }
-
-      const role = (user.role || "").toLowerCase();
-      if (role === 'superadmin' || role === 'storeadmin' || role === 'admin') {
-        await sql`DELETE FROM inter_branch_transfers WHERE id = ${trfId}`;
-        return res.status(200).json({ success: true, message: "Transfer record deleted successfully." });
-      } else {
-        return res.status(400).json({ error: `Cannot cancel transfer with status '${trf.status}'.` });
       }
     }
 

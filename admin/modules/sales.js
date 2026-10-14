@@ -581,7 +581,7 @@ function openAddUnrecognizedBarcodeModal(scannedCode, onSuccess) {
 }
 window.openAddUnrecognizedBarcodeModal = openAddUnrecognizedBarcodeModal;
 
-// ── Helper: Print Quotation / Price Estimate (No DB write, No payment taken) ──
+// ── Helper: Print QUOTATION / PROFORMA INVOICE (No DB write, No payment taken) ──
 function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null) {
   const printWin = window.open('', '_blank', 'width=900,height=1000');
   if (!printWin) return showToast("Please allow popups to generate quotation", "warning");
@@ -646,7 +646,7 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Quotation / Price Estimate #${quoteNo}</title>
+      <title>QUOTATION / PROFORMA INVOICE #${quoteNo}</title>
       <style>
         @page { size: A4 portrait; margin: 10mm; }
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 15px; color: #111; background: #fff; font-size: 12px; }
@@ -669,7 +669,7 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
         <div class="quote-header">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span style="font-weight:bold;font-size:11px;color:#2563eb;">OFFICIAL PRICE ESTIMATE</span>
-            <div class="quote-title">QUOTATION / PRICE ESTIMATE</div>
+            <div class="quote-title">QUOTATION / PROFORMA INVOICE</div>
             <span style="font-weight:bold;font-size:11px;">Date: ${quoteDate}</span>
           </div>
           <div class="comp-title">${esc(compName)}</div>
@@ -697,7 +697,7 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
         <table>
           <thead>
             <tr>
-              <th style="width:35px;">#</th>
+              <th style="width:35px;">S.No.</th>
               <th>Product / Description</th>
               <th style="width:75px;">HSN Code</th>
               <th style="width:45px;">Qty</th>

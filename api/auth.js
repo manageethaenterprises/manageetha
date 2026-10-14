@@ -119,15 +119,25 @@ function getISTTime(d = new Date()) {
 
       const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
 
-      // Get companies list (all for superadmin, assigned company for others)
+      // Get companies list (all for superadmin, assigned company + branches for others)
       let companies = [];
       if (user.role === "superadmin") {
         companies = await sql`
           SELECT * FROM companies ORDER BY name ASC
         `;
       } else if (user.company_id) {
+        const userCompId = parseInt(user.company_id);
+        const compRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
+        const uComp = compRows[0];
+        const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
+        const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
+
         companies = await sql`
-          SELECT * FROM companies WHERE id = ${user.company_id}
+          SELECT * FROM companies 
+          WHERE id = ${rootId}
+             OR parent_company_id = ${rootId}
+             OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
+          ORDER BY id ASC
         `;
       }
 
@@ -250,15 +260,25 @@ function getISTTime(d = new Date()) {
         `;
       }
 
-      // Send companies (all for superadmin, assigned company for others)
+      // Send companies (all for superadmin, assigned company + branches for others)
       let companies = [];
       if (user.role === "superadmin") {
         companies = await sql`
           SELECT * FROM companies ORDER BY name ASC
         `;
       } else if (user.company_id) {
+        const userCompId = parseInt(user.company_id);
+        const compRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
+        const uComp = compRows[0];
+        const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
+        const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
+
         companies = await sql`
-          SELECT * FROM companies WHERE id = ${user.company_id}
+          SELECT * FROM companies 
+          WHERE id = ${rootId}
+             OR parent_company_id = ${rootId}
+             OR (${gstinVal ? sql`gstin IS NOT NULL AND gstin != '' AND LOWER(TRIM(gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
+          ORDER BY id ASC
         `;
       }
 

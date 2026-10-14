@@ -221,12 +221,33 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ 2. COMPANIES CRUD ═══════════════
     else if (action === 'companies-list') {
-      const rows = await sql`
-        SELECT c.*, p.name as parent_name
-        FROM companies c
-        LEFT JOIN companies p ON c.parent_company_id = p.id
-        ORDER BY c.id ASC
-      `;
+      let rows;
+      if (user.role === 'superadmin') {
+        rows = await sql`
+          SELECT c.*, p.name as parent_name
+          FROM companies c
+          LEFT JOIN companies p ON c.parent_company_id = p.id
+          ORDER BY c.id ASC
+        `;
+      } else if (user.company_id) {
+        const userCompId = parseInt(user.company_id);
+        const compRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
+        const uComp = compRows[0];
+        const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
+        const gstinVal = uComp?.gstin ? uComp.gstin.trim() : null;
+
+        rows = await sql`
+          SELECT c.*, p.name as parent_name
+          FROM companies c
+          LEFT JOIN companies p ON c.parent_company_id = p.id
+          WHERE c.id = ${rootId}
+             OR c.parent_company_id = ${rootId}
+             OR (${gstinVal ? sql`c.gstin IS NOT NULL AND c.gstin != '' AND LOWER(TRIM(c.gstin)) = LOWER(TRIM(${gstinVal}))` : sql`FALSE`})
+          ORDER BY c.id ASC
+        `;
+      } else {
+        rows = [];
+      }
       return res.status(200).json({ success: true, companies: rows });
     }
 

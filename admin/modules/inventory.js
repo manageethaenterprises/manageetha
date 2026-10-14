@@ -139,11 +139,11 @@ function showConfirmModal({ title = "Confirm Action", message, icon = "⚠️", 
 // ── Global Helper: Companies Dropdown Options ──
 async function getCompaniesOptionsHtml(selectedId = null) {
   let list = window.currentCompanies || [];
-  if (!list || list.length === 0) {
+  if (!list || list.length <= 1) {
     try {
       const res = await fetch(`${API_BASE}/super?action=companies-list`, { headers: authHeaders() });
       const data = await res.json();
-      if (data.success && data.companies) {
+      if (data.success && data.companies && data.companies.length > 0) {
         list = data.companies;
         window.currentCompanies = list;
       }
@@ -156,7 +156,7 @@ async function getCompaniesOptionsHtml(selectedId = null) {
 
 async function getCompaniesList() {
   let list = window.currentCompanies || [];
-  if (!list || list.length === 0) {
+  if (!list || list.length <= 1) {
     try {
       const res = await fetch(`${API_BASE}/super?action=companies-list`, { headers: authHeaders() });
       const data = await res.json();
@@ -1769,7 +1769,12 @@ async function loadSuppliersSubTab() {
 // ── SubTab: Inter-Branch Stock Transfers ──
 async function loadBranchTransferSubTab() {
   const subContent = document.getElementById("invSubContent");
-  const compId = getActiveCompId();
+  const companiesList = await getCompaniesList();
+  const userObj = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+  const userRole = (userObj?.role || '').toLowerCase();
+  const isSuperAdmin = (userRole === 'superadmin');
+  const userCompanyId = userObj?.company_id ? parseInt(userObj.company_id) : (companiesList[0]?.id || 1);
+  const defaultBranchVal = isSuperAdmin ? (selectedCompanyId && selectedCompanyId !== 'all' ? selectedCompanyId : 'all') : 'all';
 
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
@@ -1791,6 +1796,14 @@ async function loadBranchTransferSubTab() {
         <option value="received">✅ Received</option>
         <option value="cancelled">❌ Cancelled</option>
       </select>
+
+      ${companiesList.length > 1 ? `
+        <label style="font-size:13px;font-weight:600;color:var(--text2);margin-left:8px;">Branch:</label>
+        <select id="transferBranchFilter" class="form-select" style="max-width:240px;">
+          <option value="all" ${defaultBranchVal === 'all' ? 'selected' : ''}>🏢 All Branches</option>
+          ${companiesList.map(c => `<option value="${c.id}" ${c.id == defaultBranchVal ? 'selected' : ''}>${esc(c.name)}</option>`).join("")}
+        </select>
+      ` : ''}
     </div>
 
     <div class="table-container">
@@ -1826,7 +1839,9 @@ async function loadBranchTransferSubTab() {
   async function fetchTransfers() {
     try {
       const statusFilter = document.getElementById("transferStatusFilter")?.value || "all";
-      const res = await fetch(`${API_BASE}/inventory?action=inter-branch-list&company_id=${compId}&status=${statusFilter}`, { headers: authHeaders() });
+      const branchFilter = document.getElementById("transferBranchFilter")?.value || (isSuperAdmin && selectedCompanyId !== 'all' ? selectedCompanyId : 'all');
+      const branchParam = (branchFilter && branchFilter !== 'all') ? `&company_id=${branchFilter}` : (isSuperAdmin ? '&company_id=all' : '');
+      const res = await fetch(`${API_BASE}/inventory?action=inter-branch-list${branchParam}&status=${statusFilter}`, { headers: authHeaders() });
       const data = await res.json();
       if (!data.success) return;
 
@@ -1895,21 +1910,25 @@ async function loadBranchTransferSubTab() {
         const isSourceBranch = (activeCompId !== null && fromCompId === activeCompId);
         const isDestBranch = (activeCompId !== null && toCompId === activeCompId);
 
+        const isDestFamily = isDestBranch || (activeCompId !== null && companiesList.some(c => c.id === toCompId));
+        const isSourceFamily = isSourceBranch || (activeCompId !== null && companiesList.some(c => c.id === fromCompId));
+        const isAdminRole = (userRole === 'admin' || userRole === 'storeadmin' || userRole === 'branch_manager' || userRole === 'manager');
+
         let canReceive = false;
         if (t.status === 'in_transit') {
-          if (isDestBranch || (isSuperAdmin && activeCompId === null)) {
+          if (isDestBranch || isSuperAdmin || (isAdminRole && isDestFamily)) {
             canReceive = true;
           }
         }
 
         let canCancel = false;
         if (t.status === 'in_transit') {
-          if (isSourceBranch || (isSuperAdmin && activeCompId === null)) {
+          if (isSourceBranch || isSuperAdmin || (isAdminRole && isSourceFamily)) {
             canCancel = true;
           }
         }
 
-        const canDelete = isSuperAdmin;
+        const canDelete = isSuperAdmin || (isAdminRole && (isSourceFamily || isDestFamily));
 
         return `
           <tr>
@@ -2042,6 +2061,7 @@ async function loadBranchTransferSubTab() {
   });
 
   on("transferStatusFilter", "change", () => fetchTransfers());
+  on("transferBranchFilter", "change", () => fetchTransfers());
   on("transferSearchInp", "input", renderTransfersTable);
   on("openDispatchModalBtn", "click", () => {
     openDispatchTransferModal(() => fetchTransfers());
@@ -2290,6 +2310,10 @@ function isSameCompanyBranch(c1, c2) {
   if (!c1 || !c2) return false;
   if (c1.id == c2.id) return false;
 
+  const isSuper = (window.currentUser?.role || '').toLowerCase() === 'superadmin';
+  // If non-superadmin, all companies in companiesList are already filtered to the user's company family
+  if (!isSuper) return true;
+
   const root1 = c1.parent_company_id ? parseInt(c1.parent_company_id) : parseInt(c1.id);
   const root2 = c2.parent_company_id ? parseInt(c2.parent_company_id) : parseInt(c2.id);
 
@@ -2311,7 +2335,8 @@ async function openDispatchTransferModal(onSuccessCallback) {
   overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);";
 
   const companiesList = await getCompaniesList();
-  const currentCompId = (selectedCompanyId && selectedCompanyId !== 'all') ? parseInt(selectedCompanyId) : companiesList[0]?.id;
+  const userCompId = window.currentUser?.company_id ? parseInt(window.currentUser.company_id) : companiesList[0]?.id;
+  const currentCompId = (selectedCompanyId && selectedCompanyId !== 'all') ? parseInt(selectedCompanyId) : userCompId;
 
   overlay.innerHTML = `
     <div class="modal-box" style="max-width:720px;width:95%;background:var(--bg-primary);border-radius:12px;padding:24px 28px;border:1px solid var(--border);box-shadow:0 20px 40px rgba(0,0,0,0.3);max-height:92vh;overflow-y:auto;">

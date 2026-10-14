@@ -852,12 +852,16 @@ module.exports = async function handler(req, res) {
         const lineTax = (lineTotal * gstRate) / 100;
         const validProdId = (item.product_id && !isNaN(parseInt(item.product_id))) ? parseInt(item.product_id) : null;
 
+        const itemDesc = (!validProdId && item.model)
+          ? `${item.name || item.description || 'Item'} / ${item.model}`
+          : (item.description || item.name || null);
+
         await sql`
           INSERT INTO sale_items (
             sale_id, product_id, description, hsn_code, quantity, rate, taxable_value,
             gst_rate, cgst, sgst, igst, total, serial_number
           ) VALUES (
-            ${newSale[0].id}, ${validProdId}, ${item.description || item.name || null},
+            ${newSale[0].id}, ${validProdId}, ${itemDesc},
             ${item.hsn_code || item.hsn_sac || null}, ${parseInt(item.quantity)}, ${parseFloat(item.rate)},
             ${lineTotal}, ${gstRate}, ${lineTax / 2}, ${lineTax / 2}, 0, ${lineTotal + lineTax},
             ${item.serial_number || null}

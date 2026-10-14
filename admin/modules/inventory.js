@@ -3782,6 +3782,11 @@ async function loadStockReceiptSubTab() {
             </div>
 
             <div class="form-group">
+              <label class="form-label">Model Name / Number</label>
+              <input type="text" id="srModel" class="form-input" placeholder="e.g. 5 Feet / Regular / Turbo">
+            </div>
+
+            <div class="form-group">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <label class="form-label" style="margin:0;">Select Supplier / dealer *</label>
                 <button type="button" class="btn btn-sm btn-outline" id="quickAddSupInReceiptBtn">+ Quick Add Supplier</button>
@@ -3977,7 +3982,12 @@ async function loadStockReceiptSubTab() {
       const srProdId = document.getElementById("srProdId");
       if (srProdId && pData.success && pData.products) {
         loadedProductsList = pData.products;
-        srProdId.innerHTML = pData.products.map(p => `<option value="${p.id}">${esc(p.name)} (${esc(p.brand || '')}) - Stock: ${p.current_stock}</option>`).join("");
+        srProdId.innerHTML = `<option value="">-- Select Product * --</option>` +
+          pData.products.map(p => {
+            const modelStr = p.model ? ` [${p.model}]` : '';
+            const brandStr = p.brand ? ` (${p.brand})` : '';
+            return `<option value="${p.id}" data-model="${esc(p.model || '')}">${esc(p.name)}${esc(modelStr)}${esc(brandStr)} - Stock: ${p.current_stock}</option>`;
+          }).join("");
         updateSrGstCalculation();
       }
 
@@ -3991,6 +4001,15 @@ async function loadStockReceiptSubTab() {
       }
     } catch (e) {}
   }
+
+  on("srProdId", "change", () => {
+    const pId = document.getElementById("srProdId")?.value;
+    const prod = (loadedProductsList || []).find(p => p.id == pId);
+    const mInp = document.getElementById("srModel");
+    if (mInp) {
+      mInp.value = (prod && prod.model) ? prod.model : "";
+    }
+  });
 
   on("srSupplierId", "change", () => {
     const sId = document.getElementById("srSupplierId")?.value;
@@ -4068,7 +4087,7 @@ async function loadStockReceiptSubTab() {
             <td><span class="badge badge-purple">${esc(r.purchase_invoice_no || 'N/A')}</span></td>
             <td style="font-weight:600;color:var(--text1);">${esc(r.supplier_name || 'Direct')}</td>
             <td>
-              <div style="font-weight:600;">${esc(r.product_name || 'Product')}</div>
+              <div style="font-weight:600;">${esc(r.product_name || 'Product')}${r.model ? ` <span style="font-size:11px;color:var(--text2);font-weight:600;">[${esc(r.model)}]</span>` : ''}</div>
               <div style="font-size:11px;color:var(--success);font-weight:700;">+${r.quantity || 0} NOS</div>
             </td>
             <td style="font-weight:700;color:var(--text1);">${formatCurrency(r.grand_total || r.total_amount)}</td>
@@ -4246,6 +4265,7 @@ async function loadStockReceiptSubTab() {
 
     const payload = {
       product_id: document.getElementById("srProdId").value,
+      model: document.getElementById("srModel") ? document.getElementById("srModel").value.trim() : null,
       supplier_id: document.getElementById("srSupplierId").value || null,
       supply_state: document.getElementById("srSupplyState")?.value || "Andhra Pradesh",
       quantity: document.getElementById("srQty").value,
@@ -4612,21 +4632,30 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
 
   function renderProductOptionsHtml(selectedProdId = null) {
     return `<option value="">-- Select Product --</option>` +
-      loadedProducts.map(p => `<option value="${p.id}" data-rate="${p.purchase_rate || 0}" data-gst="${p.gst_rate || 18}" data-serial="${esc(p.serial_no || '')}" ${p.id == selectedProdId ? 'selected' : ''}>${esc(p.name)} ${p.brand ? `(${esc(p.brand)})` : ''} - ${esc(p.model || 'No model')}</option>`).join("");
+      loadedProducts.map(p => {
+        const modelStr = p.model ? ` [${p.model}]` : '';
+        const brandStr = p.brand ? ` (${p.brand})` : '';
+        return `<option value="${p.id}" data-rate="${p.purchase_rate || 0}" data-gst="${p.gst_rate || 18}" data-model="${esc(p.model || '')}" data-serial="${esc(p.serial_no || '')}" ${p.id == selectedProdId ? 'selected' : ''}>${esc(p.name)}${esc(modelStr)}${esc(brandStr)}</option>`;
+      }).join("");
   }
 
-  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '') {
+  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '') {
     itemRowIndex++;
     const tr = document.createElement("tr");
     tr.id = `mpRow_${itemRowIndex}`;
+    const initProd = initialProdId ? loadedProducts.find(p => p.id == initialProdId) : null;
+    const effectiveModel = initialModel || (initProd && initProd.model) || '';
     tr.innerHTML = `
       <td>${tbody.children.length + 1}</td>
       <td>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <select class="form-select mpProdSel" style="padding:4px 8px;font-size:12px;flex:1;" required>
-            ${renderProductOptionsHtml(initialProdId)}
-          </select>
-          <button type="button" class="btn btn-xs btn-outline mpInlineAddProdBtn" title="Create New Product" style="padding:2px 6px;">+ New</button>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;gap:6px;align-items:center;">
+            <select class="form-select mpProdSel" style="padding:4px 8px;font-size:12px;flex:1;" required>
+              ${renderProductOptionsHtml(initialProdId)}
+            </select>
+            <button type="button" class="btn btn-xs btn-outline mpInlineAddProdBtn" title="Create New Product" style="padding:2px 6px;">+ New</button>
+          </div>
+          <input type="text" class="form-input mpModelInp" value="${esc(effectiveModel)}" placeholder="Model Name / Spec" style="padding:3px 6px;font-size:11.5px;background:var(--bg-secondary);border:1px solid var(--border);" title="Model Name / Spec">
         </div>
       </td>
       <td><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 6px;font-size:12px;"></td>
@@ -4662,6 +4691,11 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       if (opt && opt.value) {
         if (!rateInp.value || rateInp.value == 0) rateInp.value = opt.dataset.rate || 0;
         gstInp.value = opt.dataset.gst || 18;
+        const modelInp = tr.querySelector(".mpModelInp");
+        if (modelInp) {
+          const foundP = loadedProducts.find(x => x.id == opt.value);
+          modelInp.value = (foundP && foundP.model) ? foundP.model : (opt.dataset.model || "");
+        }
       }
       calcRowTotal();
     });
@@ -4678,6 +4712,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
         prodSel.value = newP.id;
         rateInp.value = newP.purchase_rate || 0;
         gstInp.value = newP.gst_rate || 18;
+        const modelInp = tr.querySelector(".mpModelInp");
+        if (modelInp) modelInp.value = newP.model || "";
         calcRowTotal();
       });
     });
@@ -4733,6 +4769,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       if (prodId) {
         items.push({
           product_id: prodId,
+          model: tr.querySelector(".mpModelInp") ? tr.querySelector(".mpModelInp").value.trim() : null,
           serial_no: tr.querySelector(".mpSerialNo") ? tr.querySelector(".mpSerialNo").value.trim() : null,
           quantity: tr.querySelector(".mpQty").value,
           rate: tr.querySelector(".mpRate").value,

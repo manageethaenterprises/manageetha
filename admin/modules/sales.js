@@ -340,9 +340,15 @@ function openAddCustomCartItemModal(onSuccess) {
       </div>
 
       <form id="customCartItemForm">
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Item Name / Description *</label>
-          <input type="text" id="ciName" class="form-input" required placeholder="e.g. Custom Labour / Special Machine Part">
+        <div class="form-grid" style="grid-template-columns:1.4fr 1fr;gap:10px;margin-bottom:10px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Item Name / Description *</label>
+            <input type="text" id="ciName" class="form-input" required placeholder="e.g. Custom Labour / Special Machine Part">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Model Name / Spec (Optional)</label>
+            <input type="text" id="ciModel" class="form-input" placeholder="e.g. 5 Feet / Deluxe">
+          </div>
         </div>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
           <div class="form-group">
@@ -385,6 +391,7 @@ function openAddCustomCartItemModal(onSuccess) {
   overlay.querySelector("#customCartItemForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const name = overlay.querySelector("#ciName").value.trim();
+    const model = overlay.querySelector("#ciModel")?.value.trim() || "";
     const hsn = overlay.querySelector("#ciHsn").value.trim() || '998711';
     const qty = parseInt(overlay.querySelector("#ciQty").value || 1, 10);
     const rate = parseFloat(overlay.querySelector("#ciRate").value || 0);
@@ -397,6 +404,7 @@ function openAddCustomCartItemModal(onSuccess) {
     const customItem = {
       product_id: null,
       name: name,
+      model: model,
       hsn_code: hsn,
       rate: rate,
       purchase_rate: rate,
@@ -435,9 +443,15 @@ function openAddUnrecognizedBarcodeModal(scannedCode, onSuccess) {
           <input type="text" id="bcCode" class="form-input" value="${esc(scannedCode)}" required style="font-weight:700;font-family:monospace;">
         </div>
 
-        <div class="form-group" style="margin-bottom:10px;">
-          <label class="form-label">Product Name / Description *</label>
-          <input type="text" id="bcName" class="form-input" required placeholder="e.g. Scanned Product Name">
+        <div class="form-grid" style="grid-template-columns:1.4fr 1fr;gap:10px;margin-bottom:10px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Product Name / Description *</label>
+            <input type="text" id="bcName" class="form-input" required placeholder="e.g. Scanned Product Name">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Model Name / Number</label>
+            <input type="text" id="bcModel" class="form-input" placeholder="e.g. Model / Spec">
+          </div>
         </div>
 
         <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
@@ -492,6 +506,7 @@ function openAddUnrecognizedBarcodeModal(scannedCode, onSuccess) {
     e.preventDefault();
     const code = overlay.querySelector("#bcCode").value.trim();
     const name = overlay.querySelector("#bcName").value.trim();
+    const model = overlay.querySelector("#bcModel")?.value.trim() || null;
     const rate = parseFloat(overlay.querySelector("#bcRate").value || 0);
     const gstRate = parseFloat(overlay.querySelector("#bcGst").value || 18);
     const purRate = parseFloat(overlay.querySelector("#bcPurRate").value || 0);
@@ -518,6 +533,7 @@ function openAddUnrecognizedBarcodeModal(scannedCode, onSuccess) {
           body: JSON.stringify({
             company_id: activeCompId,
             name: name,
+            model: model,
             sku: code,
             barcode: code,
             hsn_sac: hsn,
@@ -548,6 +564,7 @@ function openAddUnrecognizedBarcodeModal(scannedCode, onSuccess) {
     const newItem = {
       product_id: createdProdId,
       name: name,
+      model: model || "",
       hsn_code: hsn || code,
       rate: rate,
       purchase_rate: purRate > 0 ? purRate : rate,
@@ -597,12 +614,17 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
     totalTaxable += lineTaxable;
     totalGst += lineGst;
 
+    const prod = (typeof productsList !== 'undefined' && Array.isArray(productsList)) ? productsList.find(p => p.id == it.product_id) : null;
+    const modelStr = it.model || it.model_name || (prod && prod.model) || '';
+
     return `
       <tr>
         <td style="text-align:center;padding:6px;border:1px solid #cbd5e1;">${idx + 1}</td>
         <td style="padding:6px;border:1px solid #cbd5e1;">
-          <div style="font-weight:bold;font-size:12px;">${esc(it.name)}</div>
-          ${it.serial_number ? `<div style="font-size:10px;color:#15803d;">Chassis/Serial: ${esc(it.serial_number)}</div>` : ''}
+          <div style="font-weight:bold;font-size:12px;">
+            ${esc(it.name)}${modelStr ? ` <span style="font-weight:700;color:#1e40af;">[Model: ${esc(modelStr)}]</span>` : ''}
+          </div>
+          ${it.serial_number ? `<div style="font-size:10px;color:#15803d;margin-top:2px;">Chassis/Serial: ${esc(it.serial_number)}</div>` : ''}
         </td>
         <td style="text-align:center;padding:6px;border:1px solid #cbd5e1;">${esc(it.hsn_code || '—')}</td>
         <td style="text-align:center;padding:6px;border:1px solid #cbd5e1;font-weight:bold;">${qty}</td>
@@ -4638,13 +4660,15 @@ async function loadSalesPOSSubTab() {
         const isZeroPrice = rate <= 0;
         const isOutOfStock = stock <= 0;
 
+        const modelStr = p.model ? ` [${p.model}]` : '';
+
         if (isZeroPrice) {
-          return `<option value="${p.id}" disabled style="color:#dc2626;background:#fef2f2;font-weight:600;padding:6px 10px;">⚠️ ${esc(p.name)} - ₹0.00 (NOT READY TO SELL - Set Price in Inventory)</option>`;
+          return `<option value="${p.id}" disabled style="color:#dc2626;background:#fef2f2;font-weight:600;padding:6px 10px;">⚠️ ${esc(p.name)}${esc(modelStr)} - ₹0.00 (NOT READY TO SELL - Set Price in Inventory)</option>`;
         }
         if (isOutOfStock) {
-          return `<option value="${p.id}" disabled style="color:#64748b;background:#f1f5f9;font-weight:600;padding:6px 10px;">🚫 ${esc(p.name)} - ${formatCurrency(rate)} (OUT OF STOCK - Stock: 0)</option>`;
+          return `<option value="${p.id}" disabled style="color:#64748b;background:#f1f5f9;font-weight:600;padding:6px 10px;">🚫 ${esc(p.name)}${esc(modelStr)} - ${formatCurrency(rate)} (OUT OF STOCK - Stock: 0)</option>`;
         }
-        return `<option value="${p.id}" style="color:#0f172a;font-weight:600;padding:6px 10px;">📦 ${esc(p.name)} - ${formatCurrency(rate)} (In Stock: ${stock})</option>`;
+        return `<option value="${p.id}" style="color:#0f172a;font-weight:600;padding:6px 10px;">📦 ${esc(p.name)}${esc(modelStr)} - ${formatCurrency(rate)} (In Stock: ${stock})</option>`;
       }).join("");
   }
 
@@ -4740,7 +4764,7 @@ async function loadSalesPOSSubTab() {
       return `
         <tr>
           <td>
-            <div style="font-weight:600;color:var(--text1);margin-bottom:4px;">${esc(item.name)}</div>
+            <div style="font-weight:600;color:var(--text1);margin-bottom:4px;">${esc(item.name)}${item.model ? ` <span style="font-size:12px;color:var(--primary);font-weight:700;">[Model: ${esc(item.model)}]</span>` : ''}</div>
             ${isHighValue ? `
               <div style="margin-top:4px;">
                 <label style="font-size:11px;color:var(--primary);font-weight:700;display:block;margin-bottom:2px;">
@@ -5242,6 +5266,8 @@ async function loadSalesPOSSubTab() {
         cart.push({
           product_id: matchedProd.id,
           name: matchedProd.name,
+          model: matchedProd.model || '',
+          brand: matchedProd.brand || '',
           hsn_code: matchedProd.hsn_sac || matchedProd.hsn_code,
           rate: rate,
           purchase_rate: purRateExcl,
@@ -5262,6 +5288,8 @@ async function loadSalesPOSSubTab() {
           cart.push({
             product_id: matchedProd.id,
             name: matchedProd.name,
+            model: matchedProd.model || '',
+            brand: matchedProd.brand || '',
             hsn_code: matchedProd.hsn_sac || matchedProd.hsn_code,
             rate: rate,
             purchase_rate: purRateExcl,
@@ -5350,6 +5378,8 @@ async function loadSalesPOSSubTab() {
         cart.push({
           product_id: prod.id,
           name: prod.name,
+          model: prod.model || '',
+          brand: prod.brand || '',
           hsn_code: prod.hsn_sac || prod.hsn_code,
           rate: rate,
           purchase_rate: purRateExcl,
@@ -5369,6 +5399,8 @@ async function loadSalesPOSSubTab() {
         cart.push({
           product_id: prod.id,
           name: prod.name,
+          model: prod.model || '',
+          brand: prod.brand || '',
           hsn_code: prod.hsn_sac || prod.hsn_code,
           rate: rate,
           purchase_rate: purRateExcl,
@@ -6733,7 +6765,7 @@ function openReturnProductModal(item, refreshCallback) {
 
       <!-- Item Snapshot Banner -->
       <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;font-size:13px;">
-        <div style="font-weight:700;color:var(--primary);font-size:15px;">${esc(item.product_name || item.name || 'Product')}</div>
+        <div style="font-weight:700;color:var(--primary);font-size:15px;">${esc(item.product_name || item.name || 'Product')}${(item.model || item.product_model) ? ` [${esc(item.model || item.product_model)}]` : ''}</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;color:var(--text2);">
           <div>Challan #: <strong>#${esc(item.challan_number || targetSaleId)}</strong></div>
           <div>Customer: <strong>${esc(item.customer_name || 'Counter Customer')}</strong></div>

@@ -661,7 +661,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, message: "Product deleted successfully!" });
     }
 
-    else if (action === "product-create") {
+    else if (action === "product-create" || action === "add-product") {
       const {
         company_id, sku, name, brand, model, hsn_sac, unit_of_measure, gst_rate,
         purchase_rate, purchase_rate_incl_tax, transport_expenses, selling_percentage,
@@ -1259,10 +1259,11 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ STOCK RECEIPT & PURCHASES ═══════════════
     else if (action === "stock-receipt") {
-      const { product_id, supplier_id, supply_state, quantity, purchase_rate, bill_no, billed_amount, bill_doc, notes, paid_amount, interest_rate, interest_frequency, due_date } = req.body;
+      const { product_id, supplier_id, supply_state, quantity, purchase_rate, bill_no, billed_amount, bill_doc, notes, paid_amount, interest_rate, interest_frequency, due_date, model } = req.body;
       const pId = safeInt(product_id);
       const qty = safeInt(quantity);
       const stateVal = supply_state || "Andhra Pradesh";
+      const modelClean = (model && model.toString().trim() !== "") ? model.toString().trim() : null;
 
       if (!pId || !qty) return res.status(400).json({ error: "product_id and quantity required" });
 
@@ -1305,17 +1306,18 @@ module.exports = async function handler(req, res) {
             purchase_rate_incl_tax = ${rates.purchase_rate_incl_tax},
             selling_rate = ${rates.selling_rate},
             mrp = ${rates.mrp},
+            model = COALESCE(${modelClean}, model),
             supplier_id = COALESCE(${supId}, supplier_id)
           WHERE id = ${pId} RETURNING *
         `;
       } else if (supId) {
         updated = await sql`
-          UPDATE products SET current_stock = current_stock + ${qty}, supplier_id = ${supId}
+          UPDATE products SET current_stock = current_stock + ${qty}, model = COALESCE(${modelClean}, model), supplier_id = ${supId}
           WHERE id = ${pId} RETURNING *
         `;
       } else {
         updated = await sql`
-          UPDATE products SET current_stock = current_stock + ${qty}
+          UPDATE products SET current_stock = current_stock + ${qty}, model = COALESCE(${modelClean}, model)
           WHERE id = ${pId} RETURNING *
         `;
       }
@@ -1545,6 +1547,7 @@ module.exports = async function handler(req, res) {
               selling_rate = ${rates.selling_rate},
               mrp = ${rates.mrp},
               serial_no = COALESCE(${item.serial_no || item.product_serial_no || null}, serial_no),
+              model = COALESCE(${item.model ? item.model.trim() : null}, model),
               supplier_id = COALESCE(${itemSupId}, supplier_id)
             WHERE id = ${prodId}
           `;
@@ -1738,7 +1741,7 @@ module.exports = async function handler(req, res) {
       if (isAll) {
         rows = await sql`
           SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
-                 pi.quantity, prod.name as product_name, prod.sku
+                 pi.quantity, prod.name as product_name, prod.sku, prod.model
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
@@ -1750,7 +1753,7 @@ module.exports = async function handler(req, res) {
         const cId = safeInt(compQuery) || safeInt(user.company_id) || 1;
         rows = await sql`
           SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
-                 pi.quantity, prod.name as product_name, prod.sku
+                 pi.quantity, prod.name as product_name, prod.sku, prod.model
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id

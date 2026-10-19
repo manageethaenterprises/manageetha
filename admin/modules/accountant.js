@@ -39,6 +39,7 @@ window.renderAccountantModule = async function (tabKey, container) {
     { key: 'rpt_auditor_gst', label: 'Reports', icon: '📊', aliases: ['reports', 'acc_reports'] }
   ];
 
+  
   const subBar = window.renderModuleSubTabsBar(accountantTabs, tabKey);
   if (!subBar.activeKey) {
     container.innerHTML = subBar.html;

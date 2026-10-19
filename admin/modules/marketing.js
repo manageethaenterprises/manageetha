@@ -13,6 +13,7 @@ window.renderMarketingModule = async function (tabKey, container) {
     { key: 'mkt_sms', label: 'Airtel / Jio DLT SMS', icon: '💬', aliases: ['sms'] }
   ];
 
+  
   const subBar = window.renderModuleSubTabsBar(marketingTabs, tabKey);
   if (!subBar.activeKey) {
     container.innerHTML = subBar.html;

@@ -12,6 +12,7 @@ window.renderSalesModule = async function (tabKey, container) {
     { key: 'sales_returns', label: 'Returns', icon: '↩️', aliases: ['returns'] }
   ];
 
+  
   const subBar = window.renderModuleSubTabsBar(salesTabs, tabKey);
   if (!subBar.activeKey) {
     container.innerHTML = subBar.html;

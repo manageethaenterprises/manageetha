@@ -16,6 +16,7 @@ window.renderInventoryModule = async function (tabKey, container) {
     { key: 'inv_reports', label: 'Reports', icon: '📊', aliases: ['reports', 'inv_reports'] }
   ];
 
+  
   const subBar = window.renderModuleSubTabsBar(invTabs, tabKey);
   if (!subBar.activeKey) {
     container.innerHTML = subBar.html;

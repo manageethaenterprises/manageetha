@@ -855,6 +855,7 @@ function switchTab(tabKey) {
     return;
   }
 
+  
   activeTab = cleanKey;
   localStorage.setItem("currentRoute", cleanKey);
   if (location.hash !== `#${cleanKey}`) {

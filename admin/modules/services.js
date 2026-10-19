@@ -15,6 +15,7 @@ window.renderServicesModule = async function (tabKey, container) {
     { key: 'svc_replacement', label: 'Warranty Replacement', icon: '🔄', aliases: ['replacement'] }
   ];
 
+  
   const subBar = window.renderModuleSubTabsBar(serviceTabs, tabKey);
   if (!subBar.activeKey) {
     container.innerHTML = subBar.html;

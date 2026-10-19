@@ -480,20 +480,6 @@ function renderSidebar() {
   const nav = document.getElementById("sidebarNav");
   nav.innerHTML = "";
 
-  // Ensure inv_branch_transfer is present in currentMenus for users with inventory access or management roles
-  const hasInv = currentMenus.some(m => m.category_key === 'inventory' || m.menu_key === 'inv_inventory' || m.menu_key === 'inv_branch_transfer' || (m.menu_key && m.menu_key.startsWith('inv_')));
-  const isManagerOrAdmin = ['superadmin', 'admin', 'storeadmin', 'manager', 'branch_manager'].includes((currentUser.role || '').toLowerCase());
-  if ((isManagerOrAdmin || hasInv) && !currentMenus.some(m => m.menu_key === 'inv_branch_transfer')) {
-    currentMenus.push({
-      menu_key: 'inv_branch_transfer',
-      menu_label: 'Transport bw Branches',
-      icon: '🚚',
-      category_key: 'inventory',
-      category_label: 'INVENTORY MANAGEMENT',
-      category_icon: '📦'
-    });
-  }
-
   if (currentUser.role === "superadmin") {
     // Superadmin sees all menus grouped by category
     const grouped = {};

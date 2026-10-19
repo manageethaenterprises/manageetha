@@ -603,31 +603,47 @@ async function loadCompaniesSubTab() {
   fetchCompanies();
 }
 
-// ── SubTab 2: Role & Menu Permission Matrix ──
-async function loadMenuMappingSubTab() {
+// ── SubTab 2: Role & User Menu Permission Matrix ──
+async function loadMenuMappingSubTab(preselectUserId, preselectCompanyId) {
   const subContent = document.getElementById("superpanelSubContent");
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
       <div>
-        <h3 style="font-size:16px;font-weight:600;color:var(--text1);">Role & Category Menu Control Matrix</h3>
-        <p style="font-size:13px;color:var(--text3);margin-top:2px;">Select Company and Role to configure exact sidebar menu visibility per category (like inducare reference).</p>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text1);">Role & User Menu Permissions Matrix</h3>
+        <p style="font-size:13px;color:var(--text3);margin-top:2px;">
+          Configure sidebar menu & submodule visibility either by <strong>Role Defaults</strong> or customize for an <strong>Individual User</strong>.
+        </p>
       </div>
-      <div style="display:flex;gap:12px;align-items:center;">
-        <select id="matrixCompSelect" class="form-select" style="min-width:200px;">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <select id="matrixScopeSelect" class="form-select" style="min-width:180px;font-weight:600;">
+          <option value="role">🏢 By System Role (Default)</option>
+          <option value="user">👤 By Specific User (Override)</option>
+        </select>
+        <select id="matrixCompSelect" class="form-select" style="min-width:180px;">
           <!-- Loaded dynamically -->
         </select>
-        <select id="matrixRoleSelect" class="form-select" style="min-width:160px;">
-          <option value="storeadmin">Store Admin</option>
-          <option value="accountant">Accountant</option>
-          <option value="financers">Financers</option>
-          <option value="salesadmin">Sales Admin</option>
-          <option value="serviceadmin">Service Admin</option>
-          <option value="hr">HR Manager</option>
-          <option value="marketing">Marketing</option>
-        </select>
+        <div id="roleSelectWrap" style="display:flex;align-items:center;">
+          <select id="matrixRoleSelect" class="form-select" style="min-width:150px;">
+            <option value="storeadmin">Store Admin</option>
+            <option value="accountant">Accountant</option>
+            <option value="financers">Financers</option>
+            <option value="salesadmin">Sales Admin</option>
+            <option value="serviceadmin">Service Admin</option>
+            <option value="hr">HR Manager</option>
+            <option value="marketing">Marketing</option>
+          </select>
+        </div>
+        <div id="userSelectWrap" style="display:none;align-items:center;">
+          <select id="matrixUserSelect" class="form-select" style="min-width:210px;">
+            <option value="">Select User...</option>
+          </select>
+        </div>
         <button class="btn btn-primary" id="saveMatrixBtn">💾 Save Permissions</button>
+        <button class="btn btn-outline-danger" id="resetUserPermBtn" style="display:none;" title="Revert user to role defaults">🔄 Reset to Defaults</button>
       </div>
     </div>
+
+    <div id="matrixStatusBanner" style="margin-bottom:12px;"></div>
 
     <div class="card" style="background:var(--bg-primary);border:1px solid var(--border);">
       <div id="permissionMatrixContainer">
@@ -639,23 +655,152 @@ async function loadMenuMappingSubTab() {
   // Populate company select
   const compSelect = document.getElementById("matrixCompSelect");
   compSelect.innerHTML = currentCompanies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  if (preselectCompanyId) {
+    compSelect.value = preselectCompanyId;
+  }
+
+  const scopeSelect = document.getElementById("matrixScopeSelect");
+  const roleSelectWrap = document.getElementById("roleSelectWrap");
+  const userSelectWrap = document.getElementById("userSelectWrap");
+  const roleSelect = document.getElementById("matrixRoleSelect");
+  const userSelect = document.getElementById("matrixUserSelect");
+  const resetBtn = document.getElementById("resetUserPermBtn");
+  const statusBanner = document.getElementById("matrixStatusBanner");
+  const saveBtn = document.getElementById("saveMatrixBtn");
+
+  let companyUsers = [];
+
+  // Function to load company users into userSelect
+  async function loadCompanyUsers() {
+    const compId = compSelect.value || "all";
+    try {
+      const res = await fetch(`${API_BASE}/super?action=users-list&company_id=${compId}`, { headers: authHeaders() });
+      const data = await res.json();
+      companyUsers = data.users || [];
+
+      if (companyUsers.length === 0) {
+        userSelect.innerHTML = `<option value="">No users found in this company</option>`;
+      } else {
+        userSelect.innerHTML = companyUsers.map(u => {
+          const hasCustom = u.custom_menus_json && typeof u.custom_menus_json === "string" && u.custom_menus_json.trim() !== "" && u.custom_menus_json !== "[]";
+          const roleLabel = (u.role || "").replace(/_/g, " ");
+          return `<option value="${u.id}">${esc(u.username)} (${esc(roleLabel)})${hasCustom ? ' ⚡ Custom' : ''}</option>`;
+        }).join("");
+      }
+
+      if (preselectUserId) {
+        userSelect.value = preselectUserId;
+      }
+    } catch (e) {
+      userSelect.innerHTML = `<option value="">Error loading users</option>`;
+    }
+  }
+
+  // Handle scope change
+  scopeSelect.addEventListener("change", async () => {
+    const isUserScope = scopeSelect.value === "user";
+    roleSelectWrap.style.display = isUserScope ? "none" : "flex";
+    userSelectWrap.style.display = isUserScope ? "flex" : "none";
+    saveBtn.innerHTML = isUserScope ? "💾 Save User Permissions" : "💾 Save Role Permissions";
+
+    if (isUserScope) {
+      await loadCompanyUsers();
+    }
+    loadMatrix();
+  });
+
+  compSelect.addEventListener("change", async () => {
+    if (scopeSelect.value === "user") {
+      await loadCompanyUsers();
+    }
+    loadMatrix();
+  });
+
+  roleSelect.addEventListener("change", () => {
+    if (scopeSelect.value === "role") loadMatrix();
+  });
+
+  userSelect.addEventListener("change", () => {
+    if (scopeSelect.value === "user") loadMatrix();
+  });
 
   async function loadMatrix() {
     const compId = compSelect.value;
-    const roleName = document.getElementById("matrixRoleSelect").value;
-    if (!compId || !roleName) return;
-
+    const isUserScope = scopeSelect.value === "user";
     const container = document.getElementById("permissionMatrixContainer");
+
+    if (isUserScope) {
+      const userId = userSelect.value;
+      if (!userId) {
+        container.innerHTML = `<div style="text-align:center;padding:30px;color:var(--text3);">Please select a user to configure custom permissions.</div>`;
+        statusBanner.innerHTML = "";
+        resetBtn.style.display = "none";
+        return;
+      }
+    } else {
+      const roleName = roleSelect.value;
+      if (!compId || !roleName) return;
+    }
+
     try {
       // 1. Fetch menu categories + menus
       const catRes = await fetch(`${API_BASE}/super?action=menu-categories-list`, { headers: authHeaders() });
       const catData = await catRes.json();
 
-      // 2. Fetch mapped keys for this role & company
-      const mapRes = await fetch(`${API_BASE}/super?action=get-role-menu-mapping&role_name=${roleName}&company_id=${compId}`, { headers: authHeaders() });
-      const mapData = await mapRes.json();
+      let mappedKeys = new Set();
+      let isCustom = false;
+      let targetInfo = {};
 
-      const mappedKeys = new Set(mapData.mapped_keys || []);
+      if (isUserScope) {
+        const userId = userSelect.value;
+        const mapRes = await fetch(`${API_BASE}/super?action=get-user-menu-mapping&user_id=${userId}`, { headers: authHeaders() });
+        const mapData = await mapRes.json();
+        mappedKeys = new Set(mapData.mapped_keys || []);
+        isCustom = mapData.is_custom;
+        targetInfo = mapData.user || {};
+
+        const selectedUserName = targetInfo.username || "Selected User";
+        const selectedUserRole = (targetInfo.role || "").replace(/_/g, " ");
+
+        if (isCustom) {
+          statusBanner.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.35);border-radius:10px;font-size:13px;color:var(--text1);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">⚡</span>
+                <span><strong>Custom User Permissions Active:</strong> User <strong>${esc(selectedUserName)}</strong> has an individual menu configuration (${mappedKeys.size} menus) that overrides their <strong>${esc(selectedUserRole)}</strong> role defaults.</span>
+              </div>
+              <span class="badge badge-purple">Custom Override Active</span>
+            </div>
+          `;
+          resetBtn.style.display = "inline-flex";
+        } else {
+          statusBanner.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:10px;font-size:13px;color:var(--text1);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:16px;">📋</span>
+                <span><strong>Inheriting Role Defaults:</strong> User <strong>${esc(selectedUserName)}</strong> is currently using standard <strong>${esc(selectedUserRole)}</strong> menu permissions. Check or uncheck menus and save to set dedicated individual permissions for this user.</span>
+              </div>
+              <span class="badge badge-success">Role Defaults</span>
+            </div>
+          `;
+          resetBtn.style.display = "none";
+        }
+      } else {
+        const roleName = roleSelect.value;
+        const mapRes = await fetch(`${API_BASE}/super?action=get-role-menu-mapping&role_name=${roleName}&company_id=${compId}`, { headers: authHeaders() });
+        const mapData = await mapRes.json();
+        mappedKeys = new Set(mapData.mapped_keys || []);
+        resetBtn.style.display = "none";
+
+        const compName = compSelect.options[compSelect.selectedIndex]?.text || "Selected Company";
+        const roleLabel = roleSelect.options[roleSelect.selectedIndex]?.text || roleName;
+        statusBanner.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.3);border-radius:10px;font-size:13px;color:var(--text1);">
+            <span style="font-size:16px;">🏢</span>
+            <span>Editing standard role defaults for <strong>${esc(roleLabel)}</strong> in <strong>${esc(compName)}</strong>. All users with this role will receive these menus unless they have custom individual permissions configured.</span>
+          </div>
+        `;
+      }
 
       let html = `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:16px;">`;
 
@@ -732,7 +877,7 @@ async function loadMenuMappingSubTab() {
             if (typeof renderSidebar === "function") {
               fetch(`${API_BASE}/auth/me`, { headers: authHeaders() }).then(r => r.json()).then(data => {
                 if (data.success && data.menus) {
-                  currentMenus = data.menus;
+                  window.currentMenus = currentMenus = data.menus;
                   renderSidebar();
                 }
               });
@@ -766,31 +911,57 @@ async function loadMenuMappingSubTab() {
     }
   }
 
-  compSelect.addEventListener("change", loadMatrix);
-  document.getElementById("matrixRoleSelect").addEventListener("change", loadMatrix);
-
+  // Save Permissions handler
   on("saveMatrixBtn", "click", async (e) => {
     const btn = e.target.closest("button") || document.getElementById("saveMatrixBtn");
     if (btn && btn.disabled) return;
-    const origHtml = btn ? btn.innerHTML : "💾 Save Role Permission Matrix";
+    const origHtml = btn ? btn.innerHTML : "💾 Save Permissions";
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Saving...`;
     }
 
-    const compId = compSelect.value;
-    const roleName = document.getElementById("matrixRoleSelect").value;
+    const isUserScope = scopeSelect.value === "user";
     const selectedKeys = Array.from(document.querySelectorAll(".menuKeyCheck:checked")).map(el => el.dataset.key);
 
     try {
-      const res = await fetch(`${API_BASE}/super?action=save-role-menu-mapping`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ company_id: compId, role_name: roleName, menu_keys: selectedKeys })
-      });
-      const data = await res.json();
-      if (data.success) showToast(data.message, "success");
-      else showToast(data.error || "Failed to save mapping", "error");
+      let res, data;
+      if (isUserScope) {
+        const userId = userSelect.value;
+        if (!userId) throw new Error("Please select a user");
+
+        res = await fetch(`${API_BASE}/super?action=save-user-menu-mapping`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ user_id: parseInt(userId), menu_keys: selectedKeys })
+        });
+        data = await res.json();
+      } else {
+        const compId = compSelect.value;
+        const roleName = roleSelect.value;
+        res = await fetch(`${API_BASE}/super?action=save-role-menu-mapping`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ company_id: compId, role_name: roleName, menu_keys: selectedKeys })
+        });
+        data = await res.json();
+      }
+
+      if (data.success) {
+        showToast(data.message, "success");
+        // If current logged in user modified their own permissions or role defaults, refresh me
+        if (typeof renderSidebar === "function") {
+          fetch(`${API_BASE}/auth/me`, { headers: authHeaders() }).then(r => r.json()).then(meData => {
+            if (meData.success && meData.menus) {
+              window.currentMenus = currentMenus = meData.menus;
+              renderSidebar();
+            }
+          });
+        }
+        loadMatrix();
+      } else {
+        showToast(data.error || "Failed to save permissions", "error");
+      }
     } catch (err) {
       showToast("Save error: " + err.message, "error");
     } finally {
@@ -801,7 +972,56 @@ async function loadMenuMappingSubTab() {
     }
   });
 
-  loadMatrix();
+  // Reset to Role Defaults handler
+  on("resetUserPermBtn", "click", async () => {
+    const userId = userSelect.value;
+    if (!userId) return;
+    const userName = userSelect.options[userSelect.selectedIndex]?.text || "this user";
+
+    if (!confirm(`Reset custom permissions for ${userName} back to their role defaults?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/super?action=reset-user-menu-mapping`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ user_id: parseInt(userId) })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("User permissions reset to role defaults", "success");
+        if (typeof renderSidebar === "function") {
+          fetch(`${API_BASE}/auth/me`, { headers: authHeaders() }).then(r => r.json()).then(meData => {
+            if (meData.success && meData.menus) {
+              window.currentMenus = currentMenus = meData.menus;
+              renderSidebar();
+            }
+          });
+        }
+        await loadCompanyUsers();
+        userSelect.value = userId;
+        loadMatrix();
+      } else {
+        showToast(data.error || "Failed to reset permissions", "error");
+      }
+    } catch (err) {
+      showToast("Reset error: " + err.message, "error");
+    }
+  });
+
+  // Initial load
+  if (preselectUserId) {
+    scopeSelect.value = "user";
+    roleSelectWrap.style.display = "none";
+    userSelectWrap.style.display = "flex";
+    saveBtn.innerHTML = "💾 Save User Permissions";
+    await loadCompanyUsers();
+    userSelect.value = preselectUserId;
+    loadMatrix();
+  } else {
+    loadMatrix();
+  }
 }
 
 // ── SubTab 3: User Accounts ──
@@ -828,13 +1048,14 @@ async function loadUsersSubTab() {
             <th>Username</th>
             <th>Assigned Company</th>
             <th>Role</th>
+            <th>Permissions</th>
             <th>Last Login</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody id="usersTableBody">
-          <tr><td colspan="7" style="text-align:center;padding:20px;">Loading user accounts...</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:20px;">Loading user accounts...</td></tr>
         </tbody>
       </table>
     </div>
@@ -950,12 +1171,24 @@ async function loadUsersSubTab() {
         tbody: "usersTableBody",
         paginationContainer: "usersPagination",
         infoContainer: "usersInfo",
-        renderRow: (u) => `
+        renderRow: (u) => {
+          const hasCustom = u.custom_menus_json && typeof u.custom_menus_json === "string" && u.custom_menus_json.trim() !== "" && u.custom_menus_json !== "[]";
+          let customCount = 0;
+          if (hasCustom) {
+            try { customCount = JSON.parse(u.custom_menus_json).length; } catch (e) {}
+          }
+
+          return `
           <tr>
             <td>#${u.id}</td>
             <td style="font-weight:600;color:var(--text1);">${esc(u.username)}</td>
             <td>${u.company_name ? esc(u.company_name) : '<span style="color:var(--primary-light);">Global (Superadmin)</span>'}</td>
             <td><span class="badge badge-purple">${esc((u.role || '').replace(/_/g, ' '))}</span></td>
+            <td>
+              ${hasCustom
+                ? `<span class="badge badge-purple configUserPermBtn" data-id="${u.id}" data-comp="${u.company_id || ''}" style="font-size:11px;font-weight:600;padding:4px 8px;cursor:pointer;" title="Click to view/edit custom permissions">⚡ Custom (${customCount} menus)</span>`
+                : `<span class="badge badge-neutral" style="font-size:11px;opacity:0.85;padding:4px 8px;" title="Inheriting role permissions">Role Default</span>`}
+            </td>
             <td>${formatDateTime(u.last_login_at)}</td>
             <td>
               <span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">
@@ -965,6 +1198,7 @@ async function loadUsersSubTab() {
             <td>
               ${canManage ? `
                 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                  <button class="btn btn-sm btn-outline-primary configUserPermBtn" data-id="${u.id}" data-comp="${u.company_id || ''}" title="Configure Menu Permissions">🛡️ Permissions</button>
                   <button class="btn btn-sm btn-secondary editUserBtn" data-id="${u.id}" title="Edit User">✏️ Edit</button>
                   <button class="btn btn-sm btn-outline-warning resetPassBtn" data-id="${u.id}" data-username="${esc(u.username)}" title="Reset Password">🔑 Password</button>
                   ${(u.role === 'superadmin' || String(u.username).toLowerCase().trim() === 'superadmin') ? `
@@ -979,12 +1213,26 @@ async function loadUsersSubTab() {
               ` : `<span style="font-size:12px;color:var(--text3);">Read Only</span>`}
             </td>
           </tr>
-        `,
+        `;
+        },
 
         onRender: () => {
           if (!canManage) return;
           const tb = document.getElementById("usersTableBody");
           if (!tb) return;
+
+          tb.querySelectorAll(".configUserPermBtn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const userId = btn.dataset.id;
+              const compId = btn.dataset.comp;
+              const menuTabBtn = document.querySelector('.sub-tab[data-subtab="menuMappingTab"]');
+              if (menuTabBtn) {
+                document.querySelectorAll(".sub-tab").forEach(b => b.classList.remove("active"));
+                menuTabBtn.classList.add("active");
+              }
+              loadMenuMappingSubTab(userId, compId);
+            });
+          });
 
           tb.querySelectorAll(".editUserBtn").forEach(btn => {
             btn.addEventListener("click", () => {

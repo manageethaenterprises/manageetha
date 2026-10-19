@@ -247,7 +247,7 @@ function getISTTime(d = new Date()) {
       }
       const user = userRows[0];
 
-      // Get mapped menus for this user's role in their company
+      // Get mapped menus for this user (supports custom per-user menu configuration or role defaults)
       let mappedMenus = [];
       if (user.role === "superadmin") {
         // Superadmin gets all superadmin menus
@@ -257,7 +257,29 @@ function getISTTime(d = new Date()) {
           JOIN menu_categories mc ON m.category_id = mc.id
           ORDER BY mc.sort_order, m.sort_order
         `;
+      } else if (user.custom_menus_json && typeof user.custom_menus_json === "string" && user.custom_menus_json.trim() !== "") {
+        // Individual custom menu override for this specific user
+        let customKeys = [];
+        try {
+          customKeys = JSON.parse(user.custom_menus_json);
+        } catch (e) {
+          customKeys = [];
+        }
+
+        if (Array.isArray(customKeys) && customKeys.length > 0) {
+          mappedMenus = await sql`
+            SELECT m.menu_key, m.menu_label, m.icon,
+                   mc.category_key, mc.category_label, mc.icon as category_icon
+            FROM menus m
+            JOIN menu_categories mc ON m.category_id = mc.id
+            WHERE m.menu_key = ANY(${customKeys})
+            ORDER BY mc.sort_order, m.sort_order
+          `;
+        } else {
+          mappedMenus = [];
+        }
       } else if (user.company_id) {
+        // Role default mapping
         mappedMenus = await sql`
           SELECT rmm.menu_key, rmm.menu_label, rmm.menu_icon as icon,
                  mc.category_key, mc.category_label, mc.icon as category_icon
@@ -312,6 +334,7 @@ function getISTTime(d = new Date()) {
           company_logo: user.company_logo || "",
           company_gstin: user.company_gstin || "",
           company_state: user.company_state || "",
+          has_custom_menus: Boolean(user.custom_menus_json && user.custom_menus_json.trim() !== ""),
         },
         menus: mappedMenus,
         companies: companies,

@@ -125,10 +125,12 @@ module.exports = async function handler(req, res) {
         is_active BOOLEAN DEFAULT true,
         last_login_at TIMESTAMP,
         last_logout_at TIMESTAMP,
+        custom_menus_json TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
     await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_logout_at TIMESTAMP;`;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_menus_json TEXT;`;
 
     // ═══════════════════════════════════════════════════════════
     // PEOPLE

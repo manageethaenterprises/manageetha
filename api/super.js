@@ -68,6 +68,11 @@ module.exports = async function handler(req, res) {
   const action = req.query.action || req.body?.action || 'dashboard-stats';
 
   try {
+    if (!global.__usersCustomMenusMigrated) {
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_menus_json TEXT`.catch(() => {});
+      global.__usersCustomMenusMigrated = true;
+    }
+
     // ═══════════════ 1. DASHBOARD STATS ═══════════════
     if (action === 'dashboard-stats') {
       const companyId = req.query.company_id || user.company_id || 'all';
@@ -410,6 +415,90 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, mapped_keys: mappings.map(m => m.menu_key) });
     }
 
+    else if (action === 'get-user-menu-mapping') {
+      const { user_id } = req.query;
+      if (!user_id) return res.status(400).json({ error: 'user_id required' });
+
+      const uRows = await sql`
+        SELECT u.id, u.username, u.role, u.company_id, u.custom_menus_json, c.name as company_name
+        FROM users u
+        LEFT JOIN companies c ON u.company_id = c.id
+        WHERE u.id = ${parseInt(user_id)}
+      `;
+      if (uRows.length === 0) return res.status(404).json({ error: 'User not found' });
+      const targetUser = uRows[0];
+
+      let mappedKeys = [];
+      let isCustom = false;
+
+      if (targetUser.custom_menus_json && typeof targetUser.custom_menus_json === "string" && targetUser.custom_menus_json.trim() !== "") {
+        try {
+          mappedKeys = JSON.parse(targetUser.custom_menus_json);
+          isCustom = true;
+        } catch (e) {
+          mappedKeys = [];
+        }
+      } else if (targetUser.role === 'superadmin') {
+        const allM = await sql`SELECT menu_key FROM menus`;
+        mappedKeys = allM.map(m => m.menu_key);
+        isCustom = false;
+      } else if (targetUser.company_id && targetUser.role) {
+        const roleMappings = await sql`
+          SELECT menu_key FROM role_menu_mappings
+          WHERE company_id = ${targetUser.company_id} AND role_name = ${targetUser.role}
+        `;
+        mappedKeys = roleMappings.map(m => m.menu_key);
+        isCustom = false;
+      }
+
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: targetUser.id,
+          username: targetUser.username,
+          role: targetUser.role,
+          company_id: targetUser.company_id,
+          company_name: targetUser.company_name
+        },
+        mapped_keys: mappedKeys,
+        is_custom: isCustom
+      });
+    }
+
+    else if (action === 'save-user-menu-mapping') {
+      const allowedRoles = ['superadmin', 'storeadmin', 'hr', 'hr_manager'];
+      if (!allowedRoles.includes(user.role)) return res.status(403).json({ error: 'Access denied' });
+
+      const { user_id, menu_keys } = req.body;
+      if (!user_id || !Array.isArray(menu_keys)) {
+        return res.status(400).json({ error: 'user_id and menu_keys array required' });
+      }
+
+      await sql`
+        UPDATE users
+        SET custom_menus_json = ${JSON.stringify(menu_keys)}
+        WHERE id = ${parseInt(user_id)}
+      `;
+
+      return res.status(200).json({ success: true, message: 'Custom user permissions saved successfully' });
+    }
+
+    else if (action === 'reset-user-menu-mapping') {
+      const allowedRoles = ['superadmin', 'storeadmin', 'hr', 'hr_manager'];
+      if (!allowedRoles.includes(user.role)) return res.status(403).json({ error: 'Access denied' });
+
+      const { user_id } = req.body;
+      if (!user_id) return res.status(400).json({ error: 'user_id required' });
+
+      await sql`
+        UPDATE users
+        SET custom_menus_json = NULL
+        WHERE id = ${parseInt(user_id)}
+      `;
+
+      return res.status(200).json({ success: true, message: 'User permissions reset to role defaults successfully' });
+    }
+
     else if (action === 'save-role-menu-mapping') {
       if (user.role !== 'superadmin') return res.status(403).json({ error: 'Superadmin access required' });
       const { company_id, role_name, menu_keys } = req.body;
@@ -465,7 +554,7 @@ module.exports = async function handler(req, res) {
       if (companyId === 'all' && allowedUserMgmtRoles.includes(user.role)) {
         usersList = await sql`
           SELECT u.id, u.username, u.email, u.phone, u.role, u.is_active, u.last_login_at, u.created_at,
-                 u.company_id, u.employee_id, c.name as company_name, e.name as employee_name
+                 u.company_id, u.employee_id, u.custom_menus_json, c.name as company_name, e.name as employee_name
           FROM users u
           LEFT JOIN companies c ON u.company_id = c.id
           LEFT JOIN employees e ON u.employee_id = e.id
@@ -475,7 +564,7 @@ module.exports = async function handler(req, res) {
         const cId = parseInt(companyId);
         usersList = await sql`
           SELECT u.id, u.username, u.email, u.phone, u.role, u.is_active, u.last_login_at, u.created_at,
-                 u.company_id, u.employee_id, c.name as company_name, e.name as employee_name
+                 u.company_id, u.employee_id, u.custom_menus_json, c.name as company_name, e.name as employee_name
           FROM users u
           LEFT JOIN companies c ON u.company_id = c.id
           LEFT JOIN employees e ON u.employee_id = e.id

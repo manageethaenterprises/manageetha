@@ -24,7 +24,16 @@ window.renderMarketingModule = async function (tabKey, container) {
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);border-radius:12px;border:1px solid var(--border);">
-      ${subBar.html}
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--bg-secondary);">
+        <div style="flex:1;min-width:280px;overflow:hidden;">
+          ${subBar.html}
+        </div>
+        <div style="padding:6px 12px;">
+          <a href="https://marketing.manageetha.in/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;text-decoration:none;border-radius:6px;background:rgba(14,165,233,0.15);border:1px solid rgba(14,165,233,0.4);color:#38bdf8;">
+            <span>🚀 Whatsapp Marketing Dashboard</span> <span>↗</span>
+          </a>
+        </div>
+      </div>
       <div class="sub-content-area" id="mktSubContent" style="padding:20px;">
         <!-- Loaded dynamically -->
       </div>

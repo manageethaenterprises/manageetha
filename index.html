@@ -447,6 +447,27 @@
       box-shadow: 0 10px 25px var(--primary-glow);
     }
 
+    .btn-marketing-portal {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: #ffffff;
+      text-decoration: none;
+      padding: 11px 20px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 14px;
+      box-shadow: 0 6px 20px rgba(14, 165, 233, 0.25);
+      transition: var(--transition);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+    }
+    .btn-marketing-portal:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(14, 165, 233, 0.35);
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+    }
+
     /* Mobile Drawer */
     .mobile-nav-drawer {
       position: fixed;
@@ -1086,7 +1107,7 @@
       .hero-ctas { justify-content: center; }
       .hero h1 { font-size: 34px; }
       .nav-links { display: none; }
-      .nav-actions .btn-portal-login { display: none !important; }
+      .nav-actions .btn-portal-login, .nav-actions .btn-marketing-portal { display: none !important; }
       .mobile-menu-toggle { display: flex; }
       .brand-sub { display: none; }
     }
@@ -1153,11 +1174,16 @@
         <li><a href="#catalog">Machinery Catalog</a></li>
         <li><a href="#reels">Field Demos 📹</a></li>
         <li><a href="#services">Services</a></li>
+        <li><a href="https://marketing.manageetha.in/" target="_blank" rel="noopener noreferrer">Marketing 📢</a></li>
       </ul>
 
       <div class="nav-actions">
         <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Dark/Light Mode">🌙</button>
         <button class="mobile-menu-toggle" id="mobileMenuToggle" onclick="toggleMobileMenu()" aria-label="Open Navigation Menu">☰</button>
+        <a href="https://marketing.manageetha.in/" target="_blank" rel="noopener noreferrer" class="btn-marketing-portal" title="Open Marketing Dashboard">
+          <span>📢 Marketing Dashboard</span>
+          <span>➔</span>
+        </a>
         <a href="/admin/index.html" class="btn-portal-login">
           <span>Staff & Dealer Login</span>
           <span>➔</span>
@@ -1176,6 +1202,7 @@
       <li><a href="#catalog" onclick="closeMobileMenu()">📦 Machinery Catalog</a></li>
       <li><a href="#reels" onclick="closeMobileMenu()">📹 Field Video Demos</a></li>
       <li><a href="#services" onclick="closeMobileMenu()">🛠️ Wholesale Services</a></li>
+      <li><a href="https://marketing.manageetha.in/" target="_blank" rel="noopener noreferrer" onclick="closeMobileMenu()">📢 Marketing Dashboard</a></li>
       <li><a href="mailto:info@manageetha.in" onclick="closeMobileMenu()">📧 info@manageetha.in</a></li>
       <li><a href="/admin/index.html">🔐 Staff / Dealer ERP Login</a></li>
     </ul>
@@ -1200,6 +1227,7 @@
               <span>Explore 50+ Products</span>
               <span>➔</span>
             </a>
+            <a href="https://marketing.manageetha.in/" target="_blank" rel="noopener noreferrer" class="btn-secondary-hero" style="border-color: #0ea5e9; color: #38bdf8;">📢 Marketing Dashboard</a>
             <a href="/admin/index.html" class="btn-secondary-hero">Dealer / ERP Portal</a>
           </div>
         </div>
@@ -1523,6 +1551,8 @@
         <a href="/refund-policy.html" style="color: var(--text2); text-decoration: underline;">Return & Refund Policy</a>
         <span style="color: var(--border);">|</span>
         <a href="/terms-of-service.html" style="color: var(--text2); text-decoration: underline;">Terms of Service</a>
+        <span style="color: var(--border);">|</span>
+        <a href="https://marketing.manageetha.in/" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; text-decoration: underline; font-weight: 600;">Marketing Dashboard 📢</a>
         <span style="color: var(--border);">|</span>
         <a href="/admin/index.html" style="color: var(--primary-light); text-decoration: underline;">Staff / ERP Login Portal</a>
       </div>

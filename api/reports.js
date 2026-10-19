@@ -27,9 +27,10 @@ module.exports = async function handler(req, res) {
   const action = req.query.action || req.body?.action || "auditor-transactions";
 
   try {
-    const compQuery = req.query.company_id || (user.role === "superadmin" ? "all" : user.company_id);
-    const isAll = (user.role === "superadmin") && (!compQuery || compQuery === "all" || isNaN(parseInt(compQuery)));
-    const targetCompId = !isAll ? parseInt(compQuery || user.company_id) : null;
+    const isSuperAdmin = (user && user.role === "superadmin");
+    const compQuery = isSuperAdmin ? (req.query.company_id || "all") : user.company_id;
+    const isAll = isSuperAdmin && (!compQuery || compQuery === "all" || isNaN(parseInt(compQuery, 10)));
+    const targetCompId = !isAll ? (parseInt(compQuery, 10) || parseInt(user.company_id, 10) || 1) : null;
     const startDate = req.query.start_date || "1970-01-01";
     const endDate = req.query.end_date || "2099-12-31";
     const moduleFilter = (req.query.module || "all").toLowerCase();

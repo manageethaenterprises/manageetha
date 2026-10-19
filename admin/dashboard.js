@@ -10,6 +10,16 @@ let currentMenus = [];
 let currentCompanies = [];
 let selectedCompanyId = localStorage.getItem("selectedCompanyId") || "all"; // superadmin context
 
+function getEffectiveCompanyId() {
+  const user = window.currentUser || currentUser;
+  if (!user || user.role !== "superadmin") {
+    return user?.company_id ? parseInt(user.company_id, 10) : "all";
+  }
+  const sel = window.selectedCompanyId || selectedCompanyId;
+  return (sel && sel !== "all") ? parseInt(sel, 10) : "all";
+}
+window.getEffectiveCompanyId = getEffectiveCompanyId;
+
 // ═══════════════ HELPERS ═══════════════
 
 function getToken() { return localStorage.getItem("erp_token"); }
@@ -404,6 +414,14 @@ async function initDashboard() {
     window.currentUser = currentUser = data.user;
     window.currentMenus = currentMenus = data.menus || [];
     window.currentCompanies = currentCompanies = data.companies || [];
+
+    // Lock company selection to logged-in user's assigned company if not superadmin
+    if (currentUser.role !== "superadmin") {
+      window.selectedCompanyId = selectedCompanyId = currentUser.company_id ? String(currentUser.company_id) : "all";
+      localStorage.setItem("selectedCompanyId", selectedCompanyId);
+    } else {
+      window.selectedCompanyId = selectedCompanyId = localStorage.getItem("selectedCompanyId") || "all";
+    }
 
     // Update stored user
     localStorage.setItem("erp_user", JSON.stringify(currentUser));

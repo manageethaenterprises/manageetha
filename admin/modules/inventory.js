@@ -3179,7 +3179,7 @@ async function loadReorderSubTab() {
 // ── SubTab 4: Purchase Orders Master ──
 async function loadInventoryPurchaseOrderSubTab() {
   const subContent = document.getElementById("invSubContent");
-  const compId = selectedCompanyId || "all";
+  const compId = getActiveCompId();
 
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
@@ -3770,7 +3770,7 @@ function printPurchaseOrder(po, items) {
 // ── SubTab 5: Stock Receipt & Purchase Entry ──
 async function loadStockReceiptSubTab() {
   const subContent = document.getElementById("invSubContent");
-  const compId = selectedCompanyId || "all";
+  const compId = getActiveCompId();
 
   const compIdToUse = compId !== "all" ? parseInt(compId) : (currentCompanies[0]?.id || 1);
   const activeComp = (window.currentCompanies || currentCompanies || []).find(c => c.id == compIdToUse) || (currentCompanies[0] || {});
@@ -5213,7 +5213,7 @@ function openPurchaseImportModal(onSuccessCallback) {
 async function loadInventoryReportsSubTab() {
   const subContent = document.getElementById("invSubContent");
   if (!subContent) return;
-  const compId = selectedCompanyId || "all";
+  const compId = getActiveCompId();
 
   let activeReportType = "current-stock";
   let activeReportData = [];
@@ -5312,9 +5312,14 @@ async function loadInventoryReportsSubTab() {
   if (printBtn) {
     printBtn.addEventListener("click", () => {
       const repObj = reportOptions.find(o => o.key === activeReportType);
-      const headerTitle = document.getElementById("invReportPrintTitle");
-      const headerSub = document.getElementById("invReportPrintSub");
-      if (headerTitle) headerTitle.textContent = `${repObj?.name || 'Inventory Report'} — ${selectedCompanyId === 'all' ? 'All Companies' : 'Company Report'}`;
+      let compLabel = "Consolidated Report";
+      if (compId !== 'all' && window.currentCompanies) {
+        const found = window.currentCompanies.find(c => String(c.id) === String(compId));
+        if (found) compLabel = found.name;
+      } else if (window.currentUser && window.currentUser.company_name) {
+        compLabel = window.currentUser.company_name;
+      }
+      if (headerTitle) headerTitle.textContent = `${repObj?.name || 'Inventory Report'} — ${compLabel}`;
       if (headerSub) headerSub.textContent = `Generated on: ${new Date().toLocaleString('en-IN')} | Search Filter: "${searchInp?.value || 'None'}"`;
 
       const printArea = document.getElementById("invReportPrintArea");

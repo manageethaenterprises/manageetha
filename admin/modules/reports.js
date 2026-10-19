@@ -59,7 +59,7 @@ async function loadGSTReportSubTab() {
   const subContent = document.getElementById("rptSubContent");
   if (!subContent) return;
 
-  const compId = (typeof selectedCompanyId !== "undefined" && selectedCompanyId) ? selectedCompanyId : "all";
+  const compId = window.getEffectiveCompanyId ? window.getEffectiveCompanyId() : ((window.currentUser?.role === 'superadmin') ? (typeof selectedCompanyId !== 'undefined' ? selectedCompanyId : 'all') : (window.currentUser?.company_id || 'all'));
   const now = new Date();
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
   const todayStr = now.toISOString().split("T")[0];
@@ -766,7 +766,7 @@ async function loadSalesReportSubTab() {
   const subContent = document.getElementById("rptSubContent");
   if (!subContent) return;
 
-  const compId = (typeof selectedCompanyId !== "undefined" && selectedCompanyId) ? selectedCompanyId : "all";
+  const compId = window.getEffectiveCompanyId ? window.getEffectiveCompanyId() : ((window.currentUser?.role === 'superadmin') ? (typeof selectedCompanyId !== 'undefined' ? selectedCompanyId : 'all') : (window.currentUser?.company_id || 'all'));
   const now = new Date();
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
   const todayStr = now.toISOString().split("T")[0];

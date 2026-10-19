@@ -377,8 +377,10 @@ module.exports = async function handler(req, res) {
       `;
     } catch (e) {}
 
-    const compQuery = req.query.company_id || user.company_id;
-    const isAll = !compQuery || compQuery === "all" || isNaN(parseInt(compQuery, 10));
+    const isSuperAdmin = (user && user.role === "superadmin");
+    const compQuery = isSuperAdmin ? (req.query.company_id || "all") : user.company_id;
+    const isAll = isSuperAdmin && (!compQuery || compQuery === "all" || isNaN(parseInt(compQuery, 10)));
+    const targetCompId = !isAll ? (parseInt(compQuery, 10) || parseInt(user.company_id, 10) || 1) : null;
 
     // ═══════════════ SUPPLIERS MASTER (UNIVERSAL) ═══════════════
     if (action === "suppliers-list") {

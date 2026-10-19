@@ -434,10 +434,14 @@ async function initDashboard() {
     // Start activity heartbeat (keeps online status accurate)
     startHeartbeat();
 
+    // Start 10-minute session timeout for all users except superadmin
+    initSessionTimeout(data);
+
   } catch (err) {
     console.error("Auth check failed:", err);
     localStorage.removeItem("erp_token");
     localStorage.removeItem("erp_user");
+    localStorage.removeItem("erp_session_expires_at");
     window.location.replace("/admin");
   }
 }
@@ -450,7 +454,10 @@ function startHeartbeat() {
   async function sendPing() {
     if (!getToken()) return;
     try {
-      await fetch(`${API_BASE}/auth?action=heartbeat`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/auth?action=heartbeat`, { headers: authHeaders() });
+      if (res && res.status === 401) {
+        triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+      }
     } catch (e) {}
   }
   sendPing();
@@ -974,9 +981,119 @@ function setDate() {
   });
 }
 
+// ═══════════════ AUTOMATIC SESSION TIMEOUT (10 MINUTES) ═══════════════
+// Applies to all users EXCEPT superadmin.
+// Automatically logs out after 10 minutes even if idle and even if page is not refreshed.
+
+let sessionTimeoutTimer = null;
+let sessionWatchdogTimer = null;
+
+function triggerAutoLogout(reason = "Your session has expired after 10 minutes. Please sign in again.") {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+  if (sessionWatchdogTimer) clearInterval(sessionWatchdogTimer);
+
+  const token = getToken();
+  if (token) {
+    try {
+      const data = new Blob([JSON.stringify({ token })], { type: 'application/json' });
+      navigator.sendBeacon(`${API_BASE}/auth?action=logout`, data);
+    } catch (e) {
+      fetch(`${API_BASE}/auth?action=logout`, {
+        method: "POST",
+        headers: authHeaders(),
+      }).catch(() => {});
+    }
+  }
+
+  localStorage.removeItem("erp_token");
+  localStorage.removeItem("erp_user");
+  localStorage.removeItem("currentRoute");
+  localStorage.removeItem("erp_session_expires_at");
+
+  sessionStorage.setItem("erp_session_expired", reason);
+  window.location.replace("/admin");
+}
+
+function checkSessionTimeout() {
+  const user = window.currentUser || getUser();
+  if (!user || user.role === "superadmin") return;
+
+  const expiresAt = parseInt(localStorage.getItem("erp_session_expires_at") || "0", 10);
+  if (expiresAt && Date.now() >= expiresAt) {
+    triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+  }
+}
+
+function initSessionTimeout(authData) {
+  const user = window.currentUser || getUser();
+  if (!user) return;
+
+  // Superadmin is completely exempt from the 10-minute session timeout
+  if (user.role === "superadmin") {
+    localStorage.removeItem("erp_session_expires_at");
+    if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+    if (sessionWatchdogTimer) clearInterval(sessionWatchdogTimer);
+    return;
+  }
+
+  const durationSeconds = (authData && authData.session_timeout_seconds) ? authData.session_timeout_seconds : 600;
+  const durationMs = durationSeconds * 1000;
+
+  let expiresAt = parseInt(localStorage.getItem("erp_session_expires_at") || "0", 10);
+  if (!expiresAt || isNaN(expiresAt)) {
+    expiresAt = Date.now() + durationMs;
+    localStorage.setItem("erp_session_expires_at", expiresAt.toString());
+  }
+
+  const remaining = expiresAt - Date.now();
+  if (remaining <= 0) {
+    triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+    return;
+  }
+
+  // 1. Precise countdown timer: fires automatically without needing any refresh or click
+  if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+  sessionTimeoutTimer = setTimeout(() => {
+    triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+  }, remaining);
+
+  // 2. Watchdog interval (every 3 seconds): ensures timeout fires even if browser throttled timers or laptop was idle / asleep
+  if (sessionWatchdogTimer) clearInterval(sessionWatchdogTimer);
+  sessionWatchdogTimer = setInterval(checkSessionTimeout, 3000);
+
+  // 3. Tab focus & visibility handlers: instant logout upon waking up or switching tabs
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkSessionTimeout();
+  });
+  window.addEventListener("focus", checkSessionTimeout);
+}
+
+// Global API interceptor to catch token expiration (401) on any API call
+(function setupApiAuthInterceptor() {
+  const nativeFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await nativeFetch.apply(this, args);
+    if (res && res.status === 401) {
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+      if (url.includes('/api/') && !url.includes('/auth/login') && !url.includes('/auth?action=logout')) {
+        const user = window.currentUser || getUser();
+        if (!user || user.role !== 'superadmin') {
+          triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+        }
+      }
+    }
+    return res;
+  };
+})();
+
 // ═══════════════ LOGOUT ═══════════════
 
 function logout() {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+  if (sessionWatchdogTimer) clearInterval(sessionWatchdogTimer);
+
   const token = getToken();
   if (token) {
     fetch(`${API_BASE}/auth?action=logout`, {
@@ -987,12 +1104,16 @@ function logout() {
   localStorage.removeItem("erp_token");
   localStorage.removeItem("erp_user");
   localStorage.removeItem("currentRoute");
+  localStorage.removeItem("erp_session_expires_at");
+  sessionStorage.removeItem("erp_session_expired");
   window.location.replace("/admin");
 }
 
 window.addEventListener("pageshow", (event) => {
   if (event.persisted || !getToken()) {
     window.location.replace("/admin");
+  } else {
+    checkSessionTimeout();
   }
 });
 

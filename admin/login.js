@@ -4,15 +4,51 @@
 
 const API_BASE = "/api";
 
-// Check if already logged in
+// Check if already logged in or session expired
 function checkAuthAndRedirect() {
   const token = localStorage.getItem("erp_token");
   if (token) {
+    try {
+      const user = JSON.parse(localStorage.getItem("erp_user") || "null");
+      if (user && user.role !== "superadmin") {
+        const expiresAt = parseInt(localStorage.getItem("erp_session_expires_at") || "0", 10);
+        if (expiresAt && Date.now() >= expiresAt) {
+          localStorage.removeItem("erp_token");
+          localStorage.removeItem("erp_user");
+          localStorage.removeItem("erp_session_expires_at");
+          sessionStorage.setItem("erp_session_expired", "Your session has expired after 10 minutes. Please sign in again.");
+          return;
+        }
+      }
+    } catch (e) {}
     window.location.replace("/admin/dashboard.html");
   }
 }
 checkAuthAndRedirect();
 window.addEventListener("pageshow", checkAuthAndRedirect);
+
+// Display session expired warning if redirected due to timeout
+(function showSessionExpiryNotice() {
+  const expiredMsg = sessionStorage.getItem("erp_session_expired");
+  if (expiredMsg) {
+    sessionStorage.removeItem("erp_session_expired");
+    window.addEventListener("DOMContentLoaded", () => {
+      const errorEl = document.getElementById("errorMessage");
+      if (errorEl) {
+        errorEl.textContent = expiredMsg;
+        errorEl.style.display = "block";
+        errorEl.style.color = "#f59e0b";
+        errorEl.style.background = "rgba(245, 158, 11, 0.12)";
+        errorEl.style.border = "1px solid rgba(245, 158, 11, 0.35)";
+        errorEl.style.padding = "10px 14px";
+        errorEl.style.borderRadius = "8px";
+        errorEl.style.marginBottom = "14px";
+        errorEl.style.fontSize = "13px";
+        errorEl.style.fontWeight = "500";
+      }
+    });
+  }
+})();
 
 // Theme Switcher Logic
 (function initTheme() {
@@ -89,6 +125,16 @@ document.getElementById("loginForm").addEventListener("submit", async function (
     if (data.companies && data.companies.length > 0) {
       localStorage.setItem("erp_companies", JSON.stringify(data.companies));
     }
+
+    // Set 10-minute session expiry for all users except superadmin
+    if (data.user && data.user.role !== "superadmin") {
+      const sessionSeconds = data.session_timeout_seconds || 600; // 10 minutes default
+      const expiresAt = Date.now() + (sessionSeconds * 1000);
+      localStorage.setItem("erp_session_expires_at", expiresAt.toString());
+    } else {
+      localStorage.removeItem("erp_session_expires_at");
+    }
+    sessionStorage.removeItem("erp_session_expired");
 
     // Redirect to dashboard
     window.location.replace("/admin/dashboard.html");

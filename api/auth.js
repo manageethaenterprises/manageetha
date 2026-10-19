@@ -117,7 +117,9 @@ function getISTTime(d = new Date()) {
         employee_id: user.employee_id,
       };
 
-      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
+      const isSuperadmin = (user.role === "superadmin");
+      // Session timeout: 10 minutes for all users except superadmin
+      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: isSuperadmin ? "24h" : "10m" });
 
       // Get companies list (all for superadmin, assigned company + branches for others)
       let companies = [];
@@ -153,6 +155,7 @@ function getISTTime(d = new Date()) {
       return res.status(200).json({
         success: true,
         token,
+        session_timeout_seconds: isSuperadmin ? null : 600,
         user: {
           id: user.id,
           username: user.username,
@@ -324,6 +327,7 @@ function getISTTime(d = new Date()) {
 
       return res.status(200).json({
         success: true,
+        session_timeout_seconds: user.role === "superadmin" ? null : 600,
         user: {
           id: user.id,
           username: user.username,

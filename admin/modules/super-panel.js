@@ -802,24 +802,48 @@ async function loadMenuMappingSubTab(preselectUserId, preselectCompanyId) {
         `;
       }
 
-      let html = `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:16px;">`;
+      let totalMenusCount = 0;
+      let totalSelectedCount = 0;
 
       catData.categories.forEach(cat => {
+        (cat.menus || []).forEach(m => {
+          totalMenusCount++;
+          if (mappedKeys.has(m.menu_key)) totalSelectedCount++;
+        });
+      });
+
+      let html = `
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 12px;background:var(--bg-secondary);border-radius:8px;margin-bottom:14px;border:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:600;color:var(--text1);" id="matrixCountDisplay">
+            Selected Menus: <span style="color:var(--primary);">${totalSelectedCount}</span> of ${totalMenusCount}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-secondary btn-xs" id="selectAllGlobalBtn">✅ Select All Everywhere</button>
+            <button type="button" class="btn btn-secondary btn-xs" id="deselectAllGlobalBtn">❌ Deselect All</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(320px, 1fr));gap:16px;">
+      `;
+
+      catData.categories.forEach(cat => {
+        const catMenus = cat.menus || [];
+        const allSelected = catMenus.length > 0 && catMenus.every(m => mappedKeys.has(m.menu_key));
+
         html += `
           <div class="role-matrix-card">
             <div class="role-matrix-header">
               <span style="font-size:14px;color:var(--primary);font-weight:600;">${esc(cat.icon)} ${esc(cat.category_label)}</span>
               <label style="font-size:11px;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-                <input type="checkbox" class="catSelectAll" data-cat="${cat.id}"> Select All
+                <input type="checkbox" class="catSelectAll" data-cat="${cat.id}" ${allSelected ? 'checked' : ''}> Select All
               </label>
             </div>
             <div style="display:flex;flex-direction:column;gap:6px;">
         `;
 
-        (cat.menus || []).forEach((m, idx) => {
+        catMenus.forEach((m, idx) => {
           const isChecked = mappedKeys.has(m.menu_key);
           const isFirst = idx === 0;
-          const isLast = idx === cat.menus.length - 1;
+          const isLast = idx === catMenus.length - 1;
 
           html += `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;background:var(--bg-secondary);margin-bottom:2px;">
@@ -841,6 +865,22 @@ async function loadMenuMappingSubTab(preselectUserId, preselectCompanyId) {
       html += `</div>`;
       container.innerHTML = html;
 
+      function updateCounter() {
+        const totalChecked = container.querySelectorAll(".menuKeyCheck:checked").length;
+        const totalAll = container.querySelectorAll(".menuKeyCheck").length;
+        const countEl = document.getElementById("matrixCountDisplay");
+        if (countEl) {
+          countEl.innerHTML = `Selected Menus: <span style="color:var(--primary);">${totalChecked}</span> of ${totalAll}`;
+        }
+      }
+
+      function syncCatSelectAll(catId) {
+        const catChk = container.querySelector(`.catSelectAll[data-cat="${catId}"]`);
+        if (!catChk) return;
+        const items = Array.from(container.querySelectorAll(`.menuKeyCheck[data-cat="${catId}"]`));
+        catChk.checked = items.length > 0 && items.every(c => c.checked);
+      }
+
       // Category "Select All" handlers
       container.querySelectorAll(".catSelectAll").forEach(chk => {
         chk.addEventListener("change", () => {
@@ -848,8 +888,36 @@ async function loadMenuMappingSubTab(preselectUserId, preselectCompanyId) {
           container.querySelectorAll(`.menuKeyCheck[data-cat="${catId}"]`).forEach(mChk => {
             mChk.checked = chk.checked;
           });
+          updateCounter();
         });
       });
+
+      // Individual item change handlers to keep Category "Select All" in sync
+      container.querySelectorAll(".menuKeyCheck").forEach(chk => {
+        chk.addEventListener("change", () => {
+          syncCatSelectAll(chk.dataset.cat);
+          updateCounter();
+        });
+      });
+
+      // Global Select All / Deselect All
+      const selectAllGlobalBtn = document.getElementById("selectAllGlobalBtn");
+      if (selectAllGlobalBtn) {
+        selectAllGlobalBtn.addEventListener("click", () => {
+          container.querySelectorAll(".menuKeyCheck").forEach(c => c.checked = true);
+          container.querySelectorAll(".catSelectAll").forEach(c => c.checked = true);
+          updateCounter();
+        });
+      }
+
+      const deselectAllGlobalBtn = document.getElementById("deselectAllGlobalBtn");
+      if (deselectAllGlobalBtn) {
+        deselectAllGlobalBtn.addEventListener("click", () => {
+          container.querySelectorAll(".menuKeyCheck").forEach(c => c.checked = false);
+          container.querySelectorAll(".catSelectAll").forEach(c => c.checked = false);
+          updateCounter();
+        });
+      }
 
       // Move Up / Move Down handlers
       async function handleReorder(catId, fromIdx, toIdx) {

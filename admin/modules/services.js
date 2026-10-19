@@ -4,21 +4,28 @@
 // ═══════════════════════════════════════════════════
 
 window.renderServicesModule = async function (tabKey, container) {
-  const activeTab = tabKey || 'svc_get_details';
+  const serviceTabs = [
+    { key: 'svc_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['svc_tasks'] },
+    { key: 'svc_get_details', label: 'Get Details & Warranty Check', icon: '🔍', aliases: ['service', 'get_details'] },
+    { key: 'svc_warranty', label: 'Warranty Services', icon: '🛡️', aliases: ['warranty'] },
+    { key: 'svc_paid', label: 'Paid Services', icon: '💰', aliases: ['paid'] },
+    { key: 'svc_mechanics', label: 'Mechanics & Staff', icon: '🔧', aliases: ['mechanics', 'staff'] },
+    { key: 'svc_payments', label: 'Payments & Spare Parts', icon: '💸', aliases: ['payments'] },
+    { key: 'svc_receipts', label: 'Service Receipts', icon: '🧾', aliases: ['receipts'] },
+    { key: 'svc_replacement', label: 'Warranty Replacement', icon: '🔄', aliases: ['replacement'] }
+  ];
+
+  const subBar = window.renderModuleSubTabsBar(serviceTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);border-radius:12px;border:1px solid var(--border);">
-      <div class="sub-tabs-bar" style="display:flex;gap:4px;overflow-x:auto;padding:8px 12px;background:var(--bg-secondary);border-bottom:1px solid var(--border);">
-        <button class="sub-tab ${activeTab === 'svc_today_tasks' ? 'active' : ''}" data-tabkey="svc_today_tasks">📋 Today Tasks</button>
-        <button class="sub-tab ${activeTab === 'svc_get_details' || activeTab === 'service' ? 'active' : ''}" data-tabkey="svc_get_details">🔍 Get Details & Warranty Check</button>
-        <button class="sub-tab ${activeTab === 'svc_warranty' ? 'active' : ''}" data-tabkey="svc_warranty">🛡️ Warranty Services</button>
-        <button class="sub-tab ${activeTab === 'svc_paid' ? 'active' : ''}" data-tabkey="svc_paid">💰 Paid Services</button>
-        <button class="sub-tab ${activeTab === 'svc_mechanics' || activeTab === 'mechanics' ? 'active' : ''}" data-tabkey="svc_mechanics">🔧 Mechanics & Staff</button>
-        <button class="sub-tab ${activeTab === 'svc_payments' ? 'active' : ''}" data-tabkey="svc_payments">💸 Payments & Spare Parts</button>
-        <button class="sub-tab ${activeTab === 'svc_receipts' ? 'active' : ''}" data-tabkey="svc_receipts">🧾 Service Receipts</button>
-        <button class="sub-tab ${activeTab === 'svc_replacement' ? 'active' : ''}" data-tabkey="svc_replacement">🔄 Warranty Replacement</button>
-      </div>
-
+      ${subBar.html}
       <div class="sub-content-area" id="srvSubContent" style="padding:20px;">
         <!-- Loaded dynamically -->
       </div>
@@ -36,15 +43,15 @@ window.renderServicesModule = async function (tabKey, container) {
   });
 
   const subArea = document.getElementById("srvSubContent");
-  if (activeTab === 'svc_today_tasks') {
+  if (effectiveKey === 'svc_today_tasks') {
     if (window.renderTodayTasksModule) await window.renderTodayTasksModule('svc_today_tasks', subArea);
-    else loadJobsSubTab(activeTab);
+    else loadJobsSubTab(effectiveKey);
   }
-  else if (activeTab === 'svc_get_details' || activeTab === 'service') loadGetDetailsSubTab();
-  else if (activeTab === 'svc_mechanics' || activeTab === 'mechanics') loadMechanicsSubTab();
-  else if (activeTab === 'svc_payments') loadPaymentsSubTab();
-  else if (activeTab === 'svc_receipts') loadServiceReceiptsSubTab();
-  else loadJobsSubTab(activeTab);
+  else if (effectiveKey === 'svc_get_details') loadGetDetailsSubTab();
+  else if (effectiveKey === 'svc_mechanics') loadMechanicsSubTab();
+  else if (effectiveKey === 'svc_payments') loadPaymentsSubTab();
+  else if (effectiveKey === 'svc_receipts') loadServiceReceiptsSubTab();
+  else loadJobsSubTab(effectiveKey);
 };
 
 if (window.registerModuleRoute) {

@@ -4,16 +4,22 @@
 // ═══════════════════════════════════════════════════
 
 window.renderReportsModule = async function (tabKey, container) {
-  const isSales = tabKey === 'sales_report' || tabKey === 'rpt_sales_analytics';
-  const isGst = !isSales;
+  const reportsTabs = [
+    { key: 'rpt_auditor_gst', label: 'Auditor GST Outward Report', icon: '📑', aliases: ['gstTab', 'gst_report', 'audit'] },
+    { key: 'rpt_sales_analytics', label: 'Sales Analytics', icon: '📊', aliases: ['salesTab', 'sales_report'] }
+  ];
+
+  const subBar = window.renderModuleSubTabsBar(reportsTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div class="sub-tabs-bar">
-        <button class="sub-tab ${isGst ? 'active' : ''}" data-rptsub="gstTab">📑 Auditor GST Outward Report</button>
-        <button class="sub-tab ${isSales ? 'active' : ''}" data-rptsub="salesTab">📊 Sales Analytics</button>
-      </div>
-
+      ${subBar.html}
       <div class="sub-content-area" id="rptSubContent">
         <!-- Loaded dynamically -->
       </div>
@@ -23,20 +29,14 @@ window.renderReportsModule = async function (tabKey, container) {
   const buttons = container.querySelectorAll(".sub-tab");
   buttons.forEach(btn => {
     btn.addEventListener("click", () => {
-      buttons.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      const target = btn.dataset.rptsub;
-      let key = 'rpt_auditor_gst';
-      if (target === "gstTab") { key = 'rpt_auditor_gst'; loadGSTReportSubTab(); }
-      else if (target === "salesTab") { key = 'rpt_sales_analytics'; loadSalesReportSubTab(); }
-
-      try { history.replaceState(null, '', `#${key}`); } catch (e) {}
-      document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
-      document.querySelector(`.nav-item[data-tab="${key}"]`)?.classList.add("active");
+      const key = btn.dataset.tabkey;
+      if (key && window.switchTab) {
+        window.switchTab(key);
+      }
     });
   });
 
-  if (isSales) loadSalesReportSubTab();
+  if (effectiveKey === 'rpt_sales_analytics') loadSalesReportSubTab();
   else loadGSTReportSubTab();
 };
 

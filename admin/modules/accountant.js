@@ -29,28 +29,27 @@ window.renderAccountantModule = async function (tabKey, container) {
   const oldModal = document.getElementById("assetLiabilityModal");
   if (oldModal) oldModal.remove();
 
-  const isToday = tabKey === 'acc_today_tasks' || tabKey === 'acc_tasks';
-  const isCap = tabKey === 'acc_capital' || tabKey === 'capital';
-  const isLoan = tabKey === 'acc_loans' || tabKey === 'loans';
-  const isExp = tabKey === 'acc_expenses' || tabKey === 'expenses';
-  const isAssetsLiab = tabKey === 'acc_assets_liabilities' || tabKey === 'assets_liabilities';
-  const isSet = tabKey === 'acc_settings' || tabKey === 'settings';
-  const isReports = tabKey === 'rpt_auditor_gst' || tabKey === 'reports';
+  const accountantTabs = [
+    { key: 'acc_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['acc_tasks'] },
+    { key: 'acc_capital', label: 'Set Capital', icon: '💰', aliases: ['capital'] },
+    { key: 'acc_loans', label: 'Loans / Contra', icon: '🏦', aliases: ['loans'] },
+    { key: 'acc_expenses', label: 'Expenses', icon: '💸', aliases: ['expenses'] },
+    { key: 'acc_assets_liabilities', label: 'Assets & Liabilities', icon: '🏛️', aliases: ['assets_liabilities', 'assets'] },
+    { key: 'acc_settings', label: 'Settings', icon: '⚙️', aliases: ['settings'] },
+    { key: 'rpt_auditor_gst', label: 'Reports', icon: '📊', aliases: ['reports', 'acc_reports'] }
+  ];
 
-  const isDefaultExp = !isToday && !isCap && !isLoan && !isExp && !isAssetsLiab && !isSet && !isReports;
+  const subBar = window.renderModuleSubTabsBar(accountantTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div class="sub-tabs-bar">
-        <button class="sub-tab ${isToday ? 'active' : ''}" data-tabkey="acc_today_tasks">📋 Today Tasks</button>
-        <button class="sub-tab ${isCap ? 'active' : ''}" data-tabkey="acc_capital">💰 Set Capital</button>
-        <button class="sub-tab ${isLoan ? 'active' : ''}" data-tabkey="acc_loans">🏦 Loans / Contra</button>
-        <button class="sub-tab ${(isExp || isDefaultExp) ? 'active' : ''}" data-tabkey="acc_expenses">💸 Expenses</button>
-        <button class="sub-tab ${isAssetsLiab ? 'active' : ''}" data-tabkey="acc_assets_liabilities">🏛️ Assets & Liabilities</button>
-        <button class="sub-tab ${isSet ? 'active' : ''}" data-tabkey="acc_settings">⚙️ Settings</button>
-        <button class="sub-tab ${isReports ? 'active' : ''}" data-tabkey="rpt_auditor_gst">📊 Reports</button>
-      </div>
-
+      ${subBar.html}
       <div style="padding:24px;" id="accSubContent">
         <!-- Loaded dynamically -->
       </div>
@@ -68,15 +67,15 @@ window.renderAccountantModule = async function (tabKey, container) {
   });
 
   const subArea = document.getElementById("accSubContent");
-  if (isToday) {
+  if (effectiveKey === 'acc_today_tasks') {
     if (window.renderTodayTasksModule) await window.renderTodayTasksModule('acc_today_tasks', subArea);
     else loadExpensesSubTab();
   }
-  else if (isCap) loadCapitalSubTab();
-  else if (isLoan) loadLoansSubTab();
-  else if (isAssetsLiab) loadAssetsLiabilitiesSubTab();
-  else if (isSet) loadSettingsSubTab();
-  else if (isReports) {
+  else if (effectiveKey === 'acc_capital') loadCapitalSubTab();
+  else if (effectiveKey === 'acc_loans') loadLoansSubTab();
+  else if (effectiveKey === 'acc_assets_liabilities') loadAssetsLiabilitiesSubTab();
+  else if (effectiveKey === 'acc_settings') loadSettingsSubTab();
+  else if (effectiveKey === 'rpt_auditor_gst') {
     if (window.renderReportsModule) await window.renderReportsModule('rpt_auditor_gst', subArea);
     else loadExpensesSubTab();
   }

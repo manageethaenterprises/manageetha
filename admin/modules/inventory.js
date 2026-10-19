@@ -4,32 +4,29 @@
 // ═══════════════════════════════════════════════════
 
 window.renderInventoryModule = async function (tabKey, container) {
-  const isToday = tabKey === 'inv_today_tasks' || tabKey === 'inv_tasks';
-  const isSuppliers = tabKey === 'inv_suppliers' || tabKey === 'suppliers';
-  const isProd = tabKey === 'inv_inventory' || tabKey === 'inventory' || tabKey === 'products';
-  const isReceipt = tabKey === 'inv_stock_receipt' || tabKey === 'stock';
-  const isReorder = tabKey === 'inv_purchase_order' || tabKey === 'reorder' || tabKey === 'po';
-  const isBranchTransfer = tabKey === 'inv_branch_transfer' || tabKey === 'branch_transfer' || tabKey === 'transfers';
-  const isHsn = tabKey === 'inv_hsn' || tabKey === 'hsn_master' || tabKey === 'hsn';
-  const isPayables = tabKey === 'inv_payables' || tabKey === 'payables';
-  const isReports = tabKey === 'inv_reports' || tabKey === 'reports';
+  const invTabs = [
+    { key: 'inv_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['inv_tasks'] },
+    { key: 'inv_suppliers', label: 'Suppliers', icon: '🚚', aliases: ['suppliers'] },
+    { key: 'inv_inventory', label: 'Inventory', icon: '📦', aliases: ['inventory', 'products'] },
+    { key: 'inv_branch_transfer', label: 'Transport bw branches', icon: '🚚', aliases: ['branch_transfer', 'transfers'] },
+    { key: 'inv_purchase_order', label: 'Purchase Order / Reorder', icon: '📝', aliases: ['reorder', 'po'] },
+    { key: 'inv_stock_receipt', label: 'Purchase / Stock Receipt', icon: '📥', aliases: ['stock', 'stock_receipt'] },
+    { key: 'inv_payables', label: 'Supplier Payables & Interest', icon: '💳', aliases: ['payables'] },
+    { key: 'inv_hsn', label: 'HSN Master / GST Rates', icon: '🏷️', aliases: ['hsn_master', 'hsn'] },
+    { key: 'inv_reports', label: 'Reports', icon: '📊', aliases: ['reports', 'inv_reports'] }
+  ];
 
-  const isDefaultProd = !isToday && !isSuppliers && !isReceipt && !isReorder && !isBranchTransfer && !isReports && !isHsn && !isPayables;
+  const subBar = window.renderModuleSubTabsBar(invTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div class="sub-tabs-bar">
-        <button class="sub-tab ${isToday ? 'active' : ''}" data-tabkey="inv_today_tasks">📋 Today Tasks</button>
-        <button class="sub-tab ${isSuppliers ? 'active' : ''}" data-tabkey="inv_suppliers">🚚 Suppliers</button>
-        <button class="sub-tab ${(isProd || isDefaultProd) ? 'active' : ''}" data-tabkey="inv_inventory">📦 Inventory</button>
-        <button class="sub-tab ${isBranchTransfer ? 'active' : ''}" data-tabkey="inv_branch_transfer">🚚 Transport bw branches</button>
-        <button class="sub-tab ${isReorder ? 'active' : ''}" data-tabkey="inv_purchase_order">📝 Purchase Order / Reorder</button>
-        <button class="sub-tab ${isReceipt ? 'active' : ''}" data-tabkey="inv_stock_receipt">📥 Purchase / Stock Receipt</button>
-        <button class="sub-tab ${isPayables ? 'active' : ''}" data-tabkey="inv_payables">💳 Supplier Payables & Interest</button>
-        <button class="sub-tab ${isHsn ? 'active' : ''}" data-tabkey="inv_hsn">🏷️ HSN Master / GST Rates</button>
-        <button class="sub-tab ${isReports ? 'active' : ''}" data-tabkey="inv_reports">📊 Reports</button>
-      </div>
-
+      ${subBar.html}
       <div class="sub-content-area" id="invSubContent">
         <!-- Loaded dynamically -->
       </div>
@@ -47,17 +44,17 @@ window.renderInventoryModule = async function (tabKey, container) {
   });
 
   const subArea = document.getElementById("invSubContent");
-  if (isToday) {
+  if (effectiveKey === 'inv_today_tasks') {
     if (window.renderTodayTasksModule) await window.renderTodayTasksModule('inv_today_tasks', subArea);
     else loadProductsSubTab();
   }
-  else if (isSuppliers) loadSuppliersSubTab();
-  else if (isBranchTransfer) loadBranchTransferSubTab();
-  else if (isReceipt) loadStockReceiptSubTab();
-  else if (isReorder) loadReorderSubTab();
-  else if (isPayables) loadPayablesSubTab();
-  else if (isHsn) loadHsnMasterSubTab();
-  else if (isReports) loadInventoryReportsSubTab();
+  else if (effectiveKey === 'inv_suppliers') loadSuppliersSubTab();
+  else if (effectiveKey === 'inv_branch_transfer') loadBranchTransferSubTab();
+  else if (effectiveKey === 'inv_stock_receipt') loadStockReceiptSubTab();
+  else if (effectiveKey === 'inv_purchase_order') loadReorderSubTab();
+  else if (effectiveKey === 'inv_payables') loadPayablesSubTab();
+  else if (effectiveKey === 'inv_hsn') loadHsnMasterSubTab();
+  else if (effectiveKey === 'inv_reports') loadInventoryReportsSubTab();
   else loadProductsSubTab();
 };
 

@@ -420,11 +420,11 @@ async function initDashboard() {
     // Preserve active route across refresh
     const hashRoute = location.hash.replace(/^#/, '');
     const savedRoute = hashRoute || localStorage.getItem("currentRoute");
-    if (savedRoute) {
+    if (savedRoute && window.hasMenuAccess(savedRoute)) {
       switchTab(savedRoute);
     } else if (currentUser.role !== "superadmin") {
       // Default dashboard for employees/staff is Today Tasks
-      const todayTasksMenu = currentMenus.find(m => m.menu_key && m.menu_key.includes("today_tasks")) || currentMenus[0];
+      const todayTasksMenu = currentMenus.find(m => m.menu_key && m.menu_key.includes("today_tasks") && window.hasMenuAccess(m.menu_key)) || currentMenus[0];
       if (todayTasksMenu) switchTab(todayTasksMenu.menu_key);
       else if (currentMenus.length > 0) switchTab(currentMenus[0].menu_key);
     } else if (currentMenus.length > 0) {
@@ -640,9 +640,221 @@ window.renderModuleTab = async function (tabKey, container) {
   }
 };
 
+// ═══════════════ ROLE & MENU PERMISSION GUARDS ═══════════════
+
+const ALIAS_TO_CANONICAL_MAP = {
+  // HR
+  'hr_today_tasks': 'hr_today_tasks', 'hr_tasks': 'hr_today_tasks',
+  'hr_employees': 'hr_employees', 'employees': 'hr_employees',
+  'hr_dealers': 'hr_dealers', 'dealers': 'hr_dealers',
+  'hr_financers': 'hr_financers', 'financers': 'hr_financers',
+  'hr_customers': 'hr_customers', 'customers': 'hr_customers',
+  'hr_attendance': 'hr_attendance', 'attendance': 'hr_attendance',
+  'hr_leave_mgmt': 'hr_leave_mgmt', 'leaves': 'hr_leave_mgmt', 'leave_mgmt': 'hr_leave_mgmt',
+  'hr_process_salary': 'hr_process_salary', 'payroll': 'hr_process_salary', 'process_salary': 'hr_process_salary', 'salary': 'hr_process_salary',
+  'hr_advances': 'hr_advances', 'advances': 'hr_advances',
+  'hr_payslips': 'hr_payslips', 'payslips': 'hr_payslips',
+  'hr_incentives': 'hr_incentives', 'incentives': 'hr_incentives',
+  'hr_reports': 'hr_reports',
+
+  // Inventory
+  'inv_today_tasks': 'inv_today_tasks', 'inv_tasks': 'inv_today_tasks',
+  'inv_suppliers': 'inv_suppliers', 'suppliers': 'inv_suppliers',
+  'inv_inventory': 'inv_inventory', 'inventory': 'inv_inventory', 'products': 'inv_inventory',
+  'inv_branch_transfer': 'inv_branch_transfer', 'branch_transfer': 'inv_branch_transfer', 'transfers': 'inv_branch_transfer',
+  'inv_purchase_order': 'inv_purchase_order', 'reorder': 'inv_purchase_order', 'po': 'inv_purchase_order',
+  'inv_stock_receipt': 'inv_stock_receipt', 'stock': 'inv_stock_receipt', 'stock_receipt': 'inv_stock_receipt',
+  'inv_payables': 'inv_payables', 'payables': 'inv_payables',
+  'inv_hsn': 'inv_hsn', 'hsn_master': 'inv_hsn', 'hsn': 'inv_hsn',
+  'inv_reports': 'inv_reports',
+
+  // Sales
+  'sales_today_tasks': 'sales_today_tasks', 'sales_tasks': 'sales_today_tasks',
+  'sales_dc_payments': 'sales_dc_payments', 'sales': 'sales_dc_payments', 'pos': 'sales_dc_payments', 'dc': 'sales_dc_payments',
+  'sales_invoices': 'sales_invoices', 'invoices': 'sales_invoices',
+  'sales_receipts': 'sales_receipts', 'sales_history': 'sales_receipts', 'receipts': 'sales_receipts',
+  'sales_returns': 'sales_returns', 'returns': 'sales_returns',
+
+  // Services
+  'svc_today_tasks': 'svc_today_tasks', 'svc_tasks': 'svc_today_tasks',
+  'svc_get_details': 'svc_get_details', 'service': 'svc_get_details', 'get_details': 'svc_get_details',
+  'svc_warranty': 'svc_warranty', 'warranty': 'svc_warranty',
+  'svc_paid': 'svc_paid', 'paid': 'svc_paid',
+  'svc_mechanics': 'svc_mechanics', 'mechanics': 'svc_mechanics', 'staff': 'svc_mechanics',
+  'svc_payments': 'svc_payments', 'payments': 'svc_payments',
+  'svc_receipts': 'svc_receipts',
+  'svc_replacement': 'svc_replacement', 'replacement': 'svc_replacement',
+
+  // Accountant
+  'acc_today_tasks': 'acc_today_tasks', 'acc_tasks': 'acc_today_tasks',
+  'acc_capital': 'acc_capital', 'capital': 'acc_capital',
+  'acc_loans': 'acc_loans', 'loans': 'acc_loans',
+  'acc_expenses': 'acc_expenses', 'expenses': 'acc_expenses',
+  'acc_assets_liabilities': 'acc_assets_liabilities', 'assets_liabilities': 'acc_assets_liabilities', 'assets': 'acc_assets_liabilities',
+  'acc_settings': 'acc_settings', 'settings': 'acc_settings',
+  'rpt_auditor_gst': 'rpt_auditor_gst', 'acc_reports': 'rpt_auditor_gst', 'gst_report': 'rpt_auditor_gst', 'audit': 'rpt_auditor_gst',
+
+  // Marketing
+  'mkt_today_tasks': 'mkt_today_tasks', 'mkt_tasks': 'mkt_today_tasks',
+  'mkt_email': 'mkt_email', 'email': 'mkt_email', 'marketing': 'mkt_email',
+  'mkt_templates': 'mkt_templates', 'templates': 'mkt_templates',
+  'mkt_smtp': 'mkt_smtp', 'smtp': 'mkt_smtp',
+  'mkt_logs': 'mkt_logs', 'logs': 'mkt_logs',
+  'mkt_sms': 'mkt_sms', 'sms': 'mkt_sms',
+
+  // Reports
+  'rpt_sales_analytics': 'rpt_sales_analytics', 'sales_report': 'rpt_sales_analytics',
+
+  // Superadmin
+  'sa_dashboard': 'sa_dashboard',
+  'sa_superpanel': 'sa_superpanel',
+  'sa_work_mgmt': 'sa_work_mgmt',
+  'sa_work_schedule': 'sa_work_schedule',
+  'sa_inventory_stock': 'sa_inventory_stock',
+
+  // General
+  'gen_today_tasks': 'gen_today_tasks', 'today_tasks': 'gen_today_tasks',
+  'gen_apply_leave': 'gen_apply_leave', 'apply_leave': 'gen_apply_leave'
+};
+
+window.hasMenuAccess = function (tabOrMenuKey) {
+  if (!tabOrMenuKey) return false;
+  const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+  if (!user) return false;
+  if (user.role === 'superadmin') return true;
+
+  const menus = window.currentMenus || (typeof currentMenus !== 'undefined' ? currentMenus : []);
+  if (!Array.isArray(menus) || menus.length === 0) return false;
+
+  const clean = String(tabOrMenuKey).trim().toLowerCase();
+
+  // 1. Direct match on menu_key
+  if (menus.some(m => (m.menu_key || '').trim().toLowerCase() === clean)) {
+    return true;
+  }
+
+  // 2. Canonical & alias match
+  const canonical = ALIAS_TO_CANONICAL_MAP[clean];
+  if (canonical) {
+    if (menus.some(m => {
+      const mk = (m.menu_key || '').trim().toLowerCase();
+      return mk === canonical || ALIAS_TO_CANONICAL_MAP[mk] === canonical;
+    })) {
+      return true;
+    }
+
+    // Secondary parent-permission check for subtabs without distinct seeding
+    if (canonical === 'inv_payables') {
+      return menus.some(m => ['inv_suppliers', 'inv_payables'].includes((m.menu_key || '').toLowerCase()));
+    }
+    if (canonical === 'inv_hsn') {
+      return menus.some(m => ['inv_inventory', 'inv_hsn'].includes((m.menu_key || '').toLowerCase()));
+    }
+    if (['mkt_templates', 'mkt_smtp', 'mkt_logs'].includes(canonical)) {
+      return menus.some(m => ['mkt_email', canonical].includes((m.menu_key || '').toLowerCase()));
+    }
+    if (canonical === 'gen_apply_leave') {
+      return menus.some(m => ['hr_leave_mgmt', 'gen_apply_leave'].includes((m.menu_key || '').toLowerCase()));
+    }
+  }
+
+  // 3. Category-level access check (e.g. 'hr', 'inventory', 'sales', 'service', etc.)
+  const categoryPrefixes = {
+    'hr': 'hr_',
+    'inventory': 'inv_',
+    'sales': 'sales_',
+    'service': 'svc_',
+    'accountant': 'acc_',
+    'marketing': 'mkt_',
+    'reports': 'rpt_',
+    'superadmin': 'sa_',
+    'general': 'gen_'
+  };
+  if (categoryPrefixes[clean]) {
+    const pfx = categoryPrefixes[clean];
+    return menus.some(m => (m.category_key || '').toLowerCase() === clean || (m.menu_key && m.menu_key.startsWith(pfx)));
+  }
+
+  return false;
+};
+
+window.renderModuleSubTabsBar = function (allTabs, activeKey) {
+  const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+  const isSuper = user && user.role === 'superadmin';
+  const permitted = isSuper ? allTabs : allTabs.filter(t => window.hasMenuAccess(t.key));
+
+  if (permitted.length === 0) {
+    return {
+      html: `
+        <div class="card" style="padding:40px;text-align:center;margin:16px;">
+          <div style="font-size:44px;margin-bottom:12px;">🚫</div>
+          <h3 style="font-size:18px;font-weight:600;color:var(--text1);margin-bottom:8px;">Access Restricted</h3>
+          <p style="color:var(--text3);font-size:14px;max-width:440px;margin:0 auto;">You do not have permission to access any submodules in this section. Please contact your system administrator.</p>
+        </div>`,
+      activeKey: null,
+      permittedTabs: []
+    };
+  }
+
+  // Find which permitted tab should be active
+  let activeTab = permitted.find(t => t.key === activeKey);
+  if (!activeTab && activeKey) {
+    activeTab = permitted.find(t => {
+      if (t.aliases && Array.isArray(t.aliases)) {
+        return t.aliases.includes(activeKey);
+      }
+      return false;
+    });
+  }
+
+  // If still not matched, default to the FIRST permitted tab
+  if (!activeTab) {
+    activeTab = permitted[0];
+  }
+
+  const html = `
+    <div class="sub-tabs-bar">
+      ${permitted.map(t => `
+        <button class="sub-tab ${t.key === activeTab.key ? 'active' : ''}" data-tabkey="${t.key}">
+          ${t.icon ? t.icon + ' ' : ''}${t.label}
+        </button>
+      `).join('')}
+    </div>
+  `;
+
+  return {
+    html,
+    activeKey: activeTab.key,
+    permittedTabs: permitted
+  };
+};
+
 function switchTab(tabKey) {
   if (!tabKey) return;
   const cleanKey = String(tabKey).trim();
+
+  // Permission guard: prevent unauthorized submodules from loading
+  if (typeof window.hasMenuAccess === "function" && !window.hasMenuAccess(cleanKey)) {
+    console.warn(`[Access Restricted] User has no permission for menu: ${cleanKey}`);
+    if (typeof showToast === "function") {
+      showToast("Access Restricted: You do not have permission for this section.", "error");
+    }
+    const fallbackMenu = (window.currentMenus && window.currentMenus.length > 0) ? window.currentMenus[0].menu_key : null;
+    if (fallbackMenu && fallbackMenu !== cleanKey && window.hasMenuAccess(fallbackMenu)) {
+      return switchTab(fallbackMenu);
+    }
+    const contentArea = document.getElementById("contentArea");
+    if (contentArea) {
+      contentArea.innerHTML = `
+        <div class="card" style="padding:40px;text-align:center;margin:20px;">
+          <div style="font-size:44px;margin-bottom:12px;">🚫</div>
+          <h3 style="font-size:18px;font-weight:600;color:var(--text1);margin-bottom:8px;">Access Restricted</h3>
+          <p style="color:var(--text3);font-size:14px;max-width:440px;margin:0 auto;">You do not have permission to access this section. Please contact your administrator.</p>
+        </div>`;
+    }
+    return;
+  }
+
   activeTab = cleanKey;
   localStorage.setItem("currentRoute", cleanKey);
   if (location.hash !== `#${cleanKey}`) {
@@ -724,7 +936,18 @@ function switchTab(tabKey) {
 window.addEventListener("hashchange", () => {
   const hashRoute = location.hash.replace(/^#/, '');
   if (hashRoute && hashRoute !== activeTab) {
-    switchTab(hashRoute);
+    if (window.hasMenuAccess(hashRoute)) {
+      switchTab(hashRoute);
+    } else {
+      if (typeof showToast === "function") {
+        showToast("Access Restricted: You do not have permission for this section.", "error");
+      }
+      if (activeTab && window.hasMenuAccess(activeTab)) {
+        try { history.replaceState(null, '', `#${activeTab}`); } catch(e) {}
+      } else if (window.currentMenus && window.currentMenus.length > 0) {
+        switchTab(window.currentMenus[0].menu_key);
+      }
+    }
   }
 });
 

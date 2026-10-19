@@ -4,26 +4,26 @@
 // ═══════════════════════════════════════════════════
 
 window.renderMarketingModule = async function (tabKey, container) {
-  const activeTab = tabKey || 'mkt_email';
+  const marketingTabs = [
+    { key: 'mkt_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['mkt_tasks'] },
+    { key: 'mkt_email', label: 'Email Marketing & Mail Client', icon: '📧', aliases: ['email', 'marketing'] },
+    { key: 'mkt_templates', label: 'Email Templates', icon: '📄', aliases: ['templates'] },
+    { key: 'mkt_smtp', label: 'SMTP Server Settings', icon: '⚙️', aliases: ['smtp'] },
+    { key: 'mkt_logs', label: 'Sent Email Audit Logs', icon: '📜', aliases: ['logs'] },
+    { key: 'mkt_sms', label: 'Airtel / Jio DLT SMS', icon: '💬', aliases: ['sms'] }
+  ];
 
-  const isToday = activeTab === 'mkt_today_tasks';
-  const isSMS = activeTab === 'mkt_sms' || activeTab === 'sms';
-  const isEmail = activeTab === 'email' || activeTab === 'mkt_email' || activeTab === 'marketing';
-  const isTemplates = activeTab === 'mkt_templates';
-  const isSMTP = activeTab === 'mkt_smtp';
-  const isLogs = activeTab === 'mkt_logs';
+  const subBar = window.renderModuleSubTabsBar(marketingTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.05);border-radius:12px;border:1px solid var(--border);">
-      <div class="sub-tabs-bar" style="display:flex;gap:4px;overflow-x:auto;padding:8px 12px;background:var(--bg-secondary);border-bottom:1px solid var(--border);">
-        <button class="sub-tab ${isToday ? 'active' : ''}" data-tabkey="mkt_today_tasks">📋 Today Tasks</button>
-        <button class="sub-tab ${isEmail ? 'active' : ''}" data-tabkey="mkt_email">📧 Email Marketing & Mail Client</button>
-        <button class="sub-tab ${isTemplates ? 'active' : ''}" data-tabkey="mkt_templates">📄 Email Templates</button>
-        <button class="sub-tab ${isSMTP ? 'active' : ''}" data-tabkey="mkt_smtp">⚙️ SMTP Server Settings</button>
-        <button class="sub-tab ${isLogs ? 'active' : ''}" data-tabkey="mkt_logs">📜 Sent Email Audit Logs</button>
-        <button class="sub-tab ${isSMS ? 'active' : ''}" data-tabkey="mkt_sms">💬 Airtel / Jio DLT SMS</button>
-      </div>
-
+      ${subBar.html}
       <div class="sub-content-area" id="mktSubContent" style="padding:20px;">
         <!-- Loaded dynamically -->
       </div>
@@ -41,14 +41,14 @@ window.renderMarketingModule = async function (tabKey, container) {
   });
 
   const subArea = document.getElementById("mktSubContent");
-  if (isToday) {
+  if (effectiveKey === 'mkt_today_tasks') {
     if (window.renderTodayTasksModule) await window.renderTodayTasksModule('mkt_today_tasks', subArea);
     else loadEmailClientSubTab();
   }
-  else if (isTemplates) loadEmailTemplatesSubTab();
-  else if (isSMTP) loadSMTPSettingsSubTab();
-  else if (isLogs) loadSentEmailLogsSubTab();
-  else if (isSMS) loadSMSSubTab();
+  else if (effectiveKey === 'mkt_templates') loadEmailTemplatesSubTab();
+  else if (effectiveKey === 'mkt_smtp') loadSMTPSettingsSubTab();
+  else if (effectiveKey === 'mkt_logs') loadSentEmailLogsSubTab();
+  else if (effectiveKey === 'mkt_sms') loadSMSSubTab();
   else loadEmailClientSubTab();
 };
 

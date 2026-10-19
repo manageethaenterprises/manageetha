@@ -13,38 +13,32 @@ window.renderHRModule = async function (tabKey, container) {
     return;
   }
 
-  const isToday = tabKey === 'hr_today_tasks' || tabKey === 'hr_tasks';
-  const isEmp = tabKey === 'hr_employees' || tabKey === 'employees';
-  const isdealer = tabKey === 'hr_dealers' || tabKey === 'dealers';
-  const isFinancer = tabKey === 'hr_financers' || tabKey === 'financers';
-  const isCust = tabKey === 'hr_customers' || tabKey === 'customers';
-  const isAtt = tabKey === 'hr_attendance' || tabKey === 'attendance';
-  const isLeave = tabKey === 'hr_leave_mgmt' || tabKey === 'leaves' || tabKey === 'gen_apply_leave';
-  const isSalary = tabKey === 'hr_process_salary' || tabKey === 'payroll';
-  const isAdv = tabKey === 'hr_advances' || tabKey === 'advances';
-  const isPayslip = tabKey === 'hr_payslips' || tabKey === 'payslips';
-  const isInc = tabKey === 'hr_incentives' || tabKey === 'incentives';
-  const isReports = tabKey === 'hr_reports' || tabKey === 'reports';
+  const hrTabs = [
+    { key: 'hr_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['hr_tasks'] },
+    { key: 'hr_employees', label: 'Employees', icon: '👤', aliases: ['employees'] },
+    { key: 'hr_dealers', label: 'dealers', icon: '🏪', aliases: ['dealers'] },
+    { key: 'hr_financers', label: 'Financers', icon: '🏛️', aliases: ['financers'] },
+    { key: 'hr_customers', label: 'Customers', icon: '🧑', aliases: ['customers'] },
+    { key: 'hr_attendance', label: 'Attendance', icon: '📅', aliases: ['attendance'] },
+    { key: 'hr_leave_mgmt', label: 'Leave Management', icon: '🏖️', aliases: ['leaves', 'leave_mgmt'] },
+    { key: 'hr_process_salary', label: 'Process Salaries', icon: '💵', aliases: ['payroll', 'process_salary', 'salary'] },
+    { key: 'hr_advances', label: 'Salary Advances', icon: '💳', aliases: ['advances'] },
+    { key: 'hr_payslips', label: 'Payslips', icon: '🧾', aliases: ['payslips'] },
+    { key: 'hr_incentives', label: 'Release Incentives', icon: '🎁', aliases: ['incentives'] },
+    { key: 'hr_reports', label: 'Reports', icon: '📊', aliases: ['reports', 'hr_reports'] }
+  ];
 
-  const isDefaultEmp = !isToday && !isEmp && !isdealer && !isFinancer && !isCust && !isAtt && !isLeave && !isSalary && !isAdv && !isPayslip && !isInc && !isReports;
+  const subBar = window.renderModuleSubTabsBar(hrTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div class="sub-tabs-bar">
-        <button class="sub-tab ${isToday ? 'active' : ''}" data-tabkey="hr_today_tasks">📋 Today Tasks</button>
-        <button class="sub-tab ${(isEmp || isDefaultEmp) ? 'active' : ''}" data-tabkey="hr_employees">👤 Employees</button>
-        <button class="sub-tab ${isdealer ? 'active' : ''}" data-tabkey="hr_dealers">🏪 dealers</button>
-        <button class="sub-tab ${isFinancer ? 'active' : ''}" data-tabkey="hr_financers">🏛️ Financers</button>
-        <button class="sub-tab ${isCust ? 'active' : ''}" data-tabkey="hr_customers">🧑 Customers</button>
-        <button class="sub-tab ${isAtt ? 'active' : ''}" data-tabkey="hr_attendance">📅 Attendance</button>
-        <button class="sub-tab ${isLeave ? 'active' : ''}" data-tabkey="hr_leave_mgmt">🏖️ Leave Management</button>
-        <button class="sub-tab ${isSalary ? 'active' : ''}" data-tabkey="hr_process_salary">💵 Process Salaries</button>
-        <button class="sub-tab ${isAdv ? 'active' : ''}" data-tabkey="hr_advances">💳 Salary Advances</button>
-        <button class="sub-tab ${isPayslip ? 'active' : ''}" data-tabkey="hr_payslips">🧾 Payslips</button>
-        <button class="sub-tab ${isInc ? 'active' : ''}" data-tabkey="hr_incentives">🎁 Release Incentives</button>
-        <button class="sub-tab ${isReports ? 'active' : ''}" data-tabkey="hr_reports">📊 Reports</button>
-      </div>
-
+      ${subBar.html}
       <div style="padding:24px;" id="hrSubContent">
         <!-- Loaded dynamically -->
       </div>
@@ -62,19 +56,19 @@ window.renderHRModule = async function (tabKey, container) {
   });
 
   const subArea = document.getElementById("hrSubContent");
-  if (isToday) {
+  if (effectiveKey === 'hr_today_tasks') {
     if (window.renderTodayTasksModule) await window.renderTodayTasksModule('hr_today_tasks', subArea);
     else loadEmployeesSubTab();
   }
-  else if (isdealer) loaddealersSubTab();
-  else if (isFinancer) loadFinancersSubTab();
-  else if (isCust) loadCustomersSubTab();
-  else if (isAtt) loadAttendanceSubTab();
-  else if (isLeave) loadLeaveSubTab(tabKey === 'gen_apply_leave');
-  else if (isSalary) loadPayrollSubTab(false);
-  else if (isPayslip) loadPayrollSubTab(true);
-  else if (isAdv) loadAdvancesSubTab();
-  else if (isInc) loadIncentivesSubTab();
+  else if (effectiveKey === 'hr_dealers') loaddealersSubTab();
+  else if (effectiveKey === 'hr_financers') loadFinancersSubTab();
+  else if (effectiveKey === 'hr_customers') loadCustomersSubTab();
+  else if (effectiveKey === 'hr_attendance') loadAttendanceSubTab();
+  else if (effectiveKey === 'hr_leave_mgmt') loadLeaveSubTab(tabKey === 'gen_apply_leave');
+  else if (effectiveKey === 'hr_process_salary') loadPayrollSubTab(false);
+  else if (effectiveKey === 'hr_payslips') loadPayrollSubTab(true);
+  else if (effectiveKey === 'hr_advances') loadAdvancesSubTab();
+  else if (effectiveKey === 'hr_incentives') loadIncentivesSubTab();
   else loadEmployeesSubTab();
 };
 

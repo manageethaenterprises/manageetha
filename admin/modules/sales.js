@@ -4,24 +4,25 @@
 // ═══════════════════════════════════════════════════
 
 window.renderSalesModule = async function (tabKey, container) {
-  const isToday = tabKey === 'sales_today_tasks' || tabKey === 'sales_tasks';
-  const isDC = tabKey === 'sales_dc_payments' || tabKey === 'sales' || tabKey === 'pos' || tabKey === 'dc';
-  const isInv = tabKey === 'sales_invoices' || tabKey === 'invoices';
-  const isReceipts = tabKey === 'sales_receipts' || tabKey === 'sales_history';
-  const isReturns = tabKey === 'sales_returns' || tabKey === 'returns';
+  const salesTabs = [
+    { key: 'sales_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['sales_tasks'] },
+    { key: 'sales_dc_payments', label: 'Quotation, DC & Counter Bills', icon: '🚛', aliases: ['sales', 'pos', 'dc'] },
+    { key: 'sales_invoices', label: 'Invoices', icon: '🧾', aliases: ['invoices'] },
+    { key: 'sales_receipts', label: 'Payment Receipts', icon: '🧾', aliases: ['sales_history', 'receipts'] },
+    { key: 'sales_returns', label: 'Returns', icon: '↩️', aliases: ['returns'] }
+  ];
 
-  const isDefaultDC = !isToday && !isDC && !isInv && !isReceipts && !isReturns;
+  const subBar = window.renderModuleSubTabsBar(salesTabs, tabKey);
+  if (!subBar.activeKey) {
+    container.innerHTML = subBar.html;
+    return;
+  }
+
+  const effectiveKey = subBar.activeKey;
 
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div class="sub-tabs-bar">
-        <button class="sub-tab ${isToday ? 'active' : ''}" data-tabkey="sales_today_tasks">📋 Today Tasks</button>
-        <button class="sub-tab ${(isDC || isDefaultDC) ? 'active' : ''}" data-tabkey="sales_dc_payments">🚛 Delivery Challan & Payments</button>
-        <button class="sub-tab ${isInv ? 'active' : ''}" data-tabkey="sales_invoices">🧾 Invoices</button>
-        <button class="sub-tab ${isReceipts ? 'active' : ''}" data-tabkey="sales_receipts">🧾 Payment Receipts</button>
-        <button class="sub-tab ${isReturns ? 'active' : ''}" data-tabkey="sales_returns">↩️ Returns</button>
-      </div>
-
+      ${subBar.html}
       <div class="sub-content-area" id="salesSubContent">
         <!-- Loaded dynamically -->
       </div>
@@ -39,13 +40,13 @@ window.renderSalesModule = async function (tabKey, container) {
   });
 
   const subArea = document.getElementById("salesSubContent");
-  if (isToday) {
+  if (effectiveKey === 'sales_today_tasks') {
     if (window.renderTodayTasksModule) await window.renderTodayTasksModule('sales_today_tasks', subArea);
     else loadSalesPOSSubTab();
   }
-  else if (isInv) loadInvoicesSubTab();
-  else if (isReceipts) loadPaymentReceiptsSubTab();
-  else if (isReturns) loadReturnsSubTab();
+  else if (effectiveKey === 'sales_invoices') loadInvoicesSubTab();
+  else if (effectiveKey === 'sales_receipts') loadPaymentReceiptsSubTab();
+  else if (effectiveKey === 'sales_returns') loadReturnsSubTab();
   else loadSalesPOSSubTab();
 };
 

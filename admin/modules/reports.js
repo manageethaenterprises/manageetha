@@ -565,8 +565,194 @@ async function loadGSTReportSubTab() {
     showToast("Auditor transactions exported to CSV!", "success");
   });
 
+  // Dedicated Auditor Statement Print Handler
+  function printAuditorStatement() {
+    if (!rawTransactions || rawTransactions.length === 0) {
+      showToast("No transaction records available to print.", "warning");
+      return;
+    }
+
+    const sDate = startInp?.value || "";
+    const eDate = endInp?.value || "";
+    const modSelect = document.getElementById("auditorModuleSelect");
+    const modFilter = modSelect?.options[modSelect.selectedIndex]?.text || "All Modules";
+    const flowSelect = document.getElementById("auditorFlowSelect");
+    const flowFilter = flowSelect?.options[flowSelect.selectedIndex]?.text || "All Flows";
+
+    let compName = "Consolidated Business Statement";
+    let compGstin = "";
+    if (compId !== "all" && window.currentCompanies) {
+      const f = window.currentCompanies.find(c => String(c.id) === String(compId));
+      if (f) {
+        compName = f.name || compName;
+        compGstin = f.gstin || "";
+      }
+    } else if (window.currentUser && window.currentUser.company_name) {
+      compName = window.currentUser.company_name;
+      compGstin = window.currentUser.company_gstin || "";
+    }
+
+    let totalIn = 0, totalOut = 0, totalTax = 0, totalTaxable = 0;
+    let totalCgst = 0, totalSgst = 0, totalIgst = 0;
+
+    rawTransactions.forEach(r => {
+      totalIn += parseFloat(r.amount_in || 0);
+      totalOut += parseFloat(r.amount_out || 0);
+      totalTax += parseFloat(r.tax_amount || 0);
+      totalTaxable += parseFloat(r.taxable_amount || 0);
+      totalCgst += parseFloat(r.cgst || 0);
+      totalSgst += parseFloat(r.sgst || 0);
+      totalIgst += parseFloat(r.igst || 0);
+    });
+
+    const net = totalIn - totalOut;
+
+    const printWindow = window.open("", "_blank", "width=1100,height=900");
+    if (!printWindow) {
+      alert("Please allow popups to print the auditor report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Auditor Statement — ${esc(compName)}</title>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 18px; color: #111; font-size: 11px; line-height: 1.4; }
+          .no-print { margin-bottom: 16px; text-align: right; }
+          .print-btn { background: #1e40af; color: #fff; border: none; padding: 8px 18px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; }
+          .header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 14px; }
+          .company-name { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+          .company-sub { font-size: 11px; color: #333; margin-top: 2px; }
+          .report-title { font-size: 14px; font-weight: 700; text-transform: uppercase; margin-top: 6px; color: #1e3a8a; }
+          .period-box { font-size: 11px; margin-top: 4px; font-weight: 600; color: #333; }
+          
+          .kpi-summary-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+          .kpi-summary-table td { border: 1px solid #777; padding: 6px 10px; font-size: 11px; }
+          .kpi-label { font-weight: 600; color: #333; background: #f3f4f6; }
+          .kpi-val { font-weight: 700; text-align: right; font-size: 12px; }
+          .inward-val { color: #15803d; }
+          .outward-val { color: #b91c1c; }
+
+          .data-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; }
+          .data-table th, .data-table td { border: 1px solid #bbb; padding: 5px 6px; text-align: left; }
+          .data-table th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 9.5px; color: #111; }
+          .data-table tr:nth-child(even) { background: #fafafa; }
+          .data-table tr { page-break-inside: avoid; }
+          .amount-col { text-align: right; font-weight: 600; }
+          .in-amt { color: #15803d; font-weight: 700; }
+          .out-amt { color: #b91c1c; font-weight: 700; }
+
+          .sign-section { margin-top: 36px; display: flex; justify-content: space-between; page-break-inside: avoid; }
+          .sign-box { border-top: 1px solid #111; width: 190px; text-align: center; padding-top: 6px; font-size: 11px; font-weight: 600; }
+
+          @media print {
+            .no-print { display: none !important; }
+            body { margin: 8mm; font-size: 10px; }
+            @page { size: landscape; margin: 8mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print">
+          <button class="print-btn" onclick="window.print()">🖨️ Print Auditor Statement</button>
+        </div>
+
+        <div class="header">
+          <div class="company-name">${esc(compName)}</div>
+          ${compGstin ? `<div class="company-sub"><strong>GSTIN:</strong> ${esc(compGstin)}</div>` : ''}
+          <div class="report-title">AUDITOR & FINANCIAL TRANSACTIONS STATEMENT</div>
+          <div class="period-box">Period: <strong>${formatDate(sDate)}</strong> to <strong>${formatDate(eDate)}</strong> &nbsp;|&nbsp; Module: <strong>${esc(modFilter)}</strong> &nbsp;|&nbsp; Flow: <strong>${esc(flowFilter)}</strong></div>
+          <div style="font-size:10px;color:#555;margin-top:2px;">Generated on: ${new Date().toLocaleString('en-IN')}</div>
+        </div>
+
+        <table class="kpi-summary-table">
+          <tr>
+            <td class="kpi-label">Total Inflow / Inward (Sales & Services):</td>
+            <td class="kpi-val inward-val">${formatCurrency(totalIn)}</td>
+            <td class="kpi-label">Total Taxable Value:</td>
+            <td class="kpi-val">${formatCurrency(totalTaxable)}</td>
+          </tr>
+          <tr>
+            <td class="kpi-label">Total Outflow / Outward (Expenses, Salaries, Stock):</td>
+            <td class="kpi-val outward-val">${formatCurrency(totalOut)}</td>
+            <td class="kpi-label">Total GST Collected / Paid:</td>
+            <td class="kpi-val">${formatCurrency(totalTax)} <span style="font-size:9.5px;color:#555;font-weight:normal;">(CGST: ${formatCurrency(totalCgst)}, SGST: ${formatCurrency(totalSgst)}, IGST: ${formatCurrency(totalIgst)})</span></td>
+          </tr>
+          <tr>
+            <td class="kpi-label" style="font-size:11.5px;background:#e5e7eb;">Net Financial Balance (Inward - Outward):</td>
+            <td class="kpi-val ${net >= 0 ? 'inward-val' : 'outward-val'}" style="font-size:12.5px;background:#e5e7eb;">${formatCurrency(net)}</td>
+            <td class="kpi-label">Total Records:</td>
+            <td class="kpi-val">${rawTransactions.length} Transactions</td>
+          </tr>
+        </table>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Module</th>
+              <th>Ref / Voucher</th>
+              <th>Party / Payee</th>
+              <th>Party GSTIN</th>
+              <th>Branch</th>
+              <th style="text-align:right;">Inward (₹)</th>
+              <th style="text-align:right;">Outward (₹)</th>
+              <th style="text-align:right;">Taxable (₹)</th>
+              <th style="text-align:right;">GST (₹)</th>
+              <th>Mode</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rawTransactions.map(r => {
+              const inAmt = parseFloat(r.amount_in || 0);
+              const outAmt = parseFloat(r.amount_out || 0);
+              const taxableAmt = parseFloat(r.taxable_amount || 0);
+              const gstAmt = parseFloat(r.tax_amount || 0);
+              return `
+                <tr>
+                  <td>${formatDate(r.transaction_date)}</td>
+                  <td style="font-weight:600;text-transform:uppercase;">${esc(r.module)}</td>
+                  <td style="font-family:monospace;font-weight:600;">${esc(r.ref_no)}</td>
+                  <td>
+                    <strong>${esc(r.party_name || 'N/A')}</strong>
+                    ${r.description ? `<br><small style="color:#555;">${esc(r.description)}</small>` : ''}
+                  </td>
+                  <td>${r.party_gstin && r.party_gstin !== '—' ? esc(r.party_gstin) : '—'}</td>
+                  <td>${esc(r.company_name || '—')}</td>
+                  <td class="amount-col in-amt">${inAmt > 0 ? formatCurrency(inAmt) : '—'}</td>
+                  <td class="amount-col out-amt">${outAmt > 0 ? formatCurrency(outAmt) : '—'}</td>
+                  <td class="amount-col">${taxableAmt > 0 ? formatCurrency(taxableAmt) : '—'}</td>
+                  <td class="amount-col">${gstAmt > 0 ? formatCurrency(gstAmt) : '₹0.00'}</td>
+                  <td>${esc(r.payment_mode || 'Cash')}</td>
+                  <td>${esc(r.payment_status || 'completed')}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+
+        <div class="sign-section">
+          <div class="sign-box">Prepared By (Accountant)</div>
+          <div class="sign-box">Checked & Verified By</div>
+          <div class="sign-box">Authorized Signatory / Auditor</div>
+        </div>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
+  }
+
   // Print Handler
-  on("auditorPrintBtn", "click", () => { window.print(); });
+  on("auditorPrintBtn", "click", printAuditorStatement);
 
   // Initial load
   fetchTransactions();
@@ -606,6 +792,9 @@ async function loadSalesReportSubTab() {
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <button class="btn btn-secondary btn-sm" id="exportSalesAnalyticsCsvBtn" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
             <span>📥</span> Export Sales CSV
+          </button>
+          <button class="btn btn-secondary btn-sm" id="printSalesAnalyticsBtn" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+            <span>🖨️</span> Print Sales Report
           </button>
         </div>
       </div>
@@ -1114,6 +1303,233 @@ async function loadSalesReportSubTab() {
     link.click();
     showToast("Sales analytics exported to CSV!", "success");
   });
+
+  // Dedicated Sales Analytics Statement Print Handler
+  function printSalesAnalyticsReport() {
+    if (!cachedAnalytics || !cachedAnalytics.kpis) {
+      showToast("No sales analytics data to print.", "warning");
+      return;
+    }
+
+    const sDate = startInp?.value || "";
+    const eDate = endInp?.value || "";
+    let compName = "Consolidated Sales Analytics";
+    let compGstin = "";
+    if (compId !== "all" && window.currentCompanies) {
+      const f = window.currentCompanies.find(c => String(c.id) === String(compId));
+      if (f) {
+        compName = f.name || compName;
+        compGstin = f.gstin || "";
+      }
+    } else if (window.currentUser && window.currentUser.company_name) {
+      compName = window.currentUser.company_name;
+      compGstin = window.currentUser.company_gstin || "";
+    }
+
+    const k = cachedAnalytics.kpis || {};
+    const modes = cachedAnalytics.paymentModes || [];
+    const topProds = cachedAnalytics.topProducts || [];
+    const channels = cachedAnalytics.channels || [];
+    const sales = cachedAnalytics.recentSales || [];
+
+    const printWindow = window.open("", "_blank", "width=1100,height=900");
+    if (!printWindow) {
+      alert("Please allow popups to print the sales report.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Sales Analytics Report — ${esc(compName)}</title>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 18px; color: #111; font-size: 11px; line-height: 1.4; }
+          .no-print { margin-bottom: 16px; text-align: right; }
+          .print-btn { background: #1e40af; color: #fff; border: none; padding: 8px 18px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px; }
+          .header { text-align: center; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 14px; }
+          .company-name { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+          .company-sub { font-size: 11px; color: #333; margin-top: 2px; }
+          .report-title { font-size: 14px; font-weight: 700; text-transform: uppercase; margin-top: 6px; color: #1e3a8a; }
+          .period-box { font-size: 11px; margin-top: 4px; font-weight: 600; color: #333; }
+          
+          .kpi-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+          .kpi-table td { border: 1px solid #777; padding: 6px 10px; font-size: 11px; }
+          .kpi-label { font-weight: 600; color: #333; background: #f3f4f6; }
+          .kpi-val { font-weight: 700; text-align: right; font-size: 12px; color: #1e3a8a; }
+
+          .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; margin: 14px 0 6px; border-bottom: 1px solid #777; padding-bottom: 3px; color: #111; }
+          
+          .two-col-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+
+          .data-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10px; }
+          .data-table th, .data-table td { border: 1px solid #bbb; padding: 5px 6px; text-align: left; }
+          .data-table th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 9.5px; color: #111; }
+          .data-table tr:nth-child(even) { background: #fafafa; }
+          .data-table tr { page-break-inside: avoid; }
+          .amount-col { text-align: right; font-weight: 600; }
+
+          .sign-section { margin-top: 36px; display: flex; justify-content: space-between; page-break-inside: avoid; }
+          .sign-box { border-top: 1px solid #111; width: 190px; text-align: center; padding-top: 6px; font-size: 11px; font-weight: 600; }
+
+          @media print {
+            .no-print { display: none !important; }
+            body { margin: 8mm; font-size: 10px; }
+            @page { size: landscape; margin: 8mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print">
+          <button class="print-btn" onclick="window.print()">🖨️ Print Sales Report</button>
+        </div>
+
+        <div class="header">
+          <div class="company-name">${esc(compName)}</div>
+          ${compGstin ? `<div class="company-sub"><strong>GSTIN:</strong> ${esc(compGstin)}</div>` : ''}
+          <div class="report-title">EXECUTIVE SALES ANALYTICS & PERFORMANCE REPORT</div>
+          <div class="period-box">Period: <strong>${formatDate(sDate)}</strong> to <strong>${formatDate(eDate)}</strong></div>
+          <div style="font-size:10px;color:#555;margin-top:2px;">Generated on: ${new Date().toLocaleString('en-IN')}</div>
+        </div>
+
+        <table class="kpi-table">
+          <tr>
+            <td class="kpi-label">Gross Sales Revenue:</td>
+            <td class="kpi-val">${formatCurrency(k.totalRevenue || 0)}</td>
+            <td class="kpi-label">Total Orders Completed:</td>
+            <td class="kpi-val">${(k.totalOrders || 0).toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td class="kpi-label">Average Order Value:</td>
+            <td class="kpi-val">${formatCurrency(k.avgOrderValue || 0)}</td>
+            <td class="kpi-label">Total Units / Products Sold:</td>
+            <td class="kpi-val">${(k.totalUnitsSold || 0).toLocaleString('en-IN')} units</td>
+          </tr>
+          <tr>
+            <td class="kpi-label">Total Amount Paid:</td>
+            <td class="kpi-val" style="color:#15803d;">${formatCurrency(k.totalPaid || 0)}</td>
+            <td class="kpi-label">Pending / Uncollected Balance:</td>
+            <td class="kpi-val" style="color:#b91c1c;">${formatCurrency(k.totalPending || 0)}</td>
+          </tr>
+        </table>
+
+        <div class="two-col-grid">
+          <div>
+            <div class="section-title">Revenue by Payment Mode</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th style="text-align:right;">Orders</th>
+                  <th style="text-align:right;">Total Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${modes.map(m => `
+                  <tr>
+                    <td style="font-weight:600;">${esc(m.payment_mode || 'Cash')}</td>
+                    <td style="text-align:right;">${m.count}</td>
+                    <td class="amount-col">${formatCurrency(m.total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <div class="section-title">Channel Performance (Retail vs Dealer)</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th style="text-align:right;">Orders</th>
+                  <th style="text-align:right;">Total Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${channels.map(c => `
+                  <tr>
+                    <td style="font-weight:600;">${c.party_type === 'dealer' ? '🏢 Dealer' : '👤 Retail Customer'}</td>
+                    <td style="text-align:right;">${c.count}</td>
+                    <td class="amount-col">${formatCurrency(c.total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-title">Top Selling Products</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Product / Service Description</th>
+              <th style="text-align:right;">Qty Sold</th>
+              <th style="text-align:right;">Total Revenue</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${topProds.slice(0, 10).map((p, idx) => `
+              <tr>
+                <td>${idx + 1}</td>
+                <td style="font-weight:600;">${esc(p.description || 'General Item')}</td>
+                <td style="text-align:right;">${p.qty_sold}</td>
+                <td class="amount-col">${formatCurrency(p.total_revenue)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="section-title" style="margin-top:16px;">Sales Register (${sales.length} Invoices)</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Invoice #</th>
+              <th>Customer / Dealer</th>
+              <th>Channel</th>
+              <th>Branch</th>
+              <th>Mode</th>
+              <th>Status</th>
+              <th style="text-align:right;">Total (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sales.slice(0, 100).map(s => `
+              <tr>
+                <td>${formatDate(s.sale_date)}</td>
+                <td style="font-family:monospace;font-weight:600;">SALE-${s.id}</td>
+                <td><strong>${esc(s.customer_name || 'Counter Sale')}</strong></td>
+                <td>${s.party_type === 'dealer' ? 'Dealer' : 'Retail'}</td>
+                <td>${esc(s.company_name || '—')}</td>
+                <td>${esc(s.payment_mode || 'Cash')}</td>
+                <td>${esc(s.payment_status || 'completed')}</td>
+                <td class="amount-col">${formatCurrency(s.grand_total || 0)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="sign-section">
+          <div class="sign-box">Prepared By (Sales Manager)</div>
+          <div class="sign-box">Finance & Audit Verified</div>
+          <div class="sign-box">Authorized Signatory</div>
+        </div>
+      </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
+  }
+
+  // Print Handler
+  on("printSalesAnalyticsBtn", "click", printSalesAnalyticsReport);
 
   // Initial load
   fetchSalesAnalytics();

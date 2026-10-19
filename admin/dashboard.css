@@ -2634,3 +2634,124 @@ html, body {
   border-radius: 10px;
   font-size: 11px;
 }
+
+/* ═══════════════ GLOBAL PRINT STYLES ═══════════════ */
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  /* Hide all dashboard application chrome, sidebars, buttons, toolbars */
+  .sidebar,
+  .topbar,
+  .module-subtabs-bar,
+  .sub-tabs,
+  .reports-filter-panel,
+  .module-chips-container,
+  #auditorPagination,
+  #salesPagination,
+  .no-print,
+  button,
+  .btn,
+  .dark-mode-toggle,
+  .header-actions,
+  .toast,
+  .modal,
+  input,
+  select {
+    display: none !important;
+  }
+
+  /* Reset backgrounds, shadows, borders and margins for crisp paper printing */
+  html,
+  body,
+  .main-content,
+  .sub-content-area,
+  .card {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    font-size: 11px !important;
+  }
+
+  /* Reports KPI grid on paper */
+  .reports-kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+    gap: 8px !important;
+    margin-bottom: 14px !important;
+    page-break-inside: avoid;
+  }
+
+  .report-kpi-card {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 8px 10px !important;
+    min-height: auto !important;
+    box-shadow: none !important;
+  }
+
+  .report-kpi-title {
+    color: #475569 !important;
+    font-size: 9.5px !important;
+  }
+
+  .report-kpi-value {
+    color: #0f172a !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
+  }
+
+  .report-kpi-sub {
+    color: #64748b !important;
+    font-size: 9px !important;
+  }
+
+  /* Data tables formatting for paper */
+  .reports-table-wrap,
+  .table-responsive {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  .data-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-top: 8px !important;
+    font-size: 9.5px !important;
+  }
+
+  .data-table th,
+  .data-table td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 5px 6px !important;
+    color: #0f172a !important;
+    background: transparent !important;
+  }
+
+  .data-table th {
+    background: #f1f5f9 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    font-size: 9px !important;
+  }
+
+  .data-table tr {
+    page-break-inside: avoid;
+  }
+
+  .badge {
+    border: 1px solid #cbd5e1 !important;
+    background: transparent !important;
+    color: #0f172a !important;
+    font-size: 9px !important;
+    padding: 1px 4px !important;
+  }
+}

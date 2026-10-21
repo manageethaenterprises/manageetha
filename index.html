@@ -1733,7 +1733,7 @@
             <option value="Service">Machinery Servicing / Spare Parts Inquiry</option>
           </select>
         </div>
-        <button type="submit" class="btn-primary-hero" style="width:100%; justify-content:center;">Submit Inquiry ➔</button>
+        <button type="submit" class="btn-primary-hero" style="width:100%; justify-content:center; gap:8px;"><span>💬 Submit & Connect on WhatsApp</span> <span>➔</span></button>
       </form>
     </div>
   </div>
@@ -2020,6 +2020,8 @@
       const prodName = activeInquiryProduct || 'General Inquiry';
       const orderType = document.getElementById('enqType') ? document.getElementById('enqType').value : 'Wholesale';
       const prod = PRODUCTS_DATA.find(p => p.name === prodName);
+      const name = document.getElementById('enqName') ? document.getElementById('enqName').value.trim() : '';
+      const phone = document.getElementById('enqPhone') ? document.getElementById('enqPhone').value.trim() : '';
 
       // Meta Pixel: Track qualified Lead generation for this product
       if (typeof fbq === 'function') {
@@ -2030,10 +2032,30 @@
           currency: 'INR',
           value: 0.00
         });
+        fbq('track', 'Contact', {
+          contact_method: 'WhatsApp Inquiry'
+        });
       }
 
-      alert('Thank you for contacting Manaswini Enterprises! Our agricultural sales & technical service representative will call you shortly.');
+      // Format WhatsApp Message with complete customer & product details
+      const waMessage = 
+        `🚜 *ManaGeetha — New Product Price & Quote Inquiry* 🚜\n\n` +
+        `📦 *Interested Machinery:* ${prodName}\n` +
+        `👤 *Customer / Dealer Name:* ${name}\n` +
+        `📞 *Mobile Number:* ${phone}\n` +
+        `🏷️ *Order Type:* ${orderType}\n` +
+        (prod && prod.specs ? `⚙️ *Specs:* ${prod.specs}\n` : '') +
+        `\nHello ManaGeetha sales team, please share best pricing quote, subsidy eligibility, and delivery schedule. Thank you!`;
+
+      const primaryPhone = '919491655550';
+      const waUrl = `https://wa.me/${primaryPhone}?text=${encodeURIComponent(waMessage)}`;
+
+      // Open WhatsApp in a new tab immediately
+      window.open(waUrl, '_blank');
+
       closeModal();
+      const form = document.getElementById('enquireForm');
+      if (form) form.reset();
     }
 
     // Meta Pixel: Track direct phone call inquiries

@@ -1669,8 +1669,17 @@ body.dark-mode ::-webkit-scrollbar-corner {
 
 .pos-layout-grid {
   display: grid;
-  grid-template-columns: 1fr 1.35fr;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(350px, 400px);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .pos-layout-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 20px !important;
+  }
 }
 
 /* Sub-content area & POS Bar responsiveness */

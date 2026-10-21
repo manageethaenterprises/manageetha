@@ -4794,10 +4794,38 @@ async function loadSalesPOSSubTab() {
       if (grandTextEl) grandTextEl.textContent = formatCurrency(0);
 
       const grandInpEl = document.getElementById("posGrandTotalInput");
-      if (grandInpEl) grandInpEl.value = "";
+      if (grandInpEl) {
+        grandInpEl.value = "";
+        grandInpEl.dataset.userOverridden = "false";
+      }
 
+      // RESET PAYMENT SETTLEMENT & PAID AMOUNT ON EMPTY / CLEARED CART
       const paidInpEl = document.getElementById("posPaidAmtInput");
-      if (paidInpEl) paidInpEl.value = "0.00";
+      if (paidInpEl) {
+        paidInpEl.value = "0.00";
+        paidInpEl.style.borderColor = "var(--border)";
+      }
+
+      const settlementSelEl = document.getElementById("posSettlementType");
+      if (settlementSelEl) {
+        settlementSelEl.value = "full";
+        settlementSelEl.style.borderColor = "var(--primary)";
+        settlementSelEl.style.color = "var(--primary)";
+      }
+
+      const paidHelpEl = document.getElementById("posPaidAmtHelp");
+      if (paidHelpEl) {
+        paidHelpEl.innerHTML = `Enter initial amount customer paid now. Remaining balance will be tracked as pending outstanding.`;
+      }
+
+      const noticeEl = document.getElementById("posMinCostNotice");
+      if (noticeEl) noticeEl.style.display = "none";
+
+      // Reset cash notes breakdown calculations
+      document.querySelectorAll(".note-calc-inp").forEach(inp => { inp.value = ""; });
+      const notesSum = document.getElementById("notesCalcSumText");
+      if (notesSum) notesSum.textContent = "Total: ₹0";
+
       return;
     }
 

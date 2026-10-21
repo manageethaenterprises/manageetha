@@ -277,14 +277,27 @@ module.exports = async function handler(req, res) {
 
       if (!name) return res.status(400).json({ error: 'Company name is required' });
 
+      let finalParentId = parent_company_id ? parseInt(parent_company_id) : null;
+      let finalGstin = gstin ? gstin.trim().toUpperCase() : null;
+      let finalPan = pan ? pan.trim().toUpperCase() : null;
+
+      if (finalParentId) {
+        const parentComp = await sql`SELECT gstin, pan, state, state_code FROM companies WHERE id = ${finalParentId}`;
+        if (parentComp && parentComp.length > 0) {
+          if (parentComp[0].gstin) finalGstin = parentComp[0].gstin;
+          if (parentComp[0].pan) finalPan = parentComp[0].pan;
+          else if (finalGstin && finalGstin.length >= 12) finalPan = finalGstin.substring(2, 12);
+        }
+      }
+
       const newComp = await sql`
         INSERT INTO companies (
           name, trade_name, parent_company_id, gstin, pan, hsn_code, website, address, city, state, state_code,
           pincode, phone, email, logo_data, bank_name, bank_account, bank_ifsc, bank_branch,
           capital_editable, inventory_add_control
         ) VALUES (
-          ${name}, ${trade_name || null}, ${parent_company_id ? parseInt(parent_company_id) : null},
-          ${gstin || null}, ${pan || null}, ${hsn_code || null}, ${website || 'https://manageetha.in'}, ${address || null}, ${city || null}, ${state || null}, ${state_code || null},
+          ${name}, ${trade_name || null}, ${finalParentId},
+          ${finalGstin}, ${finalPan}, ${hsn_code || null}, ${website || 'https://manageetha.in'}, ${address || null}, ${city || null}, ${state || null}, ${state_code || null},
           ${pincode || null}, ${phone || null}, ${email || null}, ${logo_data || null},
           ${bank_name || null}, ${bank_account || null}, ${bank_ifsc || null}, ${bank_branch || null},
           ${capital_editable !== undefined ? capital_editable : true}, ${inventory_add_control || '["storeadmin","superadmin"]'}
@@ -306,13 +319,26 @@ module.exports = async function handler(req, res) {
         capital_editable, inventory_add_control, is_active
       } = req.body;
 
+      let finalParentId = parent_company_id ? parseInt(parent_company_id) : null;
+      let finalGstin = gstin ? gstin.trim().toUpperCase() : null;
+      let finalPan = pan ? pan.trim().toUpperCase() : null;
+
+      if (finalParentId) {
+        const parentComp = await sql`SELECT gstin, pan, state, state_code FROM companies WHERE id = ${finalParentId}`;
+        if (parentComp && parentComp.length > 0) {
+          if (parentComp[0].gstin) finalGstin = parentComp[0].gstin;
+          if (parentComp[0].pan) finalPan = parentComp[0].pan;
+          else if (finalGstin && finalGstin.length >= 12) finalPan = finalGstin.substring(2, 12);
+        }
+      }
+
       const updated = await sql`
         UPDATE companies SET
           name = ${name},
           trade_name = ${trade_name || null},
-          parent_company_id = ${parent_company_id ? parseInt(parent_company_id) : null},
-          gstin = ${gstin || null},
-          pan = ${pan || null},
+          parent_company_id = ${finalParentId},
+          gstin = ${finalGstin},
+          pan = ${finalPan},
           hsn_code = ${hsn_code || null},
           website = ${website || 'https://manageetha.in'},
           address = ${address || null},

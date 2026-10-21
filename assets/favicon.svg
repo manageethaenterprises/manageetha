@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#047857" />
+      <stop offset="50%" stop-color="#064e3b" />
+      <stop offset="100%" stop-color="#022c22" />
+    </linearGradient>
+
+    <!-- Gold Accent Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="35%" stop-color="#eab308" />
+      <stop offset="100%" stop-color="#ca8a04" />
+    </linearGradient>
+
+    <!-- Vibrant Sprout Gradient -->
+    <linearGradient id="sproutGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="50%" stop-color="#4ade80" />
+      <stop offset="100%" stop-color="#86efac" />
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle Base with Gold Border -->
+  <rect x="16" y="16" width="480" height="480" rx="112" ry="112" fill="url(#bgGrad)" stroke="url(#goldGrad)" stroke-width="6" />
+
+  <!-- Inner Soft Inset Highlight -->
+  <rect x="22" y="22" width="468" height="468" rx="106" ry="106" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2" />
+
+  <!-- Agricultural Artwork Group -->
+  <g transform="translate(16, 12)">
+    <!-- Wheat / Paddy Sheaf Arch -->
+    <g fill="url(#goldGrad)" stroke="url(#goldGrad)">
+      <!-- Main stalk arch curve -->
+      <path d="M 96,336 C 76,260 90,170 170,126 C 218,100 274,106 314,136" fill="none" stroke-width="8" stroke-linecap="round" />
+      
+      <!-- Wheat Grains along the arch -->
+      <path d="M 104,312 C 96,300 94,284 102,274 C 110,284 112,300 104,312 Z" />
+      <path d="M 108,274 C 98,260 98,244 108,234 C 118,244 118,260 108,274 Z" />
+      <path d="M 118,236 C 108,220 110,204 122,196 C 130,208 128,224 118,236 Z" />
+      <path d="M 134,200 C 122,184 128,168 142,162 C 148,176 144,190 134,200 Z" />
+      <path d="M 156,170 C 144,154 152,138 168,134 C 172,148 166,162 156,170 Z" />
+      <path d="M 182,146 C 170,132 180,116 196,114 C 200,128 192,140 182,146 Z" />
+      <path d="M 212,130 C 202,116 214,102 230,102 C 232,116 222,126 212,130 Z" />
+      <path d="M 244,122 C 236,108 250,96 266,98 C 266,112 254,120 244,122 Z" />
+      <path d="M 276,122 C 270,108 286,98 300,104 C 298,118 286,124 276,122 Z" />
+      <path d="M 306,130 C 302,118 318,110 330,118 C 326,130 314,134 306,130 Z" />
+
+      <!-- Inner awn grains -->
+      <path d="M 124,286 C 134,276 142,284 140,296 C 132,298 126,294 124,286 Z" />
+      <path d="M 134,250 C 146,242 152,250 150,262 C 140,264 134,258 134,250 Z" />
+      <path d="M 150,218 C 162,210 168,220 164,230 C 154,232 148,226 150,218 Z" />
+      <path d="M 172,188 C 184,180 192,188 186,200 C 176,202 170,194 172,188 Z" />
+      <path d="M 198,166 C 210,158 218,166 212,176 C 202,178 196,172 198,166 Z" />
+      <path d="M 228,152 C 240,146 246,154 240,164 C 230,166 226,158 228,152 Z" />
+      <path d="M 258,146 C 270,142 274,152 268,160 C 258,162 254,154 258,146 Z" />
+    </g>
+
+    <!-- Green Plant Sprout emerging from exhaust -->
+    <g fill="url(#sproutGrad)" stroke="#15803d" stroke-width="1.5">
+      <!-- Stem -->
+      <path d="M 312,208 Q 314,166 338,142" fill="none" stroke="url(#sproutGrad)" stroke-width="7" stroke-linecap="round" />
+      
+      <!-- Right Big Leaf -->
+      <path d="M 334,146 C 334,106 394,92 404,118 C 404,158 354,168 334,146 Z" />
+      <!-- Left Small Leaf -->
+      <path d="M 330,150 C 316,128 274,124 278,144 C 282,168 318,162 330,150 Z" />
+      <!-- Leaf center rib veins -->
+      <path d="M 338,142 Q 366,128 396,120" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M 326,148 Q 302,142 284,140" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round" />
+    </g>
+
+    <!-- Tractor Silhouettes & Contours in Golden Yellow -->
+    <g fill="url(#goldGrad)" stroke="url(#goldGrad)">
+      <!-- Exhaust Chimney / Pipe -->
+      <rect x="304" y="208" width="16" height="34" rx="4" />
+
+      <!-- Cabin Roof & Pillars -->
+      <path d="M 156,176 L 254,176 C 262,176 266,182 268,190 L 284,256 L 140,256 L 150,190 C 152,182 156,176 156,176 Z" fill="none" stroke-width="12" stroke-linejoin="round" stroke-linecap="round" />
+      
+      <!-- Cabin Center Window Divider -->
+      <line x1="202" y1="182" x2="196" y2="250" stroke-width="10" stroke-linecap="round" />
+
+      <!-- Tractor Engine Hood & Body -->
+      <path d="M 276,242 L 344,250 C 362,252 374,264 374,282 L 374,306 L 296,306 L 282,274 Z" />
+      <path d="M 210,256 L 296,256 L 296,326 L 226,326 Z" />
+
+      <!-- Front Mudguard / Fender -->
+      <path d="M 314,316 C 314,288 338,272 368,276 C 392,278 406,294 406,316" fill="none" stroke-width="10" stroke-linecap="round" />
+
+      <!-- Rear Wheel Arch / Mudguard -->
+      <path d="M 108,310 C 114,242 166,230 220,240 C 234,244 246,252 248,266" fill="none" stroke-width="14" stroke-linecap="round" />
+
+      <!-- Rear Wheel (Big) -->
+      <circle cx="166" cy="336" r="68" stroke-width="18" fill="#042f1f" />
+      <circle cx="166" cy="336" r="32" fill="url(#goldGrad)" stroke="none" />
+      <circle cx="166" cy="336" r="14" fill="#042f1f" stroke="none" />
+
+      <!-- Front Wheel (Small) -->
+      <circle cx="362" cy="344" r="44" stroke-width="14" fill="#042f1f" />
+      <circle cx="362" cy="344" r="20" fill="url(#goldGrad)" stroke="none" />
+      <circle cx="362" cy="344" r="8" fill="#042f1f" stroke="none" />
+
+      <!-- Tractor Chassis Base Connection -->
+      <rect x="220" y="328" width="88" height="14" rx="6" />
+    </g>
+  </g>
+</svg>

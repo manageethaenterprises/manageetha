@@ -1,0 +1,27 @@
+{
+  "name": "ManaGeetha Enterprises",
+  "short_name": "ManaGeetha",
+  "description": "Authorized Wholesale & Retail Agricultural Machinery Dealer — Sonalika Rotavators, Shrachi Tillers, Balers & Drones",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b130b",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/assets/favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/favicon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

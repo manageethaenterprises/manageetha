@@ -6034,7 +6034,6 @@ async function loadInvoicesSubTab() {
       <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">🧾 Raised Tax Invoices & Custom Invoices</h3>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <button class="btn btn-primary" id="btnCreateCustomInvoice" style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;font-weight:600;padding:8px 16px;border-radius:6px;box-shadow:0 2px 4px rgba(79,70,229,0.25);">➕ Create Custom Invoice</button>
-        <button class="btn btn-outline" id="btnResequenceInvoices" title="Synchronize and re-sequence invoice numbers across parent & sub-branches sharing this GST number" style="font-size:12px;padding:7px 12px;border-radius:6px;display:flex;align-items:center;gap:5px;">🔄 Sync Sequence</button>
         <input type="text" id="invSearchInp" class="form-input" placeholder="🔍 Search Invoice #, Customer, Phone, Company..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:280px;max-width:100%;">
       </div>
     </div>
@@ -6352,24 +6351,6 @@ async function loadInvoicesSubTab() {
     document.getElementById("invSearchInp")?.addEventListener("input", (e) => renderInvoicesTable(e.target.value));
     document.getElementById("btnCreateCustomInvoice")?.addEventListener("click", () => {
       openCustomInvoiceModal(() => loadInvoicesSubTab());
-    });
-    document.getElementById("btnResequenceInvoices")?.addEventListener("click", async () => {
-      const btn = document.getElementById("btnResequenceInvoices");
-      setButtonLoading(btn, true, "Syncing...");
-      try {
-        const r = await fetch(`${API_BASE}/sales?action=resequence-invoices&company_id=${compId}`, { headers: authHeaders() });
-        const d = await r.json();
-        if (d.success) {
-          showToast(d.message || "Invoice sequences synchronized successfully!", "success");
-          loadInvoicesSubTab();
-        } else {
-          showToast(d.error || "Failed to sync sequences", "error");
-        }
-      } catch (err) {
-        showToast("Sync error: " + err.message, "error");
-      } finally {
-        setButtonLoading(btn, false);
-      }
     });
 
   } catch (err) {

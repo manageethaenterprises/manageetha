@@ -2037,15 +2037,15 @@
         });
       }
 
-      // Format WhatsApp Message with complete customer & product details
+      // Format WhatsApp Message with clean universal text formatting (no emoji glitches)
       const waMessage = 
-        `🚜 *ManaGeetha — New Product Price & Quote Inquiry* 🚜\n\n` +
-        `📦 *Interested Machinery:* ${prodName}\n` +
-        `👤 *Customer / Dealer Name:* ${name}\n` +
-        `📞 *Mobile Number:* ${phone}\n` +
-        `🏷️ *Order Type:* ${orderType}\n` +
-        (prod && prod.specs ? `⚙️ *Specs:* ${prod.specs}\n` : '') +
-        `\nHello ManaGeetha sales team, please share best pricing quote, subsidy eligibility, and delivery schedule. Thank you!`;
+        `*--- MANAGEETHA PRODUCT INQUIRY ---*\n\n` +
+        `*Product:* ${prodName}\n` +
+        `*Customer / Shop:* ${name}\n` +
+        `*Phone Number:* ${phone}\n` +
+        `*Order Type:* ${orderType}\n` +
+        (prod && prod.specs ? `*Specifications:* ${prod.specs}\n` : '') +
+        `\nHello ManaGeetha team, please share best price quote, subsidy details, and delivery availability. Thank you!`;
 
       const primaryPhone = '917981656294';
       const waUrl = `https://wa.me/${primaryPhone}?text=${encodeURIComponent(waMessage)}`;

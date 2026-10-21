@@ -52,7 +52,7 @@ module.exports = async function handler(req, res) {
                      'sales' as module,
                      'inward' as flow_type,
                      s.sale_date as transaction_date,
-                     COALESCE(NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
+                     COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
                      COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, v.trade_name, 'Counter Sale') as party_name,
                      COALESCE(NULLIF(s.customer_gstin, ''), cust.gstin, v.gstin, '—') as party_gstin,
                      c.name as company_name,
@@ -70,6 +70,7 @@ module.exports = async function handler(req, res) {
                      'Sales Supply' as category_label,
                      COALESCE(s.supply_type, 'Taxable Goods Supply') as description
               FROM sales s
+              LEFT JOIN invoices inv ON inv.sale_id = s.id
               LEFT JOIN companies c ON s.company_id = c.id
               LEFT JOIN customers cust ON s.customer_id = cust.id
               LEFT JOIN dealers v ON s.dealer_id = v.id
@@ -82,7 +83,7 @@ module.exports = async function handler(req, res) {
                      'sales' as module,
                      'inward' as flow_type,
                      s.sale_date as transaction_date,
-                     COALESCE(NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
+                     COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
                      COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, v.trade_name, 'Counter Sale') as party_name,
                      COALESCE(NULLIF(s.customer_gstin, ''), cust.gstin, v.gstin, '—') as party_gstin,
                      c.name as company_name,
@@ -100,10 +101,12 @@ module.exports = async function handler(req, res) {
                      'Sales Supply' as category_label,
                      COALESCE(s.supply_type, 'Taxable Goods Supply') as description
               FROM sales s
+              LEFT JOIN invoices inv ON inv.sale_id = s.id
               LEFT JOIN companies c ON s.company_id = c.id
               LEFT JOIN customers cust ON s.customer_id = cust.id
               LEFT JOIN dealers v ON s.dealer_id = v.id
-              WHERE s.company_id = ${targetCompId} AND s.sale_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+              WHERE (s.company_id = ${targetCompId} OR s.company_id IN (SELECT id FROM companies WHERE parent_company_id = ${targetCompId}))
+                AND s.sale_date::date BETWEEN ${startDate}::date AND ${endDate}::date
               ORDER BY s.sale_date DESC
             `;
           }
@@ -718,11 +721,14 @@ module.exports = async function handler(req, res) {
         if (isAll) {
           salesGst = await sql`
             SELECT s.id, s.sale_date, c.name as company_name, c.gstin as company_gstin,
+                   COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as invoice_number,
+                   s.challan_number,
                    COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, v.trade_name, 'Counter Sale') as customer_name,
                    COALESCE(NULLIF(s.customer_gstin, ''), cust.gstin, v.gstin) as customer_gstin,
                    s.party_type, s.dealer_id,
                    s.taxable_amount, s.cgst, s.sgst, s.igst, s.tax_amount, s.grand_total
             FROM sales s
+            LEFT JOIN invoices inv ON inv.sale_id = s.id
             LEFT JOIN companies c ON s.company_id = c.id
             LEFT JOIN customers cust ON s.customer_id = cust.id
             LEFT JOIN dealers v ON s.dealer_id = v.id
@@ -732,15 +738,19 @@ module.exports = async function handler(req, res) {
         } else {
           salesGst = await sql`
             SELECT s.id, s.sale_date, c.name as company_name, c.gstin as company_gstin,
+                   COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as invoice_number,
+                   s.challan_number,
                    COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, v.trade_name, 'Counter Sale') as customer_name,
                    COALESCE(NULLIF(s.customer_gstin, ''), cust.gstin, v.gstin) as customer_gstin,
                    s.party_type, s.dealer_id,
                    s.taxable_amount, s.cgst, s.sgst, s.igst, s.tax_amount, s.grand_total
             FROM sales s
+            LEFT JOIN invoices inv ON inv.sale_id = s.id
             LEFT JOIN companies c ON s.company_id = c.id
             LEFT JOIN customers cust ON s.customer_id = cust.id
             LEFT JOIN dealers v ON s.dealer_id = v.id
-            WHERE s.company_id = ${targetCompId} AND s.sale_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+            WHERE (s.company_id = ${targetCompId} OR s.company_id IN (SELECT id FROM companies WHERE parent_company_id = ${targetCompId}))
+              AND s.sale_date::date BETWEEN ${startDate}::date AND ${endDate}::date
             ORDER BY s.sale_date ASC
           `;
         }

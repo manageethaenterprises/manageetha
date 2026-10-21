@@ -1254,6 +1254,25 @@
       .price-val { font-size: 13px; }
     }
   </style>
+
+  <!-- Meta Pixel Code -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1979621732733292');
+    fbq('track', 'PageView');
+  </script>
+  <noscript>
+    <img height="1" width="1" style="display:none"
+         src="https://www.facebook.com/tr?id=1979621732733292&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Meta Pixel Code -->
 </head>
 <body>
 
@@ -1921,11 +1940,22 @@
       `).join('');
     }
 
+    let searchDebounceTimer = null;
+    let activeInquiryProduct = null;
+
     function filterCategory(cat, btn) {
       currentCategory = cat;
       const buttons = document.querySelectorAll('#filterTabs .filter-btn');
       buttons.forEach(b => b.classList.remove('active'));
       if (btn) btn.classList.add('active');
+
+      // Meta Pixel: Track category filter interest
+      if (typeof fbq === 'function' && cat !== 'all') {
+        fbq('trackCustom', 'FilterProductCategory', {
+          category: cat
+        });
+      }
+
       renderProducts();
     }
 
@@ -1933,16 +1963,48 @@
       const input = document.getElementById('productSearchInput');
       searchQuery = input ? input.value : '';
       renderProducts();
+
+      // Meta Pixel: Debounced search tracking (after user pauses typing)
+      clearTimeout(searchDebounceTimer);
+      if (searchQuery.trim().length >= 3) {
+        searchDebounceTimer = setTimeout(() => {
+          if (typeof fbq === 'function') {
+            fbq('track', 'Search', {
+              search_string: searchQuery.trim()
+            });
+          }
+        }, 700);
+      }
     }
 
     // Modal Handlers
     function openEnquireModal(productName) {
+      activeInquiryProduct = productName;
+      const prod = PRODUCTS_DATA.find(p => p.name === productName);
+
+      // Meta Pixel: Track individual product interest (ViewContent)
+      if (typeof fbq === 'function') {
+        fbq('track', 'ViewContent', {
+          content_name: productName,
+          content_category: prod ? prod.cat : 'Agricultural Machinery',
+          content_brand: prod ? prod.brand : 'ManaGeetha',
+          content_type: 'product'
+        });
+      }
+
       document.getElementById('modalTitle').textContent = 'Inquire Quote: ' + productName;
       document.getElementById('modalBodyText').textContent = 'Receive instant wholesale and retail price quote & availability for ' + productName;
       document.getElementById('modalOverlay').classList.add('active');
     }
 
     function playReel(title, desc) {
+      // Meta Pixel: Track field demonstration video engagement
+      if (typeof fbq === 'function') {
+        fbq('trackCustom', 'WatchDemoReel', {
+          reel_title: title
+        });
+      }
+
       document.getElementById('modalTitle').textContent = '📹 ' + title;
       document.getElementById('modalBodyText').textContent = desc + ' Contact Manaswini Enterprises for live field demonstration appointments at your farm location.';
       document.getElementById('modalOverlay').classList.add('active');
@@ -1954,9 +2016,39 @@
 
     function handleEnquireSubmit(e) {
       e.preventDefault();
+
+      const prodName = activeInquiryProduct || 'General Inquiry';
+      const orderType = document.getElementById('enqType') ? document.getElementById('enqType').value : 'Wholesale';
+      const prod = PRODUCTS_DATA.find(p => p.name === prodName);
+
+      // Meta Pixel: Track qualified Lead generation for this product
+      if (typeof fbq === 'function') {
+        fbq('track', 'Lead', {
+          content_name: prodName,
+          content_category: prod ? prod.cat : orderType,
+          lead_order_type: orderType,
+          currency: 'INR',
+          value: 0.00
+        });
+      }
+
       alert('Thank you for contacting Manaswini Enterprises! Our agricultural sales & technical service representative will call you shortly.');
       closeModal();
     }
+
+    // Meta Pixel: Track direct phone call inquiries
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('a[href^="tel:"]').forEach(link => {
+        link.addEventListener('click', function() {
+          if (typeof fbq === 'function') {
+            fbq('track', 'Contact', {
+              contact_method: 'Phone Call',
+              phone_number: this.getAttribute('href').replace('tel:', '')
+            });
+          }
+        });
+      });
+    });
 
     // Initial Render
     renderProducts();

@@ -4116,18 +4116,27 @@ async function loadSalesPOSSubTab() {
           </div>
 
           <!-- INITIAL PAID AMOUNT & SETTLEMENT TYPE INPUT FOR ALL PAYMENT MODES -->
-          <div class="form-group" style="background:var(--bg-secondary);padding:14px;border-radius:10px;border:2px solid var(--primary-glow);margin:12px 0;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-              <label class="form-label" style="font-weight:800;font-size:13px;color:var(--text1);letter-spacing:0.3px;margin:0;">💵 PAYMENT SETTLEMENT TYPE & INITIAL PAID AMOUNT *</label>
-              <select id="posSettlementType" class="form-select" style="width:auto;font-size:13px;padding:6px 14px;font-weight:800;border:2px solid var(--primary);background:var(--bg-primary);color:var(--primary);border-radius:8px;cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,0.08);">
-                <option value="full" style="font-weight:800;color:#15803d;">✅ Full Payment (100% Paid)</option>
-                <option value="part" style="font-weight:800;color:#b45309;">⏳ Part Payment / Advance (Partial Paid)</option>
-              </select>
+          <div class="form-group" style="background:var(--bg-secondary);padding:14px;border-radius:10px;border:1.5px solid var(--primary-glow);margin:12px 0;">
+            <div style="font-size:12px;font-weight:800;color:var(--text1);letter-spacing:0.4px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              <span>💵</span> <span>Payment Settlement & Initial Paid Amount *</span>
             </div>
-            <div class="form-group" style="margin:0;">
-              <input type="number" step="0.01" id="posPaidAmtInput" class="form-input" placeholder="Enter amount paid at checkout" style="font-size:15px;font-weight:700;color:var(--primary-light);">
+
+            <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;">Settlement Type *</label>
+                <select id="posSettlementType" class="form-select" style="font-size:12.5px;font-weight:700;height:40px;padding:6px 10px;border:1.5px solid var(--primary);border-radius:8px;cursor:pointer;background:var(--bg-primary);color:var(--primary);width:100%;">
+                  <option value="full" style="font-weight:700;color:#15803d;">✅ Full (100% Paid)</option>
+                  <option value="part" style="font-weight:700;color:#b45309;">⏳ Part / Advance</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;">Initial Paid (₹) *</label>
+                <input type="number" step="0.01" id="posPaidAmtInput" class="form-input" placeholder="0.00" style="font-size:14px;font-weight:800;height:40px;padding:6px 10px;border-radius:8px;color:var(--primary);background:var(--bg-primary);border:1.5px solid var(--border);width:100%;">
+              </div>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:4px;font-weight:600;" id="posPaidAmtHelp">
+
+            <div style="font-size:11.5px;color:var(--text3);margin-top:6px;font-weight:600;padding:6px 10px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border);" id="posPaidAmtHelp">
               Enter initial amount customer paid now. Remaining balance will be tracked as pending outstanding.
             </div>
 
@@ -5049,10 +5058,14 @@ async function loadSalesPOSSubTab() {
     if (settlementSel && paidInput) {
       if (settlementSel.value === "full") {
         paidInput.value = finalGrand.toFixed(2);
+        settlementSel.style.borderColor = "var(--primary)";
+        settlementSel.style.color = "var(--primary)";
         if (helpTxt) helpTxt.innerHTML = `<span style="color:var(--success); font-weight:700;">✅ Full Payment: ${formatCurrency(finalGrand)} paid in full. Pending Balance: ₹0.00</span>`;
       } else {
         const userPaid = parseFloat(paidInput.value || 0);
         const pending = Math.max(0, finalGrand - userPaid);
+        settlementSel.style.borderColor = "#f59e0b";
+        settlementSel.style.color = "#d97706";
         if (helpTxt) {
           if (pending > 0.01) {
             helpTxt.innerHTML = `<span style="color:var(--warning); font-weight:700;">⏳ Part Payment: ${formatCurrency(userPaid)} paid now. <span style="color:var(--danger); font-weight:800;">Remaining Pending Balance: ${formatCurrency(pending)}</span></span>`;

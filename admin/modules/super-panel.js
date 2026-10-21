@@ -450,6 +450,57 @@ async function loadCompaniesSubTab() {
 
   let companiesList = [];
 
+  function syncParentGstinLock() {
+    const parentId = document.getElementById("compParentId")?.value;
+    const gstinInp = document.getElementById("compGstin");
+    const panInp = document.getElementById("compPan");
+    const gstinHelp = document.getElementById("compGstinHelp");
+    const panHelp = document.getElementById("compPanHelp");
+    if (!gstinInp || !panInp) return;
+
+    if (parentId) {
+      const parent = companiesList.find(c => String(c.id) === String(parentId));
+      if (parent) {
+        gstinInp.value = parent.gstin || "";
+        panInp.value = parent.pan || (parent.gstin && parent.gstin.length === 15 ? parent.gstin.slice(2, 12) : "");
+        gstinInp.readOnly = true;
+        panInp.readOnly = true;
+        gstinInp.style.backgroundColor = "var(--bg-secondary, #f8fafc)";
+        panInp.style.backgroundColor = "var(--bg-secondary, #f8fafc)";
+        gstinInp.style.cursor = "not-allowed";
+        panInp.style.cursor = "not-allowed";
+        if (gstinHelp) {
+          gstinHelp.innerHTML = `<span style="color:#10b981;font-weight:600;font-size:11px;">🔒 Auto-inherited from Parent (${esc(parent.name)})</span>`;
+        }
+        if (panHelp) {
+          panHelp.innerHTML = `<span style="color:#10b981;font-weight:600;font-size:11px;">🔒 Auto-inherited from Parent PAN</span>`;
+        }
+
+        const stateInp = document.getElementById("compState");
+        const stateCodeInp = document.getElementById("compStateCode");
+        if (stateInp && !stateInp.value && parent.state) stateInp.value = parent.state;
+        if (stateCodeInp && !stateCodeInp.value && parent.state_code) stateCodeInp.value = parent.state_code;
+        return;
+      }
+    }
+
+    // Standalone (no parent)
+    gstinInp.readOnly = false;
+    panInp.readOnly = false;
+    gstinInp.style.backgroundColor = "";
+    panInp.style.backgroundColor = "";
+    gstinInp.style.cursor = "";
+    panInp.style.cursor = "";
+    if (gstinHelp) gstinHelp.innerHTML = "";
+    if (panHelp) panHelp.innerHTML = "";
+  }
+
+  const compParentEl = document.getElementById("compParentId");
+  if (compParentEl && !compParentEl.dataset.hasSyncListener) {
+    compParentEl.dataset.hasSyncListener = "true";
+    compParentEl.addEventListener("change", syncParentGstinLock);
+  }
+
   async function fetchCompanies() {
     try {
       const res = await fetch(`${API_BASE}/super?action=companies-list`, { headers: authHeaders() });
@@ -491,57 +542,6 @@ async function loadCompaniesSubTab() {
       const parentSel = document.getElementById("compParentId");
       parentSel.innerHTML = `<option value="">-- Standalone (No Parent) --</option>` +
         companiesList.filter(c => !c.parent_company_id).map(c => `<option value="${c.id}">${esc(c.name)} (${esc(c.gstin || 'No GST')})</option>`).join("");
-
-      function syncParentGstinLock() {
-        const parentId = document.getElementById("compParentId")?.value;
-        const gstinInp = document.getElementById("compGstin");
-        const panInp = document.getElementById("compPan");
-        const gstinHelp = document.getElementById("compGstinHelp");
-        const panHelp = document.getElementById("compPanHelp");
-        if (!gstinInp || !panInp) return;
-
-        if (parentId) {
-          const parent = companiesList.find(c => String(c.id) === String(parentId));
-          if (parent) {
-            gstinInp.value = parent.gstin || "";
-            panInp.value = parent.pan || (parent.gstin && parent.gstin.length === 15 ? parent.gstin.slice(2, 12) : "");
-            gstinInp.readOnly = true;
-            panInp.readOnly = true;
-            gstinInp.style.backgroundColor = "var(--bg-secondary, #f8fafc)";
-            panInp.style.backgroundColor = "var(--bg-secondary, #f8fafc)";
-            gstinInp.style.cursor = "not-allowed";
-            panInp.style.cursor = "not-allowed";
-            if (gstinHelp) {
-              gstinHelp.innerHTML = `<span style="color:#10b981;font-weight:600;font-size:11px;">🔒 Auto-inherited from Parent (${esc(parent.name)})</span>`;
-            }
-            if (panHelp) {
-              panHelp.innerHTML = `<span style="color:#10b981;font-weight:600;font-size:11px;">🔒 Auto-inherited from Parent PAN</span>`;
-            }
-
-            const stateInp = document.getElementById("compState");
-            const stateCodeInp = document.getElementById("compStateCode");
-            if (stateInp && !stateInp.value && parent.state) stateInp.value = parent.state;
-            if (stateCodeInp && !stateCodeInp.value && parent.state_code) stateCodeInp.value = parent.state_code;
-            return;
-          }
-        }
-
-        // Standalone (no parent)
-        gstinInp.readOnly = false;
-        panInp.readOnly = false;
-        gstinInp.style.backgroundColor = "";
-        panInp.style.backgroundColor = "";
-        gstinInp.style.cursor = "";
-        panInp.style.cursor = "";
-        if (gstinHelp) gstinHelp.innerHTML = "";
-        if (panHelp) panHelp.innerHTML = "";
-      }
-
-      const compParentEl = document.getElementById("compParentId");
-      if (compParentEl && !compParentEl.dataset.hasSyncListener) {
-        compParentEl.dataset.hasSyncListener = "true";
-        compParentEl.addEventListener("change", syncParentGstinLock);
-      }
 
       // Attach capital toggles
       document.querySelectorAll(".capitalToggle").forEach(chk => {

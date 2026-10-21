@@ -43,15 +43,37 @@ function formatDdmmyy(dateVal) {
   return `${dd}${mm}${yy}`;
 }
 
+function getCompanyBrandKey(comp) {
+  if (!comp) return '';
+  const gstin = (comp.gstin || '').trim().toUpperCase();
+  if (gstin.length === 15) return gstin.slice(2, 12); // PAN portion of GSTIN
+  if (gstin.length >= 10) return gstin;
+
+  const pan = (comp.pan || '').trim().toUpperCase();
+  if (pan.length >= 10) return pan;
+
+  const rawName = (comp.name || '').toUpperCase().trim();
+  if (rawName.includes('GEETHA')) return 'GEETHA';
+  if (rawName.includes('MANASWINI')) return 'MANASWINI';
+
+  const clean = rawName.replace(/[^A-Z0-9\s]/g, ' ').trim().split(/\s+/);
+  return clean.slice(0, 2).join(' ') || rawName;
+}
+
 async function getCompanyFamilyInfo(sql, compId) {
   if (!compId || compId === "all" || isNaN(parseInt(compId))) {
     return null;
   }
   const targetId = parseInt(compId);
-  
-  // 1. Fetch target company
-  const targetRows = await sql`SELECT id, parent_company_id, gstin, name FROM companies WHERE id = ${targetId}`;
-  if (!targetRows || targetRows.length === 0) {
+
+  const allComps = await sql`
+    SELECT id, name, trade_name, parent_company_id, gstin, pan, city, state 
+    FROM companies 
+    ORDER BY id ASC
+  `;
+
+  const target = allComps.find(c => parseInt(c.id) === targetId);
+  if (!target) {
     return {
       rootParentId: targetId,
       rootName: 'MANASWINI',
@@ -60,54 +82,68 @@ async function getCompanyFamilyInfo(sql, compId) {
       familyCompIds: [targetId]
     };
   }
-  
-  const target = targetRows[0];
-  const rootParentId = target.parent_company_id ? parseInt(target.parent_company_id) : parseInt(target.id);
-  
-  // 2. Fetch root parent
-  let rootParent = target;
-  if (target.parent_company_id) {
-    const rootRows = await sql`SELECT id, parent_company_id, gstin, name FROM companies WHERE id = ${rootParentId}`;
-    if (rootRows && rootRows.length > 0) {
-      rootParent = rootRows[0];
+
+  const targetBrandKey = getCompanyBrandKey(target);
+  const targetGstin = (target.gstin || '').trim().toUpperCase();
+  const targetPan = (target.pan || '').trim().toUpperCase();
+
+  // Find all companies in this family (matching parent_company_id, GSTIN, PAN, or Brand Key)
+  const familyComps = [];
+  for (const c of allComps) {
+    const cId = parseInt(c.id);
+    const cBrandKey = getCompanyBrandKey(c);
+    const cGstin = (c.gstin || '').trim().toUpperCase();
+    const cPan = (c.pan || '').trim().toUpperCase();
+    const cParentId = c.parent_company_id ? parseInt(c.parent_company_id) : null;
+    const targetParentId = target.parent_company_id ? parseInt(target.parent_company_id) : null;
+
+    let isMatch = false;
+
+    // 1. Direct ID or parent_company_id links
+    if (cId === targetId) {
+      isMatch = true;
+    } else if (cParentId && (cParentId === targetId || (targetParentId && cParentId === targetParentId))) {
+      isMatch = true;
+    } else if (targetParentId && cId === targetParentId) {
+      isMatch = true;
+    }
+    // 2. Matching non-empty GSTIN
+    else if (targetGstin && cGstin && targetGstin === cGstin) {
+      isMatch = true;
+    }
+    // 3. Matching non-empty PAN
+    else if (targetPan && cPan && targetPan === cPan) {
+      isMatch = true;
+    }
+    // 4. Matching brand / company group key (e.g. all Geetha branches or all Manaswini branches)
+    else if (targetBrandKey && cBrandKey && targetBrandKey === cBrandKey) {
+      isMatch = true;
+    }
+
+    if (isMatch && !familyComps.some(x => parseInt(x.id) === cId)) {
+      familyComps.push(c);
     }
   }
-  
-  const sharedGstin = (rootParent.gstin || target.gstin || '').trim();
-  const rootName = (rootParent.name || target.name || 'MANASWINI').trim();
-  const compNameStr = rootName.replace(/[^a-zA-Z]/g, '').toUpperCase();
-  const comp4Letter = (compNameStr.slice(0, 4) || 'MANA').padEnd(4, 'X');
-  
-  // 3. Find all companies belonging to this parent/child branch family:
-  // - Either id = rootParentId
-  // - Or parent_company_id = rootParentId
-  // - Or sharing the same non-empty GSTIN
-  let familyRows;
-  if (sharedGstin) {
-    familyRows = await sql`
-      SELECT id, name, gstin, parent_company_id 
-      FROM companies 
-      WHERE id = ${rootParentId} 
-         OR parent_company_id = ${rootParentId}
-         OR (gstin IS NOT NULL AND TRIM(gstin) != '' AND TRIM(gstin) = ${sharedGstin})
-    `;
-  } else {
-    familyRows = await sql`
-      SELECT id, name, gstin, parent_company_id 
-      FROM companies 
-      WHERE id = ${rootParentId} 
-         OR parent_company_id = ${rootParentId}
-    `;
-  }
-  
-  const familyCompIds = familyRows.map(r => parseInt(r.id));
-  if (!familyCompIds.includes(targetId)) {
-    familyCompIds.push(targetId);
+
+  // Root company in the family: prioritize parent_company_id == null or lowest ID
+  const rootComp = familyComps.find(c => !c.parent_company_id) || familyComps[0] || target;
+  const familyCompIds = familyComps.map(c => parseInt(c.id));
+
+  // Determine prefix: 'GEET' for Geetha, 'MANA' for Manaswini
+  const brandName = (rootComp.name || target.name || 'MANASWINI').trim();
+  const cleanName = brandName.replace(/[^a-zA-Z]/g, '').toUpperCase();
+  let comp4Letter = (cleanName.slice(0, 4) || 'MANA').padEnd(4, 'X');
+  if (targetBrandKey === 'GEETHA' || brandName.toUpperCase().includes('GEETHA')) {
+    comp4Letter = 'GEET';
+  } else if (targetBrandKey === 'MANASWINI' || brandName.toUpperCase().includes('MANASWINI')) {
+    comp4Letter = 'MANA';
   }
 
+  const sharedGstin = (rootComp.gstin || target.gstin || '').trim();
+
   return {
-    rootParentId,
-    rootName,
+    rootParentId: parseInt(rootComp.id),
+    rootName: rootComp.name || target.name,
     sharedGstin,
     comp4Letter,
     familyCompIds
@@ -169,27 +205,18 @@ async function resequenceInvoices(sql, compId) {
         targetFamilies.push(familyInfo);
       }
     } else {
-      // Find all root companies / distinct GST families
-      const allComps = await sql`SELECT id, name, parent_company_id, gstin FROM companies ORDER BY id ASC`;
-      const processedRootIds = new Set();
-      const processedGstins = new Set();
+      // Find all distinct brand / GST families
+      const allComps = await sql`SELECT id, name, parent_company_id, gstin, pan FROM companies ORDER BY id ASC`;
+      const processedCompIds = new Set();
 
       for (const comp of allComps) {
-        const rootId = comp.parent_company_id ? parseInt(comp.parent_company_id) : parseInt(comp.id);
-        const gstinClean = (comp.gstin || '').trim();
+        const cId = parseInt(comp.id);
+        if (processedCompIds.has(cId)) continue;
 
-        if (processedRootIds.has(rootId) || (gstinClean && processedGstins.has(gstinClean))) {
-          continue;
-        }
-
-        const familyInfo = await getCompanyFamilyInfo(sql, comp.id);
+        const familyInfo = await getCompanyFamilyInfo(sql, cId);
         if (familyInfo) {
           targetFamilies.push(familyInfo);
-          processedRootIds.add(familyInfo.rootParentId);
-          familyInfo.familyCompIds.forEach(id => processedRootIds.add(id));
-          if (familyInfo.sharedGstin) {
-            processedGstins.add(familyInfo.sharedGstin);
-          }
+          familyInfo.familyCompIds.forEach(id => processedCompIds.add(id));
         }
       }
     }
@@ -214,7 +241,7 @@ async function resequenceInvoices(sql, compId) {
         await sql`UPDATE invoices SET invoice_number = ${`TEMP-${inv.id}-${Date.now()}`} WHERE id = ${inv.id}`;
       }
 
-      // Phase 2: Set clean, unified sequential numbers and keep sales.invoice_number synchronized
+      // Phase 2: Set clean, unified sequential numbers across all branches in this family
       let seq = 1;
       for (const inv of invoices) {
         const ddmmyy = formatDdmmyy(inv.invoice_date || inv.created_at);
@@ -1525,7 +1552,21 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ INVOICES LIST ═══════════════
     else if (action === "invoices-list") {
-      await resequenceInvoices(sql, isAll ? null : parseInt(compQuery));
+      // Auto-heal sequence if requested or if any duplicate invoice numbers exist in the database
+      if (req.query.resync === "true" || req.query.resequence === "true") {
+        await resequenceInvoices(sql, null);
+      } else {
+        try {
+          const dupCheck = await sql`
+            SELECT invoice_number FROM invoices 
+            WHERE invoice_number IS NOT NULL AND invoice_number != ''
+            GROUP BY invoice_number HAVING COUNT(*) > 1 LIMIT 1
+          `;
+          if (dupCheck.length > 0) {
+            await resequenceInvoices(sql, null);
+          }
+        } catch (dupErr) {}
+      }
 
       let rows;
       if (isAll) {

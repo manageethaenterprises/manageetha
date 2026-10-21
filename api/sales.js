@@ -1,4 +1,14 @@
 const { getSQL } = require("../shared/db");
+const {
+  formatDdmmyy,
+  getCompanyBrandKey,
+  getCompanyFamilyInfo,
+  getNextFamilyInvoiceNumber,
+  resequenceInvoices,
+  getNextFamilyDcNumber,
+  getNextFamilyReceiptNumber,
+  resequenceReceipts
+} = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
@@ -15,274 +25,6 @@ function verifyToken(req) {
   }
   if (!token || token === "null" || token === "undefined") return null;
   try { return jwt.verify(token, JWT_SECRET); } catch { return null; }
-}
-
-function formatDdmmyy(dateVal) {
-  if (!dateVal) {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yy = String(now.getFullYear()).slice(-2);
-    return `${dd}${mm}${yy}`;
-  }
-  if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
-    const parts = dateVal.split('T')[0].split('-');
-    return `${parts[2]}${parts[1]}${parts[0].slice(-2)}`;
-  }
-  const d = new Date(dateVal);
-  if (isNaN(d.getTime())) {
-    const now = new Date();
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yy = String(now.getFullYear()).slice(-2);
-    return `${dd}${mm}${yy}`;
-  }
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}${mm}${yy}`;
-}
-
-function getCompanyBrandKey(comp) {
-  if (!comp) return '';
-  const gstin = (comp.gstin || '').trim().toUpperCase();
-  if (gstin.length === 15) return gstin.slice(2, 12); // PAN portion of GSTIN
-  if (gstin.length >= 10) return gstin;
-
-  const pan = (comp.pan || '').trim().toUpperCase();
-  if (pan.length >= 10) return pan;
-
-  const rawName = (comp.name || '').toUpperCase().trim();
-  if (rawName.includes('GEETHA')) return 'GEETHA';
-  if (rawName.includes('MANASWINI')) return 'MANASWINI';
-
-  const clean = rawName.replace(/[^A-Z0-9\s]/g, ' ').trim().split(/\s+/);
-  return clean.slice(0, 2).join(' ') || rawName;
-}
-
-async function getCompanyFamilyInfo(sql, compId) {
-  if (!compId || compId === "all" || isNaN(parseInt(compId))) {
-    return null;
-  }
-  const targetId = parseInt(compId);
-
-  const allComps = await sql`
-    SELECT id, name, trade_name, parent_company_id, gstin, pan, city, state 
-    FROM companies 
-    ORDER BY id ASC
-  `;
-
-  const target = allComps.find(c => parseInt(c.id) === targetId);
-  if (!target) {
-    return {
-      rootParentId: targetId,
-      rootName: 'MANASWINI',
-      sharedGstin: '',
-      comp4Letter: 'MANA',
-      familyCompIds: [targetId]
-    };
-  }
-
-  const targetBrandKey = getCompanyBrandKey(target);
-  const targetGstin = (target.gstin || '').trim().toUpperCase();
-  const targetPan = (target.pan || '').trim().toUpperCase();
-
-  // Find all companies in this family (matching parent_company_id, GSTIN, PAN, or Brand Key)
-  const familyComps = [];
-  for (const c of allComps) {
-    const cId = parseInt(c.id);
-    const cBrandKey = getCompanyBrandKey(c);
-    const cGstin = (c.gstin || '').trim().toUpperCase();
-    const cPan = (c.pan || '').trim().toUpperCase();
-    const cParentId = c.parent_company_id ? parseInt(c.parent_company_id) : null;
-    const targetParentId = target.parent_company_id ? parseInt(target.parent_company_id) : null;
-
-    let isMatch = false;
-
-    // 1. Direct ID or parent_company_id links
-    if (cId === targetId) {
-      isMatch = true;
-    } else if (cParentId && (cParentId === targetId || (targetParentId && cParentId === targetParentId))) {
-      isMatch = true;
-    } else if (targetParentId && cId === targetParentId) {
-      isMatch = true;
-    }
-    // 2. Matching non-empty GSTIN
-    else if (targetGstin && cGstin && targetGstin === cGstin) {
-      isMatch = true;
-    }
-    // 3. Matching non-empty PAN
-    else if (targetPan && cPan && targetPan === cPan) {
-      isMatch = true;
-    }
-    // 4. Matching brand / company group key (e.g. all Geetha branches or all Manaswini branches)
-    else if (targetBrandKey && cBrandKey && targetBrandKey === cBrandKey) {
-      isMatch = true;
-    }
-
-    if (isMatch && !familyComps.some(x => parseInt(x.id) === cId)) {
-      familyComps.push(c);
-    }
-  }
-
-  // Root company in the family: prioritize parent_company_id == null or lowest ID
-  const rootComp = familyComps.find(c => !c.parent_company_id) || familyComps[0] || target;
-  const familyCompIds = familyComps.map(c => parseInt(c.id));
-
-  // Determine prefix: 'GEET' for Geetha, 'MANA' for Manaswini
-  const brandName = (rootComp.name || target.name || 'MANASWINI').trim();
-  const cleanName = brandName.replace(/[^a-zA-Z]/g, '').toUpperCase();
-  let comp4Letter = (cleanName.slice(0, 4) || 'MANA').padEnd(4, 'X');
-  if (targetBrandKey === 'GEETHA' || brandName.toUpperCase().includes('GEETHA')) {
-    comp4Letter = 'GEET';
-  } else if (targetBrandKey === 'MANASWINI' || brandName.toUpperCase().includes('MANASWINI')) {
-    comp4Letter = 'MANA';
-  }
-
-  const sharedGstin = (rootComp.gstin || target.gstin || '').trim();
-
-  return {
-    rootParentId: parseInt(rootComp.id),
-    rootName: rootComp.name || target.name,
-    sharedGstin,
-    comp4Letter,
-    familyCompIds
-  };
-}
-
-async function getNextFamilyInvoiceNumber(sql, compId, dateVal) {
-  const familyInfo = await getCompanyFamilyInfo(sql, compId);
-  const familyCompIds = (familyInfo && familyInfo.familyCompIds && familyInfo.familyCompIds.length > 0)
-    ? familyInfo.familyCompIds
-    : [parseInt(compId)];
-  const comp4Letter = familyInfo ? familyInfo.comp4Letter : 'MANA';
-  const ddmmyy = formatDdmmyy(dateVal);
-
-  const lastInvs = await sql`
-    SELECT invoice_number FROM invoices 
-    WHERE company_id = ANY(${familyCompIds}) 
-      AND invoice_number IS NOT NULL AND invoice_number != ''
-    ORDER BY id DESC LIMIT 100
-  `;
-
-  let maxSeq = 0;
-  for (const row of lastInvs) {
-    if (row.invoice_number) {
-      const match = row.invoice_number.match(/-(\d+)$/) || row.invoice_number.match(/(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxSeq) maxSeq = num;
-      }
-    }
-  }
-
-  const nextSeq = maxSeq + 1;
-  const invNo = `${comp4Letter}${ddmmyy}-${String(nextSeq).padStart(3, '0')}`;
-  return { invNo, nextSeq, familyInfo };
-}
-
-async function resequenceInvoices(sql, compId) {
-  try {
-    // 1. Initial synchronisation between invoices and sales table
-    try {
-      await sql`
-        UPDATE sales s
-        SET invoice_number = i.invoice_number,
-            invoice_date = COALESCE(s.invoice_date, i.invoice_date)
-        FROM invoices i
-        WHERE i.sale_id = s.id
-          AND (s.invoice_number IS NULL OR s.invoice_number = '' OR s.invoice_number != i.invoice_number)
-      `;
-    } catch (syncErr) {
-      console.warn("Initial sales-invoice sync error:", syncErr.message);
-    }
-
-    let targetFamilies = [];
-
-    if (compId && compId !== "all" && !isNaN(parseInt(compId))) {
-      const familyInfo = await getCompanyFamilyInfo(sql, parseInt(compId));
-      if (familyInfo) {
-        targetFamilies.push(familyInfo);
-      }
-    } else {
-      // Find all distinct brand / GST families
-      const allComps = await sql`SELECT id, name, parent_company_id, gstin, pan FROM companies ORDER BY id ASC`;
-      const processedCompIds = new Set();
-
-      for (const comp of allComps) {
-        const cId = parseInt(comp.id);
-        if (processedCompIds.has(cId)) continue;
-
-        const familyInfo = await getCompanyFamilyInfo(sql, cId);
-        if (familyInfo) {
-          targetFamilies.push(familyInfo);
-          familyInfo.familyCompIds.forEach(id => processedCompIds.add(id));
-        }
-      }
-    }
-
-    for (const family of targetFamilies) {
-      if (!family.familyCompIds || family.familyCompIds.length === 0) continue;
-
-      const invoices = await sql`
-        SELECT i.id, i.company_id, i.sale_id, i.invoice_date, i.created_at, i.invoice_number,
-               s.is_custom
-        FROM invoices i
-        LEFT JOIN sales s ON i.sale_id = s.id
-        WHERE i.company_id = ANY(${family.familyCompIds})
-          AND (s.is_custom IS NOT TRUE OR s.is_custom = false)
-        ORDER BY i.invoice_date ASC, i.id ASC
-      `;
-
-      if (invoices.length === 0) continue;
-
-      // Phase 1: Set temporary numbers to avoid UNIQUE (company_id, invoice_number) constraint collisions
-      for (const inv of invoices) {
-        await sql`UPDATE invoices SET invoice_number = ${`TEMP-${inv.id}-${Date.now()}`} WHERE id = ${inv.id}`;
-      }
-
-      // Phase 2: Set clean, unified sequential numbers across all branches in this family
-      let seq = 1;
-      for (const inv of invoices) {
-        const ddmmyy = formatDdmmyy(inv.invoice_date || inv.created_at);
-        const formattedNo = `${family.comp4Letter}${ddmmyy}-${String(seq).padStart(3, '0')}`;
-        await sql`UPDATE invoices SET invoice_number = ${formattedNo} WHERE id = ${inv.id}`;
-        if (inv.sale_id) {
-          await sql`UPDATE sales SET invoice_number = ${formattedNo} WHERE id = ${inv.sale_id}`;
-        }
-        seq++;
-      }
-    }
-  } catch (err) {
-    console.error("resequenceInvoices error:", err.message);
-  }
-}
-
-async function resequenceReceipts(sql, compId) {
-  try {
-    let receipts;
-    if (compId && compId !== "all" && !isNaN(parseInt(compId))) {
-      receipts = await sql`
-        SELECT id FROM sale_payments 
-        WHERE company_id = ${parseInt(compId)}
-        ORDER BY payment_date ASC, id ASC
-      `;
-    } else {
-      receipts = await sql`
-        SELECT id FROM sale_payments 
-        ORDER BY payment_date ASC, id ASC
-      `;
-    }
-
-    let seq = 1;
-    for (const r of receipts) {
-      const formattedNo = `RCP-${String(seq).padStart(3, '0')}`;
-      await sql`UPDATE sale_payments SET receipt_number = ${formattedNo} WHERE id = ${r.id}`;
-      seq++;
-    }
-  } catch (err) {
-    console.error("resequenceReceipts error:", err.message);
-  }
 }
 
 module.exports = async function handler(req, res) {
@@ -846,29 +588,8 @@ module.exports = async function handler(req, res) {
       // Sequential invoice number across parent and child branches sharing the same company GST number
       const { invNo } = await getNextFamilyInvoiceNumber(sql, compId, sale_date);
 
-      const lastDc = await sql`
-        SELECT challan_number FROM sales 
-        WHERE company_id = ${compId} AND challan_number IS NOT NULL AND challan_number != ''
-        ORDER BY id DESC LIMIT 1
-      `;
-      let nextDcSeq = 1;
-      if (lastDc.length > 0 && lastDc[0].challan_number) {
-        const match = lastDc[0].challan_number.match(/(\d+)$/);
-        if (match) nextDcSeq = parseInt(match[1], 10) + 1;
-      }
-      const dcNo = nextDcSeq.toString();
-
-      const lastRcpt = await sql`
-        SELECT receipt_number FROM sale_payments 
-        WHERE company_id = ${compId} AND receipt_number IS NOT NULL AND receipt_number != ''
-        ORDER BY id DESC LIMIT 1
-      `;
-      let nextRcptSeq = 1;
-      if (lastRcpt.length > 0 && lastRcpt[0].receipt_number) {
-        const match = lastRcpt[0].receipt_number.match(/(\d+)$/);
-        if (match) nextRcptSeq = parseInt(match[1], 10) + 1;
-      }
-      const initialRcptNo = `RCP-${String(nextRcptSeq).padStart(3, '0')}`;
+      const dcNo = await getNextFamilyDcNumber(sql, compId);
+      const initialRcptNo = await getNextFamilyReceiptNumber(sql, compId);
 
       const compStateStr = (company.state || "").trim().toLowerCase();
       const reqSupplyState = (req.body.supply_state || "").trim().toLowerCase();
@@ -1242,17 +963,7 @@ module.exports = async function handler(req, res) {
       const sale = saleArr[0];
       const payAmount = parseFloat(amount);
 
-      const lastRcpt = await sql`
-        SELECT receipt_number FROM sale_payments 
-        WHERE company_id = ${sale.company_id} AND receipt_number IS NOT NULL AND receipt_number != ''
-        ORDER BY id DESC LIMIT 1
-      `;
-      let nextRcptSeq = 1;
-      if (lastRcpt.length > 0 && lastRcpt[0].receipt_number) {
-        const match = lastRcpt[0].receipt_number.match(/(\d+)$/);
-        if (match) nextRcptSeq = parseInt(match[1], 10) + 1;
-      }
-      const newRcptNo = `RCP-${String(nextRcptSeq).padStart(3, '0')}`;
+      const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
 
       // Record payment in sale_payments
       const newPay = await sql`
@@ -1552,21 +1263,8 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ INVOICES LIST ═══════════════
     else if (action === "invoices-list") {
-      // Auto-heal sequence if requested or if any duplicate invoice numbers exist in the database
-      if (req.query.resync === "true" || req.query.resequence === "true") {
-        await resequenceInvoices(sql, null);
-      } else {
-        try {
-          const dupCheck = await sql`
-            SELECT invoice_number FROM invoices 
-            WHERE invoice_number IS NOT NULL AND invoice_number != ''
-            GROUP BY invoice_number HAVING COUNT(*) > 1 LIMIT 1
-          `;
-          if (dupCheck.length > 0) {
-            await resequenceInvoices(sql, null);
-          }
-        } catch (dupErr) {}
-      }
+      // Auto-heal and maintain continuous sequential numbering across branch families
+      await resequenceInvoices(sql, null);
 
       let rows;
       if (isAll) {
@@ -1613,7 +1311,7 @@ module.exports = async function handler(req, res) {
             SELECT sale_id, MAX(GREATEST(COALESCE(rate, 0), COALESCE(taxable_value, 0), COALESCE(total, 0))) as max_rate
             FROM sale_items GROUP BY sale_id
           ) item_stat ON (item_stat.sale_id = i.sale_id OR item_stat.sale_id = s.id)
-          WHERE (i.company_id = ${parseInt(compQuery)} OR i.company_id IN (SELECT id FROM companies WHERE parent_company_id = ${parseInt(compQuery)}))
+          WHERE i.company_id = ${parseInt(compQuery)}
           ORDER BY i.created_at DESC
         `;
       }
@@ -1700,7 +1398,7 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ PAYMENT RECEIPTS LIST ═══════════════
     else if (action === "receipts-list") {
-      await resequenceReceipts(sql, isAll ? null : parseInt(compQuery));
+      await resequenceReceipts(sql, null);
 
       let rows;
       if (isAll) {

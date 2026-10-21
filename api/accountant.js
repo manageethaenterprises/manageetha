@@ -1,4 +1,5 @@
 const { getSQL } = require("../shared/db");
+const { getNextFamilyExpenseNumber } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
@@ -148,7 +149,7 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: "Company, Category, and Amount required" });
       }
 
-      const receiptNo = "EXP-" + Date.now().toString().slice(-6);
+      const receiptNo = await getNextFamilyExpenseNumber(sql, compId);
 
       const exp = await sql`
         INSERT INTO expenses (

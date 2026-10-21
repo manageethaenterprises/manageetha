@@ -1,4 +1,5 @@
 const { getSQL } = require("../shared/db");
+const { getNextFamilyServiceJobNumber, getNextFamilyServiceReceiptNumber } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
@@ -254,7 +255,7 @@ module.exports = async function handler(req, res) {
       const compId = user.role === "superadmin" ? (company_id ? parseInt(company_id) : null) : user.company_id;
       if (!compId || !complaint) return res.status(400).json({ error: "Company and Complaint description required" });
 
-      const jobNum = "JOB-" + Date.now().toString().slice(-6);
+      const jobNum = await getNextFamilyServiceJobNumber(sql, compId);
       const isWarranty = service_type === 'warranty' || warranty_eligible === true;
       const lCharge = parseFloat(labor_charge) || 0;
       const pCost = parseFloat(parts_cost) || 0;
@@ -413,18 +414,7 @@ module.exports = async function handler(req, res) {
       const job = jobRows[0];
       const compId = job.company_id;
 
-      // Generate Receipt Number
-      const lastRcpt = await sql`
-        SELECT receipt_number FROM service_payments 
-        WHERE company_id = ${compId} AND receipt_number IS NOT NULL AND receipt_number != ''
-        ORDER BY id DESC LIMIT 1
-      `;
-      let nextSeq = 1;
-      if (lastRcpt.length > 0 && lastRcpt[0].receipt_number) {
-        const match = lastRcpt[0].receipt_number.match(/(\d+)$/);
-        if (match) nextSeq = parseInt(match[1], 10) + 1;
-      }
-      const newRcptNo = `RCP-SVC-${String(nextSeq).padStart(3, '0')}`;
+      const newRcptNo = await getNextFamilyServiceReceiptNumber(sql, compId);
 
       const newPay = await sql`
         INSERT INTO service_payments (

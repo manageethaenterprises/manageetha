@@ -1,4 +1,5 @@
 const { getSQL } = require("../shared/db");
+const { getNextFamilyAdvanceNumber, getNextFamilyAdvanceReceiptNumber } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
@@ -960,7 +961,7 @@ module.exports = async function handler(req, res) {
       const mDed = monthly_deduction ? parseFloat(monthly_deduction) : Math.round((advAmt / 4) * 100) / 100;
       const advDate = advance_date || new Date().toISOString().slice(0, 10);
       const pMode = payment_mode || 'bank_transfer';
-      const rNum = 'ADV-' + Date.now().toString().slice(-6) + '-' + Math.floor(10 + Math.random() * 90);
+      const rNum = await getNextFamilyAdvanceNumber(sql, compId);
 
       const advRes = await sql`
         INSERT INTO employee_advances (
@@ -999,7 +1000,7 @@ module.exports = async function handler(req, res) {
       const advId = parseInt(advance_id);
       const repayAmt = parseFloat(amount);
       const rDate = receipt_date || new Date().toISOString().slice(0, 10);
-      const rNum = 'RCP-' + Date.now().toString().slice(-6) + '-' + Math.floor(10 + Math.random() * 90);
+      const rNum = await getNextFamilyAdvanceReceiptNumber(sql, adv.company_id);
 
       const advRows = await sql`SELECT * FROM employee_advances WHERE id = ${advId} LIMIT 1`;
       if (advRows.length === 0) return res.status(404).json({ error: "Advance record not found" });

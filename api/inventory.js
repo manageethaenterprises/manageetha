@@ -1,4 +1,5 @@
 const { getSQL } = require("../shared/db");
+const { getNextFamilyPoNumber } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
@@ -1377,7 +1378,7 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: "Company, Supplier, and items array required" });
       }
 
-      const poNum = "PO-" + Date.now().toString().slice(-6);
+      const poNum = await getNextFamilyPoNumber(sql, compId);
       let totalAmount = 0;
       items.forEach(i => totalAmount += (parseFloat(i.rate) * parseInt(i.quantity, 10)));
 

@@ -1,4 +1,5 @@
 const { getSQL } = require("../shared/db");
+const { getNextFamilyEmployeeCode, getCompanyFamilyInfo } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
@@ -48,43 +49,24 @@ async function ensureDealersColumns(sql) {
 }
 
 async function generateNextEmpCode(sql, companyId) {
-  if (!companyId) companyId = 1;
-  const compRows = await sql`SELECT name FROM companies WHERE id = ${companyId}`;
-  const compName = compRows.length > 0 ? compRows[0].name : "COMP";
-  const prefix = getCompanyCodePrefix(compName);
-  const fullPrefix = `${prefix}-EMP-`;
-
-  const empCodes = await sql`
-    SELECT employee_code FROM employees
-    WHERE company_id = ${companyId} AND employee_code IS NOT NULL
-  `;
-
-  let maxNum = 0;
-  for (const row of empCodes) {
-    const code = String(row.employee_code || '').trim();
-    const match = code.match(/(\d+)$/);
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (!isNaN(num) && num > maxNum) {
-        maxNum = num;
-      }
-    }
-  }
-
-  const nextNum = maxNum + 1;
-  const paddedNum = String(nextNum).padStart(3, '0');
-  return `${fullPrefix}${paddedNum}`;
+  return await getNextFamilyEmployeeCode(sql, companyId);
 }
 
 async function backfillEmployeeCodes(sql) {
   try {
-    const companies = await sql`SELECT id, name FROM companies ORDER BY id ASC`;
-    for (const comp of companies) {
-      const prefix = getCompanyCodePrefix(comp.name);
-      const expectedPrefix = `${prefix}-EMP-`;
+    const allComps = await sql`SELECT id FROM companies ORDER BY id ASC`;
+    const processed = new Set();
+    for (const comp of allComps) {
+      const cId = parseInt(comp.id);
+      if (processed.has(cId)) continue;
+      const family = await getCompanyFamilyInfo(sql, cId);
+      if (!family || !family.familyCompIds) continue;
+      family.familyCompIds.forEach(id => processed.add(id));
+
+      const expectedPrefix = `${family.comp4Letter}-EMP-`;
       const emps = await sql`
         SELECT id, employee_code FROM employees
-        WHERE company_id = ${comp.id}
+        WHERE company_id = ANY(${family.familyCompIds})
         ORDER BY id ASC
       `;
 

@@ -7,7 +7,9 @@ const {
   resequenceInvoices,
   getNextFamilyDcNumber,
   getNextFamilyReceiptNumber,
-  resequenceReceipts
+  resequenceReceipts,
+  getNextFamilyCustomInvoiceNumber,
+  getNextFamilyReturnNumber
 } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
@@ -845,16 +847,7 @@ module.exports = async function handler(req, res) {
       // Format custom invoice serial number
       let invNo = invoice_number ? String(invoice_number).trim() : null;
       if (!invNo) {
-        const lastCustom = await sql`SELECT invoice_number FROM sales WHERE company_id = ${compId} AND is_custom = TRUE ORDER BY id DESC LIMIT 1`;
-        let seq = 1;
-        if (lastCustom.length > 0 && lastCustom[0].invoice_number) {
-          const match = lastCustom[0].invoice_number.match(/(\d+)$/);
-          if (match) seq = parseInt(match[1], 10) + 1;
-        }
-        const now = new Date();
-        const yy = String(now.getFullYear()).slice(-2);
-        const nextYY = String(now.getFullYear() + 1).slice(-2);
-        invNo = `${yy}-${nextYY}/${String(seq).padStart(2, '0')}`;
+        invNo = await getNextFamilyCustomInvoiceNumber(sql, compId);
       }
 
       // Calculate totals
@@ -1741,9 +1734,7 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      const countRes = await sql`SELECT COUNT(*)::int as count FROM sales_returns WHERE company_id = ${saleObj.company_id}`;
-      const nextSeq = (countRes[0]?.count || 0) + 1;
-      const returnNo = `RET-${String(nextSeq).padStart(4, '0')}`;
+      const returnNo = await getNextFamilyReturnNumber(sql, saleObj.company_id);
 
       const refAmt = parseFloat(refund_amount || 0);
       const cashAmt = parseFloat(cash_amount || 0);

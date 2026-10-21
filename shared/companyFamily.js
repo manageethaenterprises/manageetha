@@ -581,6 +581,70 @@ async function getNextFamilyPoNumber(sql, compId) {
   return `PO-${String(nextSeq).padStart(3, '0')}`;
 }
 
+// ── Custom Invoice Sequence ──
+async function getNextFamilyCustomInvoiceNumber(sql, compId) {
+  const familyInfo = await getCompanyFamilyInfo(sql, compId);
+  const familyCompIds = (familyInfo && familyInfo.familyCompIds && familyInfo.familyCompIds.length > 0)
+    ? familyInfo.familyCompIds
+    : [parseInt(compId)];
+
+  const lastCustom = await sql`
+    SELECT invoice_number FROM sales 
+    WHERE company_id = ANY(${familyCompIds}) AND is_custom = TRUE 
+      AND invoice_number IS NOT NULL AND invoice_number != ''
+    ORDER BY id DESC LIMIT 500
+  `;
+
+  let maxSeq = 0;
+  for (const row of lastCustom) {
+    if (row.invoice_number) {
+      const match = row.invoice_number.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    }
+  }
+
+  const nextSeq = maxSeq + 1;
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const fullYear = now.getFullYear();
+  const startYear = month >= 4 ? fullYear : fullYear - 1;
+  const yy = String(startYear).slice(-2);
+  const nextYY = String(startYear + 1).slice(-2);
+  return `${yy}-${nextYY}/${String(nextSeq).padStart(2, '0')}`;
+}
+
+// ── Sales Return / Credit Note Sequence ──
+async function getNextFamilyReturnNumber(sql, compId) {
+  const familyInfo = await getCompanyFamilyInfo(sql, compId);
+  const familyCompIds = (familyInfo && familyInfo.familyCompIds && familyInfo.familyCompIds.length > 0)
+    ? familyInfo.familyCompIds
+    : [parseInt(compId)];
+
+  const lastReturns = await sql`
+    SELECT return_number FROM sales_returns 
+    WHERE company_id = ANY(${familyCompIds}) 
+      AND return_number IS NOT NULL AND return_number != ''
+    ORDER BY id DESC LIMIT 500
+  `;
+
+  let maxSeq = 0;
+  for (const row of lastReturns) {
+    if (row.return_number) {
+      const match = row.return_number.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    }
+  }
+
+  const nextSeq = maxSeq + 1;
+  return `RET-${String(nextSeq).padStart(4, '0')}`;
+}
+
 module.exports = {
   formatDdmmyy,
   getCompanyBrandKey,
@@ -596,5 +660,8 @@ module.exports = {
   getNextFamilyEmployeeCode,
   getNextFamilyAdvanceNumber,
   getNextFamilyAdvanceReceiptNumber,
-  getNextFamilyPoNumber
+  getNextFamilyPoNumber,
+  getNextFamilyCustomInvoiceNumber,
+  getNextFamilyReturnNumber
 };
+

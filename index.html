@@ -57,7 +57,7 @@
       "name": "Manaswini Enterprises & Geetha Enterprises",
       "alternateName": ["ManaGeetha", "Geetha Enterprises Ramachandrapuram", "Geetha Enterprises Rajahmundry"],
       "url": "https://manageetha.in/",
-      "logo": "https://manageetha.in/assets/rotavator.jpg",
+      "logo": "https://manageetha.in/assets/logo.png",
       "contactPoint": [
         {
           "@type": "ContactPoint",
@@ -343,6 +343,21 @@
       gap: 14px;
       text-decoration: none;
       color: var(--text1);
+    }
+    .brand-logo-img {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      object-fit: contain;
+      display: block;
+      flex-shrink: 0;
+      background: #ffffff;
+      box-shadow: 0 4px 14px var(--primary-glow), 0 0 0 2px rgba(74, 222, 128, 0.35);
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+    }
+    .brand-logo:hover .brand-logo-img {
+      transform: scale(1.08) rotate(3deg);
+      box-shadow: 0 6px 20px rgba(22, 163, 74, 0.45), 0 0 0 2.5px rgba(74, 222, 128, 0.65);
     }
     .logo-icon {
       width: 46px; height: 46px;
@@ -1216,6 +1231,7 @@
       .nav-inner { height: 64px; }
       .brand-logo { gap: 10px; }
       .brand-text { font-size: 16px; }
+      .brand-logo-img { width: 38px; height: 38px; box-shadow: 0 2px 8px var(--primary-glow), 0 0 0 1.5px rgba(74, 222, 128, 0.35); }
       .logo-icon { width: 36px; height: 36px; font-size: 18px; border-radius: 10px; }
       .nav-actions { gap: 8px; }
       .theme-toggle-btn { width: 36px; height: 36px; font-size: 15px; border-radius: 10px; }
@@ -1246,6 +1262,7 @@
     @media (max-width: 340px) {
       .container { padding: 0 10px; }
       .brand-text { font-size: 14px; }
+      .brand-logo-img { width: 34px; height: 34px; }
       .logo-icon { width: 34px; height: 34px; font-size: 16px; }
       .theme-toggle-btn, .mobile-menu-toggle { width: 34px; height: 34px; font-size: 15px; }
       .hero h1 { font-size: 22px; }
@@ -1286,8 +1303,8 @@
   <!-- Header Navbar -->
   <header class="navbar">
     <div class="container nav-inner">
-      <a href="/" class="brand-logo">
-        <div class="logo-icon">🚜</div>
+      <a href="/" class="brand-logo" title="ManaGeetha — Manaswini Enterprises">
+        <img src="/assets/logo.png" alt="Manaswini Enterprises Logo" class="brand-logo-img" width="50" height="50">
         <div>
           <span class="brand-text">ManaGeetha Enterprises</span>
           <span class="brand-sub">Wholesale & Retail Agricultural Machinery</span>

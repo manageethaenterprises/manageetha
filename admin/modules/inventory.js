@@ -4605,20 +4605,40 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
             <button type="button" class="btn btn-xs btn-outline" id="mpAddQuickProdHeaderBtn" style="font-size:12px;">✨ + Create New Product in Catalog</button>
           </div>
 
+          <style>
+            .mp-entry-table th, .mp-entry-table td {
+              padding: 6px 8px !important;
+              vertical-align: middle !important;
+            }
+            .mp-entry-table input[type=number]::-webkit-inner-spin-button,
+            .mp-entry-table input[type=number]::-webkit-outer-spin-button {
+              -webkit-appearance: none !important;
+              margin: 0 !important;
+            }
+            .mp-entry-table input[type=number] {
+              -moz-appearance: textfield !important;
+            }
+            .mp-entry-table .form-input {
+              box-sizing: border-box !important;
+              border-radius: 6px !important;
+              transition: width 0.12s ease;
+            }
+          </style>
+
           <div class="table-container" style="max-height:380px;overflow-y:auto;overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-            <table class="data-table" style="font-size:12.5px;width:100%;min-width:1160px;">
+            <table class="data-table mp-entry-table" style="font-size:12.5px;width:100%;min-width:1250px;border-collapse:collapse;">
               <thead>
                 <tr style="background:var(--bg-secondary);">
-                  <th style="width:38px;text-align:center;">S.No</th>
-                  <th style="min-width:260px;">Product Name & Model</th>
-                  <th style="width:125px;">Serial No.</th>
-                  <th style="width:75px;text-align:center;">Qty</th>
-                  <th style="width:120px;">Pur Rate (Excl ₹)</th>
-                  <th style="width:75px;text-align:center;">GST %</th>
-                  <th style="width:115px;" title="Packaging Charges (₹)">Packaging (₹)</th>
-                  <th style="width:115px;" title="Transport Expenses (₹)">Transport (₹)</th>
-                  <th style="width:130px;text-align:right;">Line Total (₹)</th>
-                  <th style="width:48px;text-align:center;">Action</th>
+                  <th style="width:40px;min-width:40px;text-align:center;">S.No</th>
+                  <th style="min-width:270px;">Product Name & Model</th>
+                  <th style="min-width:140px;">Serial No.</th>
+                  <th style="min-width:85px;text-align:center;">Qty</th>
+                  <th style="min-width:135px;text-align:right;">Pur Rate (Excl ₹)</th>
+                  <th style="min-width:90px;text-align:center;">GST %</th>
+                  <th style="min-width:120px;text-align:right;" title="Packaging Charges (₹)">Packaging (₹)</th>
+                  <th style="min-width:120px;text-align:right;" title="Transport Expenses (₹)">Transport (₹)</th>
+                  <th style="min-width:135px;text-align:right;">Line Total (₹)</th>
+                  <th style="width:48px;min-width:48px;text-align:center;">Action</th>
                 </tr>
               </thead>
               <tbody id="mpItemsTableBody">
@@ -4680,6 +4700,25 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       }).join("");
   }
 
+  function adjustInputToValue(inp) {
+    if (!inp) return;
+    const val = (inp.value !== undefined && inp.value !== null) ? String(inp.value) : "";
+    const ph = inp.placeholder || "";
+    const len = Math.max(val.length, ph.length, 1);
+
+    if (inp.classList.contains("mpQty")) {
+      inp.style.width = `max(70px, ${Math.max(len + 3, 5)}ch)`;
+    } else if (inp.classList.contains("mpGst")) {
+      inp.style.width = `max(80px, ${Math.max(len + 3, 6)}ch)`;
+    } else if (inp.classList.contains("mpRate")) {
+      inp.style.width = `max(120px, ${Math.max(len + 4, 11)}ch)`;
+    } else if (inp.classList.contains("mpPackaging") || inp.classList.contains("mpTransport")) {
+      inp.style.width = `max(105px, ${Math.max(len + 3, 8)}ch)`;
+    } else if (inp.classList.contains("mpSerialNo")) {
+      inp.style.width = `max(130px, ${Math.max(len + 3, 13)}ch)`;
+    }
+  }
+
   function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '', initialPkg = 0, initialTransport = 0) {
     itemRowIndex++;
     const tr = document.createElement("tr");
@@ -4689,8 +4728,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     const effectivePkg = initialPkg || (initProd && initProd.packaging_charges) || 0;
     const effectiveTransport = initialTransport || (initProd && initProd.transport_expenses) || 0;
     tr.innerHTML = `
-      <td style="text-align:center;font-weight:600;color:var(--text3);">${tbody.children.length + 1}</td>
-      <td>
+      <td style="text-align:center;font-weight:600;color:var(--text3);vertical-align:middle;">${tbody.children.length + 1}</td>
+      <td style="vertical-align:middle;">
         <div style="display:flex;flex-direction:column;gap:4px;">
           <div style="display:flex;gap:6px;align-items:center;">
             <select class="form-select mpProdSel" style="padding:4px 8px;font-size:12px;flex:1;" required>
@@ -4701,25 +4740,35 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
           <input type="text" class="form-input mpModelInp" value="${esc(effectiveModel)}" placeholder="Model Name / Spec" style="padding:3px 6px;font-size:11.5px;background:var(--bg-secondary);border:1px solid var(--border);" title="Model Name / Spec">
         </div>
       </td>
-      <td><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 6px;font-size:12px;"></td>
-      <td><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;text-align:center;"></td>
-      <td><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 6px;font-size:12px;"></td>
-      <td><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;text-align:center;"></td>
-      <td><input type="number" step="0.01" class="form-input mpPackaging" value="${effectivePkg}" placeholder="0" style="padding:4px 6px;font-size:12px;" title="Packaging Charges (₹)"></td>
-      <td><input type="number" step="0.01" class="form-input mpTransport" value="${effectiveTransport}" placeholder="0" style="padding:4px 6px;font-size:12px;" title="Transport Expenses (₹)"></td>
-      <td class="mpLineTotal" style="font-weight:700;color:var(--text1);vertical-align:middle;text-align:right;">₹0.00</td>
-      <td style="text-align:center;"><button type="button" class="btn btn-xs btn-danger mpDelRowBtn" title="Remove row" style="padding:2px 6px;">&times;</button></td>
+      <td style="vertical-align:middle;"><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 8px;font-size:12px;min-width:125px;box-sizing:border-box;"></td>
+      <td style="text-align:center;vertical-align:middle;"><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:70px;box-sizing:border-box;"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:115px;box-sizing:border-box;"></td>
+      <td style="text-align:center;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:75px;box-sizing:border-box;"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpPackaging" value="${effectivePkg}" placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:100px;box-sizing:border-box;" title="Packaging Charges (₹)"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpTransport" value="${effectiveTransport}" placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:100px;box-sizing:border-box;" title="Transport Expenses (₹)"></td>
+      <td class="mpLineTotal" style="font-weight:700;color:var(--text1);vertical-align:middle;text-align:right;white-space:nowrap;">₹0.00</td>
+      <td style="text-align:center;vertical-align:middle;"><button type="button" class="btn btn-xs btn-danger mpDelRowBtn" title="Remove row" style="padding:2px 6px;">&times;</button></td>
     `;
 
     tbody.appendChild(tr);
 
     const prodSel = tr.querySelector(".mpProdSel");
+    const serialInp = tr.querySelector(".mpSerialNo");
     const qtyInp = tr.querySelector(".mpQty");
     const rateInp = tr.querySelector(".mpRate");
     const gstInp = tr.querySelector(".mpGst");
     const packagingInp = tr.querySelector(".mpPackaging");
     const transportInp = tr.querySelector(".mpTransport");
     const totalTd = tr.querySelector(".mpLineTotal");
+
+    const dynInputs = [serialInp, qtyInp, rateInp, gstInp, packagingInp, transportInp];
+    dynInputs.forEach(inp => {
+      adjustInputToValue(inp);
+      inp.addEventListener("input", () => {
+        adjustInputToValue(inp);
+        calcRowTotal();
+      });
+    });
 
     function calcRowTotal() {
       const q = parseFloat(qtyInp.value || 0);
@@ -4749,10 +4798,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
           modelInp.value = (foundP && foundP.model) ? foundP.model : (opt.dataset.model || "");
         }
       }
+      dynInputs.forEach(adjustInputToValue);
       calcRowTotal();
     });
-
-    [qtyInp, rateInp, gstInp, packagingInp, transportInp].forEach(inp => inp.addEventListener("input", calcRowTotal));
 
     tr.querySelector(".mpInlineAddProdBtn").addEventListener("click", () => {
       openQuickAddProductModal((newP) => {
@@ -4768,6 +4816,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
         transportInp.value = newP.transport_expenses || 0;
         const modelInp = tr.querySelector(".mpModelInp");
         if (modelInp) modelInp.value = newP.model || "";
+        dynInputs.forEach(adjustInputToValue);
         calcRowTotal();
       });
     });

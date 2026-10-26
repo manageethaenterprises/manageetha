@@ -845,6 +845,25 @@ tr:hover td {
   background: var(--primary-glow);
 }
 
+/* Table grid form inputs & spin-button removal to prevent number cropping */
+.data-table td .form-input,
+.data-table td .form-select {
+  padding: 5px 8px;
+  font-size: 12px;
+  min-height: 30px;
+  box-sizing: border-box;
+}
+
+.data-table input[type="number"]::-webkit-inner-spin-button,
+.data-table input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.data-table input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* ═══════════════ BUTTONS ═══════════════ */
 .btn {
   display: inline-flex;

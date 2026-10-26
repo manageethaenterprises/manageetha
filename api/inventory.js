@@ -209,7 +209,8 @@ async function upsertProduct(sql, compId, itemData, options = {}) {
     gstRate,
     itemData.selling_percentage || itemData.selling_pct,
     itemData.selling_rate || itemData.selling_price,
-    itemData.mrp || itemData.mrp_incl_tax
+    itemData.mrp || itemData.mrp_incl_tax,
+    itemData.packaging_charges || itemData.packaging || 0
   );
 
   let existingProd = null;
@@ -1731,7 +1732,8 @@ module.exports = async function handler(req, res) {
         const gstRate = parseFloat(i.gst_rate || 18);
         const transport = parseFloat(i.transport_expenses || 0);
         const packaging = parseFloat(i.packaging_charges || i.packaging || 0);
-        const lineTotal = (qty * rate * (1 + gstRate / 100)) + transport + packaging;
+        const taxable = (qty * rate) + transport + packaging;
+        const lineTotal = taxable * (1 + gstRate / 100);
         grandTotal += lineTotal;
       });
 
@@ -1764,7 +1766,8 @@ module.exports = async function handler(req, res) {
         const gstRate = parseFloat(item.gst_rate || 18);
         const transport = parseFloat(item.transport_expenses || 0);
         const packaging = parseFloat(item.packaging_charges || item.packaging || 0);
-        const lineTotal = (qty * rate * (1 + gstRate / 100)) + transport + packaging;
+        const taxable = (qty * rate) + transport + packaging;
+        const lineTotal = taxable * (1 + gstRate / 100);
         const itemSupId = safeInt(item.supplier_id) || supId;
 
         if (prodId) {
@@ -1894,11 +1897,13 @@ module.exports = async function handler(req, res) {
           const purRate = parseFloat(item.purchase_rate || item.rate || 0);
           const gstRate = parseFloat(item.gst_rate || prodObj.gst_rate || 18);
           const transport = parseFloat(item.transport_expenses || 0);
-          const lineTotal = (qty * purRate * (1 + gstRate / 100)) + transport;
+          const packaging = parseFloat(item.packaging_charges || item.packaging || 0);
+          const taxable = (qty * purRate) + transport + packaging;
+          const lineTotal = taxable * (1 + gstRate / 100);
           const serialNo = item.serial_no || item.product_serial_no || item.serial || null;
           groupGrandTotal += lineTotal;
 
-          processedItems.push({ prodId, qty, purRate, lineTotal, serialNo });
+          processedItems.push({ prodId, qty, purRate, lineTotal, serialNo, packaging, transport });
           totalItemsProcessed++;
         }
 
@@ -1945,8 +1950,8 @@ module.exports = async function handler(req, res) {
 
           for (const item of processedItems) {
             await sql`
-              INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no)
-              VALUES (${purId}, ${item.prodId}, ${item.qty}, ${item.purRate}, ${item.lineTotal}, ${item.serialNo})
+              INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no, packaging_charges, transport_expenses)
+              VALUES (${purId}, ${item.prodId}, ${item.qty}, ${item.purRate}, ${item.lineTotal}, ${item.serialNo}, ${item.packaging || 0}, ${item.transport || 0})
             `;
             await sql`
               INSERT INTO inventory_transactions (company_id, product_id, transaction_type, quantity, reference_type, reference_id, performed_by, notes)

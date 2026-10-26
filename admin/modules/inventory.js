@@ -4777,7 +4777,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       const g = parseFloat(gstInp.value || 0);
       const pkg = parseFloat(packagingInp.value || 0);
       const t = parseFloat(transportInp.value || 0);
-      const tot = (q * r * (1 + g / 100)) + pkg + t;
+      const taxable = (q * r) + pkg + t;
+      const tot = taxable * (1 + g / 100);
       totalTd.textContent = `₹${tot.toFixed(2)}`;
       calcGrandTotal();
     }
@@ -4842,7 +4843,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       const g = parseFloat(tr.querySelector(".mpGst")?.value || 0);
       const pkg = parseFloat(tr.querySelector(".mpPackaging")?.value || 0);
       const t = parseFloat(tr.querySelector(".mpTransport")?.value || 0);
-      grand += (q * r * (1 + g / 100)) + pkg + t;
+      const taxable = (q * r) + pkg + t;
+      grand += taxable * (1 + g / 100);
     });
     overlay.querySelector("#mpGrandTotalText").textContent = `₹${grand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
   }
@@ -5093,6 +5095,7 @@ function openPurchaseImportModal(onSuccessCallback) {
           gst_rate: parseFloat(rowObj["gstrate"] || rowObj["gst"] || 18),
           purchase_rate: parseFloat(rowObj["purchaserateexcl"] || rowObj["purchaserate"] || rowObj["rate"] || 0),
           quantity: parseInt(rowObj["quantity"] || rowObj["qty"] || 1, 10),
+          packaging_charges: parseFloat(rowObj["packagingcharges"] || rowObj["packaging"] || 0),
           transport_expenses: parseFloat(rowObj["transportexp"] || rowObj["transport"] || 0),
           selling_price: parseFloat(rowObj["sellingprice"] || rowObj["mrp"] || 0)
         });
@@ -5117,7 +5120,10 @@ function openPurchaseImportModal(onSuccessCallback) {
     container.innerHTML = groups.map((g, gIdx) => {
       let gTotal = 0;
       const rowsHtml = g.items.map(item => {
-        const lineTot = (item.quantity * item.purchase_rate * (1 + item.gst_rate / 100)) + item.transport_expenses;
+        const pkg = item.packaging_charges || 0;
+        const trans = item.transport_expenses || 0;
+        const taxable = (item.quantity * item.purchase_rate) + pkg + trans;
+        const lineTot = taxable * (1 + item.gst_rate / 100);
         gTotal += lineTot;
         totalItems++;
         return `

@@ -4712,7 +4712,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     } else if (inp.classList.contains("mpGst")) {
       inp.style.width = `max(80px, ${Math.max(len + 3, 6)}ch)`;
     } else if (inp.classList.contains("mpRate")) {
-      inp.style.width = `max(120px, ${Math.max(len + 4, 11)}ch)`;
+      inp.style.width = `max(130px, ${Math.max(len + 4, 12)}ch)`;
     } else if (inp.classList.contains("mpPackaging") || inp.classList.contains("mpTransport")) {
       inp.style.width = `max(105px, ${Math.max(len + 3, 8)}ch)`;
     } else if (inp.classList.contains("mpSerialNo")) {
@@ -4743,7 +4743,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       </td>
       <td style="vertical-align:middle;"><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 8px;font-size:12px;min-width:125px;box-sizing:border-box;"></td>
       <td style="text-align:center;vertical-align:middle;"><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:70px;box-sizing:border-box;"></td>
-      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:115px;box-sizing:border-box;"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:130px;box-sizing:border-box;" title="Purchase Rate Excl. GST (₹)"></td>
       <td style="text-align:center;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:75px;box-sizing:border-box;"></td>
       <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpPackaging" value="${effectivePkg}" placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:100px;box-sizing:border-box;" title="Packaging Charges (₹)"></td>
       <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpTransport" value="${effectiveTransport}" placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:100px;box-sizing:border-box;" title="Transport Expenses (₹)"></td>

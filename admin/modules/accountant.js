@@ -1442,31 +1442,39 @@ async function loadSettingsSubTab() {
             </div>
 
             <div class="table-container" style="flex:1;overflow-y:auto;overflow-x:auto;">
-              <table class="data-table" id="reconcileTable" style="font-size:11.5px;width:100%;min-width:1380px;border-collapse:collapse;table-layout:fixed;">
+              <table class="data-table" id="reconcileTable" style="font-size:11.5px;width:100%;min-width:1460px;table-layout:fixed;">
                 <colgroup>
-                  <col style="width: 40px;">
-                  <col style="width: 250px;">
-                  <col style="width: 170px;">
+                  <col style="width: 42px;">
+                  <col style="width: 255px;">
+                  <col style="width: 165px;">
                   <col style="width: 110px;">
                   <col style="width: 110px;">
-                  <col style="width: 105px;">
-                  <col style="width: 170px;">
-                  <col style="width: 140px;">
+                  <col style="width: 110px;">
+                  <col style="width: 175px;">
+                  <col style="width: 135px;">
                   <col style="width: 220px;">
                   <col style="width: 135px;">
                 </colgroup>
-                <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                  <tr>
-                    <th style="width:40px;text-align:center;padding:10px 8px;white-space:nowrap;">S.No.</th>
-                    <th style="width:250px;padding:10px 8px;white-space:nowrap;">Statement Details (Date & Description)</th>
-                    <th style="width:170px;padding:10px 8px;white-space:nowrap;">Statement Ref / Chq No</th>
-                    <th style="width:110px;text-align:right;padding:10px 8px;white-space:nowrap;">Debit (Outflow)</th>
-                    <th style="width:110px;text-align:right;padding:10px 8px;white-space:nowrap;">Credit (Inflow)</th>
-                    <th style="width:105px;text-align:right;padding:10px 8px;white-space:nowrap;">Balance</th>
-                    <th style="width:170px;padding:10px 8px;border-left:2px solid var(--border);white-space:nowrap;background:rgba(99,102,241,0.04);">ERP System Mapping (Party)</th>
-                    <th style="width:140px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Ref / Chq No</th>
-                    <th style="width:220px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Date & Description</th>
-                    <th style="width:135px;text-align:center;padding:10px 8px;white-space:nowrap;">Action</th>
+                <thead>
+                  <tr class="recon-super-header">
+                    <th rowspan="2" style="width:42px;text-align:center;vertical-align:middle;">S.No.</th>
+                    <th colspan="5" class="recon-group-bank-header">
+                      🏦 Bank Statement Data (From Uploaded File)
+                    </th>
+                    <th colspan="3" class="recon-group-erp-header">
+                      ⚡ Internal ERP System Match
+                    </th>
+                    <th rowspan="2" style="width:135px;text-align:center;vertical-align:middle;">Action</th>
+                  </tr>
+                  <tr class="recon-sub-header">
+                    <th style="width:255px;">Date & Narration</th>
+                    <th style="width:165px;">Ref / Cheque No</th>
+                    <th style="width:110px;text-align:right;">Debit (Outflow)</th>
+                    <th style="width:110px;text-align:right;">Credit (Inflow)</th>
+                    <th style="width:110px;text-align:right;border-right:2px solid var(--border-dark,#cbd5e1);">Balance</th>
+                    <th style="width:175px;">Matched Party / Payee</th>
+                    <th style="width:135px;">System Ref / Chq No</th>
+                    <th style="width:220px;border-right:2px solid var(--border-dark,#cbd5e1);">System Date & Notes</th>
                   </tr>
                 </thead>
                 <tbody id="reconcileTableBody">
@@ -1533,35 +1541,46 @@ async function loadSettingsSubTab() {
           <!-- Audit Table Container -->
           <div style="flex:1;min-height:300px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;background:var(--bg-primary);overflow:hidden;">
             <div class="table-container" style="flex:1;overflow-y:auto;overflow-x:auto;">
-              <table class="data-table" id="auditTable" style="font-size:11.5px;width:100%;min-width:1450px;border-collapse:collapse;table-layout:fixed;">
+              <table class="data-table" id="auditTable" style="font-size:11.5px;width:100%;min-width:1550px;table-layout:fixed;">
                 <colgroup>
-                  <col style="width: 40px;">
-                  <col style="width: 85px;">
+                  <col style="width: 42px;">
+                  <col style="width: 88px;">
                   <col style="width: 230px;">
                   <col style="width: 140px;">
-                  <col style="width: 100px;">
-                  <col style="width: 100px;">
-                  <col style="width: 160px;">
+                  <col style="width: 105px;">
+                  <col style="width: 105px;">
+                  <col style="width: 165px;">
                   <col style="width: 130px;">
-                  <col style="width: 190px;">
-                  <col style="width: 85px;">
-                  <col style="width: 140px;">
-                  <col style="width: 110px;">
+                  <col style="width: 200px;">
+                  <col style="width: 90px;">
+                  <col style="width: 145px;">
+                  <col style="width: 115px;">
                 </colgroup>
-                <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                  <tr>
-                    <th style="width:40px;text-align:center;padding:10px 8px;white-space:nowrap;">S.No.</th>
-                    <th style="width:85px;padding:10px 8px;white-space:nowrap;">Txn Date</th>
-                    <th style="width:230px;padding:10px 8px;white-space:nowrap;">Bank Narration / Description</th>
-                    <th style="width:140px;padding:10px 8px;white-space:nowrap;">Statement Ref</th>
-                    <th style="width:100px;text-align:right;padding:10px 8px;white-space:nowrap;">Debit (Dr)</th>
-                    <th style="width:100px;text-align:right;padding:10px 8px;white-space:nowrap;">Credit (Cr)</th>
-                    <th style="width:160px;padding:10px 8px;border-left:2px solid var(--border);white-space:nowrap;background:rgba(99,102,241,0.04);">ERP Party / Payee</th>
-                    <th style="width:130px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Ref / Chq No</th>
-                    <th style="width:190px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Date & Description</th>
-                    <th style="width:85px;text-align:center;padding:10px 8px;white-space:nowrap;">Status</th>
-                    <th style="width:140px;padding:10px 8px;white-space:nowrap;">Hold Reason</th>
-                    <th style="width:110px;text-align:center;padding:10px 8px;white-space:nowrap;">Action</th>
+                <thead>
+                  <tr class="recon-super-header">
+                    <th rowspan="2" style="width:42px;text-align:center;vertical-align:middle;">#</th>
+                    <th colspan="5" class="recon-group-bank-header">
+                      🏦 Bank Statement Data
+                    </th>
+                    <th colspan="3" class="recon-group-erp-header">
+                      ⚡ Internal ERP System Match
+                    </th>
+                    <th colspan="3" class="recon-group-audit-header">
+                      📋 Audit & Actions
+                    </th>
+                  </tr>
+                  <tr class="recon-sub-header">
+                    <th style="width:88px;">Txn Date</th>
+                    <th style="width:230px;">Bank Narration</th>
+                    <th style="width:140px;">Statement Ref</th>
+                    <th style="width:105px;text-align:right;">Debit (Dr)</th>
+                    <th style="width:105px;text-align:right;border-right:2px solid var(--border-dark,#cbd5e1);">Credit (Cr)</th>
+                    <th style="width:165px;">ERP Party / Payee</th>
+                    <th style="width:130px;">System Ref / Chq No</th>
+                    <th style="width:200px;border-right:2px solid var(--border-dark,#cbd5e1);">System Date & Notes</th>
+                    <th style="width:90px;text-align:center;">Status</th>
+                    <th style="width:145px;">Hold Reason</th>
+                    <th style="width:115px;text-align:center;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="auditTableBody">
@@ -2624,9 +2643,9 @@ async function loadSettingsSubTab() {
             <td style="padding:10px 8px;vertical-align:top;text-align:right;white-space:nowrap;">${debitHtml}</td>
             <td style="padding:10px 8px;vertical-align:top;text-align:right;white-space:nowrap;">${creditHtml}</td>
             <td style="padding:10px 8px;vertical-align:top;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600;">${formatCurrency(r.balance || 0)}</td>
-            <td style="padding:10px 8px;vertical-align:top;border-left:2px solid var(--border);background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">${systemPartyHtml}</td>
+            <td class="col-erp-border" style="padding:10px 8px;vertical-align:top;border-left:2px solid var(--border-dark,#cbd5e1);background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">${systemPartyHtml}</td>
             <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">${systemRefHtml}</td>
-            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;">${systemDescHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;border-right:2px solid var(--border-dark,#cbd5e1);">${systemDescHtml}</td>
             <td style="padding:10px 8px;vertical-align:top;text-align:center;white-space:nowrap;">${actionHtml}</td>
           </tr>
         `;
@@ -2986,14 +3005,14 @@ async function loadSettingsSubTab() {
             <td style="text-align:right;padding:10px 8px;vertical-align:top;white-space:nowrap;">
               ${creditAmt > 0 ? `<strong style="color:var(--success);">+ ${formatCurrency(creditAmt)}</strong>` : '<span style="color:var(--text3);">—</span>'}
             </td>
-            <td style="padding:10px 8px;vertical-align:top;border-left:2px solid var(--border);background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+            <td class="col-erp-border" style="padding:10px 8px;vertical-align:top;border-left:2px solid var(--border-dark,#cbd5e1);background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">
               <strong style="color:var(--text1);font-size:11.5px;">${esc(t.system_matched_party || '—')}</strong>
               ${t.system_matched_module ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(t.system_matched_module.toUpperCase())}</div>` : ''}
             </td>
             <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">
               <strong style="color:var(--text1);font-family:monospace;font-size:11px;">${esc(t.system_matched_ref || '—')}</strong>
             </td>
-            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;">
+            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;border-right:2px solid var(--border-dark,#cbd5e1);">
               ${isHeld ? `
                 <div>
                   <input type="text" class="form-control form-control-sm audit-held-desc-input" data-id="${t.id}"

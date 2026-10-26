@@ -1461,7 +1461,7 @@ async function loadSettingsSubTab() {
                     <td colspan="9" style="text-align:center;padding:50px 20px;color:var(--text3);">
                       <div style="font-size:36px;margin-bottom:10px;">📄</div>
                       <div style="font-weight:600;font-size:13px;color:var(--text2);">No Statement Loaded Yet</div>
-                      <div style="font-size:11.5px;margin-top:4px;">Please choose an SBI or Kotak bank statement (.xlsx, .xls, .csv) above and click "Parse & Auto-Match"</div>
+                      <div style="font-size:11.5px;margin-top:4px;">Please choose an SBI or Kotak bank statement (Excel, CSV or PDF) above and click "Parse & Auto-Match"</div>
                     </td>
                   </tr>
                 </tbody>
@@ -1837,185 +1837,268 @@ async function loadSettingsSubTab() {
       return null;
     }
 
-    // PDF Table & Line Parser for SBI and Kotak statements
-    function parsePdfLinesToStatementRows(allPdfLines, forcedBank = 'auto') {
-      let headerIndex = -1;
-      let bank = null;
-      let coords = { sNoX: 0, dateX: 0, valDateX: 0, descX: 0, refX: 0, branchX: 0, debitX: 0, creditX: 0, balanceX: 0 };
+    // PDF Document Parser for SBI and Kotak statements (multi-page, geometric row-band)
+    async function parsePdfDocumentToStatementRows(pdfDoc, forcedBank = 'auto') {
+      const numPages = pdfDoc.numPages;
 
-      for (let i = 0; i < allPdfLines.length; i++) {
-        const line = allPdfLines[i];
-        const fullText = line.map(item => item.text).join(' ').toLowerCase();
-
-        const hasTxnDate = fullText.includes('txn date') || fullText.includes('transaction date');
-        const hasValDate = fullText.includes('value date');
-        const hasDesc = fullText.includes('description') || fullText.includes('narration') || fullText.includes('particular');
-        const hasDebit = fullText.includes('debit') || fullText.includes('withdrawal') || fullText.includes('(dr)');
-        const hasCredit = fullText.includes('credit') || fullText.includes('deposit') || fullText.includes('(cr)');
-        const hasKotakRef = fullText.includes('chq') || fullText.includes('s.no') || fullText.includes('sl no') || fullText.includes('or s no');
-
-        const isSbi = (hasTxnDate || hasValDate) && hasDesc && (hasDebit || hasCredit);
-        const isKotak = (hasDebit || hasCredit) && hasDesc && (fullText.includes('date') || hasKotakRef);
-
-        if (forcedBank === 'SBI' && isSbi) {
-          headerIndex = i;
-          bank = 'SBI';
-          break;
-        }
-        if (forcedBank === 'KOTAK' && isKotak) {
-          headerIndex = i;
-          bank = 'KOTAK';
-          break;
-        }
-        if (forcedBank === 'auto') {
-          if (isSbi) {
-            headerIndex = i;
-            bank = 'SBI';
+      // 1. Detect bank format
+      let detectedBank = forcedBank;
+      if (detectedBank === 'auto') {
+        for (let p = 1; p <= Math.min(numPages, 3); p++) {
+          const page = await pdfDoc.getPage(p);
+          const tc = await page.getTextContent();
+          const pageText = tc.items.map(it => it.str).join(' ').toLowerCase();
+          if (pageText.includes('kotak') || pageText.includes('withdrawal (dr.)') || pageText.includes('current account transactions')) {
+            detectedBank = 'KOTAK';
             break;
           }
-          if (isKotak) {
-            headerIndex = i;
-            bank = 'KOTAK';
+          if (pageText.includes('sbi') || pageText.includes('state bank') || pageText.includes('cif no') || pageText.includes('branch code')) {
+            detectedBank = 'SBI';
             break;
           }
         }
-      }
-
-      if (headerIndex === -1) {
-        bank = forcedBank === 'KOTAK' ? 'KOTAK' : 'SBI';
-      } else {
-        const headerLine = allPdfLines[headerIndex];
-        for (const item of headerLine) {
-          const t = item.text.toLowerCase().trim();
-          if (t.includes('txn date') || t === 'date') coords.dateX = item.x;
-          if (t.includes('value date')) coords.valDateX = item.x;
-          if (t.includes('desc') || t.includes('particular')) coords.descX = item.x;
-          if (t.includes('ref') || t.includes('chq')) coords.refX = item.x;
-          if (t.includes('branch')) coords.branchX = item.x;
-          if (t.includes('debit') || t.includes('withdrawal') || t.includes('(dr)')) coords.debitX = item.x;
-          if (t.includes('credit') || t.includes('deposit') || t.includes('(cr)')) coords.creditX = item.x;
-          if (t.includes('balance')) coords.balanceX = item.x;
-          if (t.includes('s.no') || t.includes('sl no') || t === '#' || t.includes('or s no')) coords.sNoX = item.x;
+        if (detectedBank === 'auto') {
+          const bankNameLower = (acc.bank_name || '').toLowerCase();
+          if (bankNameLower.includes('kotak')) detectedBank = 'KOTAK';
+          else detectedBank = 'SBI';
         }
       }
 
-      const debitMid = (coords.debitX && coords.creditX) ? (coords.debitX + coords.creditX) / 2 : 0;
-      const creditMid = (coords.creditX && coords.balanceX) ? (coords.creditX + coords.balanceX) / 2 : 0;
+      const allRows = [];
+      const dateRegex = /^(\d{1,2})[\/\-\s]+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
+      const numDateRegex = /^(\d{1,2})[\/\-\.](\d{1,2})([\/\-\.]\d{2,4})?/;
 
-      const rows = [];
-      const startLine = headerIndex !== -1 ? headerIndex + 1 : 0;
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdfDoc.getPage(pageNum);
+        const tc = await page.getTextContent();
+        const items = tc.items.filter(it => it.str && it.str.trim() !== '');
 
-      for (let i = startLine; i < allPdfLines.length; i++) {
-        const line = allPdfLines[i];
-        const fullText = line.map(item => item.text).join(' ').trim();
-        if (!fullText) continue;
+        if (items.length === 0) continue;
 
-        const lower = fullText.toLowerCase();
-        if (lower.includes('page ') || lower.includes('statement period') || lower.includes('opening balance') || lower.includes('closing balance') || lower.includes('total:')) {
-          continue;
-        }
-
-        const dateMatch = fullText.match(/\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/) ||
-                          fullText.match(/\b(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})\b/);
-
-        if (!dateMatch) {
-          if (rows.length > 0 && !lower.includes('end of statement') && fullText.length < 150) {
-            rows[rows.length - 1].description += ' ' + fullText;
-          }
-          continue;
-        }
-
-        let txnDate = '';
-        let valDate = '';
-        let desc = '';
-        let ref = '';
-        let branch = '';
-        let sNo = '';
-        let debitAmt = 0;
-        let creditAmt = 0;
-        let balanceAmt = 0;
-
-        const numbersFound = [];
-
-        for (const item of line) {
-          const x = item.x;
-          const str = item.text.trim();
-          if (!str) continue;
-
-          const isDate = str.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/) || str.match(/^\d{1,2}[\/\-\s]+[A-Za-z]{3}[\/\-\s]+\d{2,4}$/);
-          if (isDate) {
-            if (!txnDate) txnDate = str;
-            else if (!valDate) valDate = str;
-            continue;
-          }
-
-          if (coords.sNoX && Math.abs(x - coords.sNoX) < 25) {
-            sNo = str;
-            continue;
-          }
-          if (coords.branchX && Math.abs(x - coords.branchX) < 30) {
-            branch = str;
-            continue;
-          }
-          if (coords.refX && Math.abs(x - coords.refX) < 30 && (!coords.debitX || x < coords.debitX - 25)) {
-            ref = (ref ? ref + ' ' : '') + str;
-            continue;
-          }
-
-          const isNum = !isNaN(parseFloat(str.replace(/,/g, ''))) && /^-?[\d,]+(\.\d+)?$/.test(str);
-          if (isNum && (!coords.debitX || x >= coords.debitX - 25)) {
-            const val = Math.abs(parseFloat(str.replace(/,/g, '')));
-            numbersFound.push({ val, x });
-            continue;
-          }
-
-          if (!coords.debitX || x < coords.debitX - 25) {
-            desc = (desc ? desc + ' ' : '') + str;
-          }
-        }
-
-        if (debitMid > 0 && creditMid > 0) {
-          for (const numObj of numbersFound) {
-            if (numObj.x < debitMid) {
-              debitAmt = numObj.val;
-            } else if (numObj.x < creditMid) {
-              creditAmt = numObj.val;
-            } else {
-              balanceAmt = numObj.val;
-            }
-          }
-        } else {
-          if (numbersFound.length >= 2) {
-            balanceAmt = numbersFound[numbersFound.length - 1].val;
-            const txAmt = numbersFound[numbersFound.length - 2].val;
-            if (fullText.includes('(Dr)') || fullText.includes(' DR ') || fullText.toLowerCase().includes('withdrawal')) {
-              debitAmt = txAmt;
-            } else {
-              creditAmt = txAmt;
-            }
-          } else if (numbersFound.length === 1) {
-            balanceAmt = numbersFound[0].val;
-          }
-        }
-
-        if (txnDate) {
-          rows.push({
-            bank,
-            s_no: sNo || null,
-            txn_date: cleanDate(txnDate),
-            value_date: cleanDate(valDate || txnDate),
-            description: desc.trim(),
-            ref_no: ref.trim() || null,
-            branch_code: branch.trim() || null,
-            debit_amount: debitAmt,
-            credit_amount: creditAmt,
-            balance: balanceAmt,
-            txn_type: creditAmt > 0 ? 'inflow' : 'outflow'
+        if (detectedBank === 'KOTAK') {
+          // Kotak Parser
+          const headerItem = items.find(it => {
+            const s = it.str.trim();
+            return s === 'Withdrawal (Dr.)' || s === 'Deposit (Cr.)' || s === 'Current Account Transactions';
           });
+          let headerY = headerItem ? headerItem.transform[5] : -1;
+
+          // Find row anchors: row number (# at x < 60) or date (x < 110)
+          const anchors = [];
+          for (const it of items) {
+            const x = it.transform[4];
+            const y = it.transform[5];
+            const s = it.str.trim();
+
+            if (headerY > 0 && y >= headerY - 5) continue;
+            if (y < 30) continue; // Skip bottom footer margin
+
+            if (x < 60 && /^\d+$/.test(s)) {
+              if (!anchors.some(a => Math.abs(a.y - y) < 6)) {
+                anchors.push({ y, sNo: s });
+              }
+            }
+          }
+
+          // Fallback if no numeric # column: look for dates at x < 110
+          if (anchors.length === 0) {
+            for (const it of items) {
+              const x = it.transform[4];
+              const y = it.transform[5];
+              const s = it.str.trim();
+              if (headerY > 0 && y >= headerY - 5) continue;
+              if (y < 30) continue;
+              if (x < 110 && (dateRegex.test(s) || numDateRegex.test(s))) {
+                if (!anchors.some(a => Math.abs(a.y - y) < 6)) {
+                  anchors.push({ y, sNo: null });
+                }
+              }
+            }
+          }
+
+          anchors.sort((a, b) => b.y - a.y);
+
+          for (let i = 0; i < anchors.length; i++) {
+            const cur = anchors[i];
+            const topY = cur.y + 4;
+            const bottomY = (i + 1 < anchors.length) ? (anchors[i + 1].y + 4) : 28;
+
+            const rowItems = items.filter(it => it.transform[5] <= topY && it.transform[5] > bottomY);
+            rowItems.sort((a, b) => (b.transform[5] - a.transform[5]) || (a.transform[4] - b.transform[4]));
+
+            let sNo = cur.sNo;
+            let dateParts = [];
+            let descParts = [];
+            let refParts = [];
+            let debitStr = '';
+            let creditStr = '';
+            let balanceStr = '';
+
+            for (const it of rowItems) {
+              const x = it.transform[4];
+              const s = it.str.trim();
+              if (!s) continue;
+
+              // Filter out footer strings
+              if (s.includes('Statement Generated') || s.includes('Page ') || s.includes('Opening Balance')) continue;
+
+              if (x < 60) {
+                if (!sNo && /^\d+$/.test(s)) sNo = s;
+              } else if (x < 110) {
+                dateParts.push(s);
+              } else if (x < 265) {
+                descParts.push(s);
+              } else if (x < 350) {
+                refParts.push(s);
+              } else if (x < 425) {
+                debitStr += s;
+              } else if (x < 490) {
+                creditStr += s;
+              } else {
+                balanceStr += s;
+              }
+            }
+
+            const dateRaw = dateParts.join(' ');
+            const debitAmt = parseFloat(debitStr.replace(/,/g, '')) || 0;
+            const creditAmt = parseFloat(creditStr.replace(/,/g, '')) || 0;
+            const balAmt = parseFloat(balanceStr.replace(/,/g, '')) || 0;
+
+            if (dateRaw || debitAmt > 0 || creditAmt > 0) {
+              allRows.push({
+                bank: 'KOTAK',
+                page: pageNum,
+                s_no: sNo,
+                txn_date: cleanDate(dateRaw),
+                value_date: cleanDate(dateRaw),
+                description: descParts.join(' ').replace(/\s+/g, ' ').trim(),
+                ref_no: refParts.join(' ').trim() || null,
+                branch_code: null,
+                debit_amount: Math.abs(debitAmt),
+                credit_amount: Math.abs(creditAmt),
+                balance: balAmt,
+                txn_type: creditAmt > 0 ? 'inflow' : 'outflow'
+              });
+            }
+          }
+
+        } else {
+          // SBI Parser
+          const headerItem = items.find(it => {
+            const s = it.str.trim().toLowerCase();
+            return s === 'debit' || s === 'credit' || s === 'balance' || s === 'branch';
+          });
+          let headerY = headerItem ? headerItem.transform[5] : -1;
+
+          // In SBI, date anchor is at x < 85
+          const anchors = [];
+          for (const it of items) {
+            const x = it.transform[4];
+            const y = it.transform[5];
+            const s = it.str.trim();
+
+            if (headerY > 0 && y >= headerY - 8) continue; // above or at header
+            if (y < 25) continue; // skip bottom footer
+
+            if (x < 85 && (dateRegex.test(s) || numDateRegex.test(s))) {
+              if (!anchors.some(a => Math.abs(a.y - y) < 8)) {
+                anchors.push({ y, s });
+              }
+            }
+          }
+
+          anchors.sort((a, b) => b.y - a.y);
+
+          for (let i = 0; i < anchors.length; i++) {
+            const cur = anchors[i];
+            const topY = cur.y + 4;
+            const bottomY = (i + 1 < anchors.length) ? (anchors[i + 1].y + 4) : 20;
+
+            const rowItems = items.filter(it => it.transform[5] <= topY && it.transform[5] > bottomY);
+            rowItems.sort((a, b) => (b.transform[5] - a.transform[5]) || (a.transform[4] - b.transform[4]));
+
+            let txnDateParts = [];
+            let valDateParts = [];
+            let descParts = [];
+            let refParts = [];
+            let branchCode = null;
+            let debitParts = [];
+            let creditParts = [];
+            let balanceParts = [];
+
+            for (const it of rowItems) {
+              const x = it.transform[4];
+              const s = it.str.trim();
+              if (!s) continue;
+
+              // Filter out document header/footer text if captured
+              if (s.includes('Statement Generated') || s.includes('Page ') || s.includes('Account Statement from') || s.includes('Balance as on')) continue;
+
+              if (x < 85) {
+                txnDateParts.push(s);
+              } else if (x < 135) {
+                valDateParts.push(s);
+              } else if (x < 215) {
+                descParts.push(s);
+              } else if (x < 300) {
+                refParts.push(s);
+              } else if (x < 355) {
+                // Branch code column or merged with debit (e.g. "99922 9,50,000.0")
+                const toks = s.split(/\s+/);
+                if (toks.length >= 2) {
+                  branchCode = toks[0];
+                  debitParts.push(toks.slice(1).join(' '));
+                } else {
+                  branchCode = toks[0];
+                }
+              } else if (x < 420) {
+                // Debit column
+                debitParts.push(s);
+              } else if (x < 480) {
+                // Credit column (may contain merged balance, e.g. "90,000.00 -39,58,464.84")
+                const toks = s.split(/\s+/);
+                if (toks.length >= 2) {
+                  creditParts.push(toks[0]);
+                  balanceParts.push(toks.slice(1).join(' '));
+                } else {
+                  creditParts.push(s);
+                }
+              } else {
+                // Balance column
+                balanceParts.push(s);
+              }
+            }
+
+            const debitRaw = debitParts.join('').replace(/,/g, '');
+            const creditRaw = creditParts.join('').replace(/,/g, '');
+            const balRaw = balanceParts.join('').replace(/,/g, '');
+
+            const debitAmt = parseFloat(debitRaw) || 0;
+            const creditAmt = parseFloat(creditRaw) || 0;
+            const balAmt = parseFloat(balRaw) || 0;
+
+            const dStr = txnDateParts.join(' ');
+            const vStr = valDateParts.join(' ') || dStr;
+
+            allRows.push({
+              bank: 'SBI',
+              page: pageNum,
+              s_no: null,
+              txn_date: cleanDate(dStr),
+              value_date: cleanDate(vStr),
+              description: descParts.join(' ').replace(/\s+/g, ' ').trim(),
+              ref_no: refParts.join(' ').trim() || null,
+              branch_code: branchCode,
+              debit_amount: Math.abs(debitAmt),
+              credit_amount: Math.abs(creditAmt),
+              balance: balAmt,
+              txn_type: creditAmt > 0 ? 'inflow' : 'outflow'
+            });
+          }
         }
       }
 
-      return { bank, rows };
+      return { bank: detectedBank, rows: allRows };
     }
 
     // Load System Transactions for Auto-Matching
@@ -2137,33 +2220,7 @@ async function loadSettingsSubTab() {
               const pdfData = new Uint8Array(e.target.result);
               const pdfDoc = await window.pdfjsLib.getDocument({ data: pdfData }).promise;
 
-              const allPdfLines = [];
-              for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-                const page = await pdfDoc.getPage(pageNum);
-                const textContent = await page.getTextContent();
-                const items = textContent.items;
-
-                const yGroups = {};
-                for (const item of items) {
-                  if (!item.str || item.str.trim() === '') continue;
-                  const y = Math.round(item.transform[5] / 3) * 3;
-                  if (!yGroups[y]) yGroups[y] = [];
-                  yGroups[y].push({
-                    text: item.str,
-                    x: item.transform[4],
-                    width: item.width
-                  });
-                }
-
-                const sortedY = Object.keys(yGroups).map(Number).sort((a, b) => b - a);
-                for (const y of sortedY) {
-                  const lineItems = yGroups[y];
-                  lineItems.sort((a, b) => a.x - b.x);
-                  allPdfLines.push(lineItems);
-                }
-              }
-
-              const pdfResult = parsePdfLinesToStatementRows(allPdfLines, bankFormatChoice);
+              const pdfResult = await parsePdfDocumentToStatementRows(pdfDoc, bankFormatChoice);
               if (!pdfResult.rows || pdfResult.rows.length === 0) {
                 throw new Error("Could not extract statement rows from this PDF. Please ensure this is a valid SBI or Kotak bank statement.");
               }

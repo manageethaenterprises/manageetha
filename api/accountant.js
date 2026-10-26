@@ -426,17 +426,43 @@ module.exports = async function handler(req, res) {
       const acc = await sql`SELECT company_id FROM bank_accounts WHERE id = ${bankAccId}`;
       if (acc.length === 0) return res.status(404).json({ error: "Bank account not found" });
 
+      function toValidSqlDate(val) {
+        if (!val || typeof val !== 'string') return null;
+        const trimmed = val.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+        const dmy = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+        if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+        const dt = new Date(trimmed);
+        if (!isNaN(dt.getTime()) && dt.getFullYear() > 1990 && dt.getFullYear() < 2100) {
+          return dt.toISOString().split('T')[0];
+        }
+        return null;
+      }
+
+      const fromDate = toValidSqlDate(statement_period_from);
+      const toDate = toValidSqlDate(statement_period_to);
+
+      // Check if duplicate file with same name and bank account was already uploaded recently
+      const existing = await sql`
+        SELECT * FROM bank_statements 
+        WHERE bank_account_id = ${bankAccId} AND file_name = ${file_name || 'Bank_Statement'}
+        ORDER BY uploaded_at DESC LIMIT 1
+      `;
+      if (existing.length > 0) {
+        return res.status(200).json({ success: true, statement: existing[0], message: "Bank statement linked to existing archive record!" });
+      }
+
       const inserted = await sql`
         INSERT INTO bank_statements (
           bank_account_id, company_id, statement_period_from, statement_period_to, file_name, file_url, notes, uploaded_by
         ) VALUES (
-          ${bankAccId}, ${acc[0].company_id}, ${statement_period_from || null}, ${statement_period_to || null},
+          ${bankAccId}, ${acc[0].company_id}, ${fromDate}, ${toDate},
           ${file_name || 'Bank_Statement'}, ${file_url}, ${notes || null}, ${user.id}
         )
         RETURNING *
       `;
 
-      return res.status(200).json({ success: true, statement: inserted[0], message: "Bank statement uploaded successfully!" });
+      return res.status(200).json({ success: true, statement: inserted[0], message: "Bank statement uploaded and archived successfully!" });
     }
 
     else if (action === "bank-statement-delete") {

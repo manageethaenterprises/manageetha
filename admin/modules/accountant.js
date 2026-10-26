@@ -1344,7 +1344,7 @@ async function loadSettingsSubTab() {
             <span>📋</span> Reconciled & Held List (CA Reference)
           </button>
           <button type="button" class="stmt-tab-btn" data-tab="tabArchive" style="padding:10px 16px;border:none;background:none;font-size:12.5px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px;">
-            <span>📁</span> Uploaded Files Archive
+            <span>📁</span> Uploaded Files Archive <span id="archiveTabCount" class="badge" style="background:rgba(99,102,241,0.15);color:var(--primary);font-size:10px;padding:2px 6px;border-radius:10px;display:none;">0</span>
           </button>
         </div>
 
@@ -1708,6 +1708,106 @@ async function loadSettingsSubTab() {
     let systemInflows = [];
     let systemOutflows = [];
 
+    // Active statement file tracking for auto-archiving on validation
+    let currentStatementFile = {
+      file: null,
+      name: '',
+      dataUrl: null,
+      id: null
+    };
+
+    // Helper: Ensure uploaded statement document is archived to DB and visible in Tab 3
+    async function ensureStatementFileArchived() {
+      if (currentStatementFile.id) return currentStatementFile.id;
+      if (!currentStatementFile.file) return null;
+
+      if (!currentStatementFile.dataUrl) {
+        await new Promise((resolve) => {
+          const r = new FileReader();
+          r.onload = (ev) => {
+            currentStatementFile.dataUrl = ev.target.result;
+            resolve();
+          };
+          r.onerror = () => resolve();
+          r.readAsDataURL(currentStatementFile.file);
+        });
+      }
+
+      if (!currentStatementFile.dataUrl) return null;
+
+      let periodFrom = null;
+      let periodTo = null;
+      const validDates = parsedRows
+        .map(r => cleanDate(r.txn_date))
+        .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .sort();
+
+      if (validDates.length > 0) {
+        periodFrom = validDates[0];
+        periodTo = validDates[validDates.length - 1];
+      } else {
+        periodFrom = todayStr;
+        periodTo = todayStr;
+      }
+
+      const detectedBank = parsedRows[0]?.bank_format || modal.querySelector("#bankFormatSelect").value || 'Bank';
+
+      try {
+        const res = await fetch(`${API_BASE}/accountant?action=bank-statement-upload`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            bank_account_id: acc.id,
+            statement_period_from: periodFrom,
+            statement_period_to: periodTo,
+            file_name: currentStatementFile.name,
+            file_url: currentStatementFile.dataUrl,
+            notes: `Reconciled & Validated (${parsedRows.length} transactions, ${detectedBank} format)`
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.statement) {
+          currentStatementFile.id = data.statement.id;
+          parsedRows.forEach(r => {
+            r.bank_statement_id = currentStatementFile.id;
+          });
+          loadStatementsArchive();
+          return currentStatementFile.id;
+        }
+      } catch (err) {
+        console.warn("Could not archive statement document:", err);
+      }
+      return null;
+    }
+
+    // Helper: Safely open or download base64 data URLs without browser navigation restrictions
+    function openOrDownloadDataUrl(url, fileName) {
+      if (!url) return;
+      if (url.startsWith('data:')) {
+        try {
+          const parts = url.split(',');
+          const mime = parts[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+          const byteStr = atob(parts[1]);
+          const ab = new ArrayBuffer(byteStr.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
+          const blob = new Blob([ab], { type: mime });
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.target = '_blank';
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 1500);
+        } catch (e) {
+          window.open(url, '_blank');
+        }
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
     // Helper: Normalize strings for header matching
     function normText(str) {
       if (!str) return '';
@@ -1739,23 +1839,27 @@ async function loadSettingsSubTab() {
         const date = new Date(epoch.getTime() + val * 86400000);
         if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
       }
-      const s = String(val).trim();
+      let s = String(val).trim();
+      // If leading serial number like "1 30 Sep 2026", strip the serial number prefix
+      s = s.replace(/^\d+\s+(?=\d{1,2}[\/\-\s]+[A-Za-z]{3})/, '');
+      s = s.replace(/^\d+\s+(?=\d{1,2}[\/\-\.]\d{1,2})/, '');
+
+      // Match YYYY-MM-DD
+      const ymd = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+      if (ymd) {
+        return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
+      }
       // Match DD/MM/YYYY or DD-MM-YYYY
       const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
       if (dmy) {
         return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
       }
-      // Match DD-Mon-YYYY (e.g. 24-Oct-2026, 24 Oct 2026)
+      // Match DD-Mon-YYYY (e.g. 24-Oct-2026, 24 Oct 2026, 30 Sep 2026)
       const dMonY = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3})[\/\-\s]+(\d{4})/);
       if (dMonY) {
         const months = { jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06', jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12' };
         const m = months[dMonY[2].toLowerCase()] || '01';
         return `${dMonY[3]}-${m}-${dMonY[1].padStart(2, '0')}`;
-      }
-      // Match YYYY-MM-DD
-      const ymd = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-      if (ymd) {
-        return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
       }
       return s;
     }
@@ -2145,7 +2249,15 @@ async function loadSettingsSubTab() {
         }
       }
 
-      return { bank: detectedBank, rows: allRows };
+      // Filter out non-financial rows (e.g. header address lines with 0 debit and 0 credit)
+      const validRows = allRows.filter(r => {
+        if (r.debit_amount <= 0 && r.credit_amount <= 0) return false;
+        const dl = (r.description || '').toLowerCase();
+        if (dl.includes('micr') && dl.includes('ifsc')) return false;
+        return true;
+      });
+
+      return { bank: detectedBank, rows: validRows.length > 0 ? validRows : allRows };
     }
 
     // Load System Transactions for Auto-Matching
@@ -2243,6 +2355,20 @@ async function loadSettingsSubTab() {
       const file = fileInput.files[0];
       const bankFormatChoice = modal.querySelector("#bankFormatSelect").value;
       const parseBtn = modal.querySelector("#parseReconcileBtn");
+
+      currentStatementFile = {
+        file: file,
+        name: file.name,
+        dataUrl: null,
+        id: null
+      };
+
+      // Read as DataURL in parallel so it is immediately available when validation is clicked
+      const bgReader = new FileReader();
+      bgReader.onload = (ev) => {
+        currentStatementFile.dataUrl = ev.target.result;
+      };
+      bgReader.readAsDataURL(file);
 
       parseBtn.disabled = true;
       parseBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Parsing & Matching...`;
@@ -2409,28 +2535,9 @@ async function loadSettingsSubTab() {
               throw new Error("No transaction rows found under the detected header row.");
             }
 
-            // Save document file copy if checked
-            if (modal.querySelector("#archiveFileCopyCheck").checked) {
-              try {
-                const reader2 = new FileReader();
-                reader2.onload = async (evt) => {
-                  try {
-                    await fetch(`${API_BASE}/accountant?action=bank-statement-upload`, {
-                      method: "POST",
-                      headers: authHeaders(),
-                      body: JSON.stringify({
-                        bank_account_id: acc.id,
-                        statement_period_from: parsedRows[0]?.txn_date || todayStr,
-                        statement_period_to: parsedRows[parsedRows.length - 1]?.txn_date || todayStr,
-                        file_name: file.name,
-                        file_url: evt.target.result,
-                        notes: `Parsed ${parsedRows.length} transactions via ${detectedBank} format`
-                      })
-                    });
-                  } catch (e) {}
-                };
-                reader2.readAsDataURL(file);
-              } catch (e) {}
+            // If archive check is on, archive right now or it will also automatically archive upon validation
+            if (modal.querySelector("#archiveFileCopyCheck")?.checked) {
+              ensureStatementFileArchived().catch(() => {});
             }
 
             // Update Metrics
@@ -2720,8 +2827,13 @@ async function loadSettingsSubTab() {
           btn.disabled = true;
           btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
           try {
+            // Ensure statement file is archived to repository
+            const stmtId = await ensureStatementFileArchived();
+            if (stmtId) row.bank_statement_id = stmtId;
+
             const payload = {
               id: row.db_id || null,
+              bank_statement_id: row.bank_statement_id || stmtId || null,
               bank_account_id: acc.id,
               bank_format: row.bank_format,
               txn_date: row.txn_date,
@@ -2753,6 +2865,7 @@ async function loadSettingsSubTab() {
               row.status = 'held';
               row.db_id = d.transaction.id;
               showToast("Transaction marked as On Hold and saved for CA audit.", "warning");
+              loadStatementsArchive();
               renderReconciliationTable();
             } else {
               alert(d.error || "Failed to hold transaction");
@@ -2797,8 +2910,13 @@ async function loadSettingsSubTab() {
           btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Validating...`;
 
           try {
+            // Automatically ensure the uploaded statement file is stored in Uploaded Files Archive upon validation!
+            const stmtId = await ensureStatementFileArchived();
+            if (stmtId) row.bank_statement_id = stmtId;
+
             const payload = {
               id: row.db_id || null,
+              bank_statement_id: row.bank_statement_id || stmtId || null,
               bank_account_id: acc.id,
               bank_format: row.bank_format,
               txn_date: row.txn_date,
@@ -2828,7 +2946,8 @@ async function loadSettingsSubTab() {
             if (d.success) {
               row.status = 'validated';
               row.db_id = d.transaction.id;
-              showToast("Transaction validated and stored for CA reference!", "success");
+              showToast("Transaction validated & file archived to Uploaded Files Archive!", "success");
+              loadStatementsArchive();
               renderReconciliationTable();
             } else {
               alert(d.error || "Failed to validate transaction");
@@ -2857,8 +2976,12 @@ async function loadSettingsSubTab() {
       btn.disabled = true;
       btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Validating (${matchedPending.length})...`;
 
+      // Automatically ensure statement document is stored in Uploaded Files Archive upon validation
+      const stmtId = await ensureStatementFileArchived();
+
       const items = matchedPending.map(r => ({
         id: r.db_id || null,
+        bank_statement_id: r.bank_statement_id || stmtId || null,
         bank_account_id: acc.id,
         bank_format: r.bank_format,
         txn_date: r.txn_date,
@@ -2887,8 +3010,12 @@ async function loadSettingsSubTab() {
         });
         const d = await res.json();
         if (d.success) {
-          matchedPending.forEach(r => r.status = 'validated');
-          showToast(`Successfully validated ${d.count} transactions!`, "success");
+          matchedPending.forEach(r => {
+            r.status = 'validated';
+            if (stmtId) r.bank_statement_id = stmtId;
+          });
+          showToast(`Successfully validated ${d.count} transactions & saved file to Uploaded Files Archive!`, "success");
+          loadStatementsArchive();
           renderReconciliationTable();
         } else {
           showToast(d.error || "Batch validate failed", "error");
@@ -3206,8 +3333,14 @@ async function loadSettingsSubTab() {
         const res = await fetch(`${API_BASE}/accountant?action=bank-statements-list&bank_account_id=${acc.id}`, { headers: authHeaders() });
         const data = await res.json();
         if (data.success && data.statements) {
+          const countBadge = modal.querySelector("#archiveTabCount");
+          if (countBadge) {
+            countBadge.textContent = data.statements.length;
+            countBadge.style.display = data.statements.length > 0 ? "inline-block" : "none";
+          }
+
           if (data.statements.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3);">No uploaded bank statements found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:30px 20px;color:var(--text3);"><div style="font-size:24px;margin-bottom:6px;">📁</div>No uploaded bank statements found. When you validate statement transactions, the original file is automatically saved and archived here.</td></tr>`;
             return;
           }
 
@@ -3219,24 +3352,32 @@ async function loadSettingsSubTab() {
 
             return `
               <tr>
-                <td><strong style="color:var(--text1);">${periodStr}</strong></td>
+                <td><strong style="color:var(--text1);font-family:monospace;font-size:11.5px;">${periodStr}</strong></td>
                 <td>
-                  <div style="font-weight:600;color:var(--text1);">${esc(s.file_name)}</div>
-                  ${s.notes ? `<div style="font-size:10px;color:var(--text3);">${esc(s.notes)}</div>` : ''}
+                  <div style="font-weight:600;color:var(--text1);font-size:12px;">${esc(s.file_name)}</div>
+                  ${s.notes ? `<div style="font-size:10.5px;color:var(--text3);margin-top:2px;">${esc(s.notes)}</div>` : ''}
                 </td>
-                <td style="color:var(--text2);">${dateStr}</td>
-                <td style="color:var(--text2);">${esc(s.uploaded_by_name || 'System')}</td>
+                <td style="color:var(--text2);font-size:11.5px;">${dateStr}</td>
+                <td style="color:var(--text2);font-size:11.5px;">${esc(s.uploaded_by_name || 'System')}</td>
                 <td style="text-align:center;white-space:nowrap;">
-                  <a href="${s.file_url}" target="_blank" download="${esc(s.file_name)}" class="btn btn-xs btn-secondary" style="padding:2px 6px;margin-right:4px;" title="View or Download File">👁️ View</a>
-                  <button type="button" class="btn btn-xs btn-danger delete-stmt-btn" data-id="${s.id}" style="padding:2px 6px;" title="Delete Statement">🗑️</button>
+                  <button type="button" class="btn btn-xs btn-secondary view-stmt-file-btn" data-id="${s.id}" style="padding:3px 8px;font-size:11px;margin-right:4px;" title="View or Download File">👁️ View</button>
+                  <button type="button" class="btn btn-xs btn-outline-danger delete-stmt-btn" data-id="${s.id}" style="padding:3px 6px;font-size:11px;" title="Delete Statement">🗑️</button>
                 </td>
               </tr>
             `;
           }).join("");
 
+          tbody.querySelectorAll(".view-stmt-file-btn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const stmt = data.statements.find(x => String(x.id) === String(btn.dataset.id));
+              if (!stmt || !stmt.file_url) return;
+              openOrDownloadDataUrl(stmt.file_url, stmt.file_name || 'bank_statement.pdf');
+            });
+          });
+
           tbody.querySelectorAll(".delete-stmt-btn").forEach(btn => {
             btn.addEventListener("click", async () => {
-              if (!confirm("Delete this statement record?")) return;
+              if (!confirm("Delete this statement document from the archive repository?")) return;
               try {
                 const r = await fetch(`${API_BASE}/accountant?action=bank-statement-delete&id=${btn.dataset.id}`, {
                   method: "POST",
@@ -3269,8 +3410,8 @@ async function loadSettingsSubTab() {
       }
 
       const file = fileInput.files[0];
-      if (file.size > 2.5 * 1024 * 1024) {
-        showToast("File size exceeds 2.5 MB limit. Please choose a smaller or compressed file.", "error");
+      if (file.size > 25 * 1024 * 1024) {
+        showToast("File size exceeds 25 MB limit. Please choose a smaller or compressed file.", "error");
         return;
       }
 
@@ -3313,6 +3454,9 @@ async function loadSettingsSubTab() {
       };
       reader.readAsDataURL(file);
     });
+
+    // Populate archive statements on modal load
+    loadStatementsArchive();
   }
 
   // Modal open/close helpers

@@ -1367,9 +1367,9 @@ async function loadSettingsSubTab() {
 
                 <div style="flex:1;min-width:260px;">
                   <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;">
-                    Select Statement File (.xlsx, .xls, .csv) *
+                    Select Statement File (Excel, CSV or PDF) *
                   </label>
-                  <input type="file" id="reconcileFileInput" class="form-control" accept=".xlsx,.xls,.csv" style="font-size:12px;padding:5px 8px;">
+                  <input type="file" id="reconcileFileInput" class="form-control" accept=".xlsx,.xls,.csv,.pdf" style="font-size:12px;padding:5px 8px;">
                 </div>
 
                 <div style="display:flex;gap:6px;">
@@ -1837,6 +1837,187 @@ async function loadSettingsSubTab() {
       return null;
     }
 
+    // PDF Table & Line Parser for SBI and Kotak statements
+    function parsePdfLinesToStatementRows(allPdfLines, forcedBank = 'auto') {
+      let headerIndex = -1;
+      let bank = null;
+      let coords = { sNoX: 0, dateX: 0, valDateX: 0, descX: 0, refX: 0, branchX: 0, debitX: 0, creditX: 0, balanceX: 0 };
+
+      for (let i = 0; i < allPdfLines.length; i++) {
+        const line = allPdfLines[i];
+        const fullText = line.map(item => item.text).join(' ').toLowerCase();
+
+        const hasTxnDate = fullText.includes('txn date') || fullText.includes('transaction date');
+        const hasValDate = fullText.includes('value date');
+        const hasDesc = fullText.includes('description') || fullText.includes('narration') || fullText.includes('particular');
+        const hasDebit = fullText.includes('debit') || fullText.includes('withdrawal') || fullText.includes('(dr)');
+        const hasCredit = fullText.includes('credit') || fullText.includes('deposit') || fullText.includes('(cr)');
+        const hasKotakRef = fullText.includes('chq') || fullText.includes('s.no') || fullText.includes('sl no') || fullText.includes('or s no');
+
+        const isSbi = (hasTxnDate || hasValDate) && hasDesc && (hasDebit || hasCredit);
+        const isKotak = (hasDebit || hasCredit) && hasDesc && (fullText.includes('date') || hasKotakRef);
+
+        if (forcedBank === 'SBI' && isSbi) {
+          headerIndex = i;
+          bank = 'SBI';
+          break;
+        }
+        if (forcedBank === 'KOTAK' && isKotak) {
+          headerIndex = i;
+          bank = 'KOTAK';
+          break;
+        }
+        if (forcedBank === 'auto') {
+          if (isSbi) {
+            headerIndex = i;
+            bank = 'SBI';
+            break;
+          }
+          if (isKotak) {
+            headerIndex = i;
+            bank = 'KOTAK';
+            break;
+          }
+        }
+      }
+
+      if (headerIndex === -1) {
+        bank = forcedBank === 'KOTAK' ? 'KOTAK' : 'SBI';
+      } else {
+        const headerLine = allPdfLines[headerIndex];
+        for (const item of headerLine) {
+          const t = item.text.toLowerCase().trim();
+          if (t.includes('txn date') || t === 'date') coords.dateX = item.x;
+          if (t.includes('value date')) coords.valDateX = item.x;
+          if (t.includes('desc') || t.includes('particular')) coords.descX = item.x;
+          if (t.includes('ref') || t.includes('chq')) coords.refX = item.x;
+          if (t.includes('branch')) coords.branchX = item.x;
+          if (t.includes('debit') || t.includes('withdrawal') || t.includes('(dr)')) coords.debitX = item.x;
+          if (t.includes('credit') || t.includes('deposit') || t.includes('(cr)')) coords.creditX = item.x;
+          if (t.includes('balance')) coords.balanceX = item.x;
+          if (t.includes('s.no') || t.includes('sl no') || t === '#' || t.includes('or s no')) coords.sNoX = item.x;
+        }
+      }
+
+      const debitMid = (coords.debitX && coords.creditX) ? (coords.debitX + coords.creditX) / 2 : 0;
+      const creditMid = (coords.creditX && coords.balanceX) ? (coords.creditX + coords.balanceX) / 2 : 0;
+
+      const rows = [];
+      const startLine = headerIndex !== -1 ? headerIndex + 1 : 0;
+
+      for (let i = startLine; i < allPdfLines.length; i++) {
+        const line = allPdfLines[i];
+        const fullText = line.map(item => item.text).join(' ').trim();
+        if (!fullText) continue;
+
+        const lower = fullText.toLowerCase();
+        if (lower.includes('page ') || lower.includes('statement period') || lower.includes('opening balance') || lower.includes('closing balance') || lower.includes('total:')) {
+          continue;
+        }
+
+        const dateMatch = fullText.match(/\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b/) ||
+                          fullText.match(/\b(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})\b/);
+
+        if (!dateMatch) {
+          if (rows.length > 0 && !lower.includes('end of statement') && fullText.length < 150) {
+            rows[rows.length - 1].description += ' ' + fullText;
+          }
+          continue;
+        }
+
+        let txnDate = '';
+        let valDate = '';
+        let desc = '';
+        let ref = '';
+        let branch = '';
+        let sNo = '';
+        let debitAmt = 0;
+        let creditAmt = 0;
+        let balanceAmt = 0;
+
+        const numbersFound = [];
+
+        for (const item of line) {
+          const x = item.x;
+          const str = item.text.trim();
+          if (!str) continue;
+
+          const isDate = str.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/) || str.match(/^\d{1,2}[\/\-\s]+[A-Za-z]{3}[\/\-\s]+\d{2,4}$/);
+          if (isDate) {
+            if (!txnDate) txnDate = str;
+            else if (!valDate) valDate = str;
+            continue;
+          }
+
+          if (coords.sNoX && Math.abs(x - coords.sNoX) < 25) {
+            sNo = str;
+            continue;
+          }
+          if (coords.branchX && Math.abs(x - coords.branchX) < 30) {
+            branch = str;
+            continue;
+          }
+          if (coords.refX && Math.abs(x - coords.refX) < 30 && (!coords.debitX || x < coords.debitX - 25)) {
+            ref = (ref ? ref + ' ' : '') + str;
+            continue;
+          }
+
+          const isNum = !isNaN(parseFloat(str.replace(/,/g, ''))) && /^-?[\d,]+(\.\d+)?$/.test(str);
+          if (isNum && (!coords.debitX || x >= coords.debitX - 25)) {
+            const val = Math.abs(parseFloat(str.replace(/,/g, '')));
+            numbersFound.push({ val, x });
+            continue;
+          }
+
+          if (!coords.debitX || x < coords.debitX - 25) {
+            desc = (desc ? desc + ' ' : '') + str;
+          }
+        }
+
+        if (debitMid > 0 && creditMid > 0) {
+          for (const numObj of numbersFound) {
+            if (numObj.x < debitMid) {
+              debitAmt = numObj.val;
+            } else if (numObj.x < creditMid) {
+              creditAmt = numObj.val;
+            } else {
+              balanceAmt = numObj.val;
+            }
+          }
+        } else {
+          if (numbersFound.length >= 2) {
+            balanceAmt = numbersFound[numbersFound.length - 1].val;
+            const txAmt = numbersFound[numbersFound.length - 2].val;
+            if (fullText.includes('(Dr)') || fullText.includes(' DR ') || fullText.toLowerCase().includes('withdrawal')) {
+              debitAmt = txAmt;
+            } else {
+              creditAmt = txAmt;
+            }
+          } else if (numbersFound.length === 1) {
+            balanceAmt = numbersFound[0].val;
+          }
+        }
+
+        if (txnDate) {
+          rows.push({
+            bank,
+            s_no: sNo || null,
+            txn_date: cleanDate(txnDate),
+            value_date: cleanDate(valDate || txnDate),
+            description: desc.trim(),
+            ref_no: ref.trim() || null,
+            branch_code: branch.trim() || null,
+            debit_amount: debitAmt,
+            credit_amount: creditAmt,
+            balance: balanceAmt,
+            txn_type: creditAmt > 0 ? 'inflow' : 'outflow'
+          });
+        }
+      }
+
+      return { bank, rows };
+    }
+
     // Load System Transactions for Auto-Matching
     async function loadSystemTransactions() {
       try {
@@ -1943,106 +2124,181 @@ async function loadSettingsSubTab() {
         const reader = new FileReader();
         reader.onload = async (e) => {
           try {
-            let matrix = [];
-            const fileNameLower = file.name.toLowerCase();
-
-            if (fileNameLower.endsWith(".csv")) {
-              const text = new TextDecoder("utf-8").decode(e.target.result);
-              matrix = parseCsvToMatrix(text);
-            } else if (typeof window.XLSX !== "undefined") {
-              const data = new Uint8Array(e.target.result);
-              const workbook = window.XLSX.read(data, { type: "array", cellDates: true });
-              const firstSheetName = workbook.SheetNames[0];
-              const worksheet = workbook.Sheets[firstSheetName];
-              matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-            } else {
-              throw new Error("Excel parsing engine (SheetJS) is initializing. Please wait 2 seconds and try again.");
-            }
-
-            if (!matrix || matrix.length === 0) {
-              throw new Error("Uploaded file is empty or could not be parsed.");
-            }
-
-            const headerInfo = scanAndDetectHeaders(matrix, bankFormatChoice);
-            if (!headerInfo) {
-              throw new Error(
-                "Could not detect valid SBI or Kotak headers in this statement. Please check the file headers:\n" +
-                "• SBI: Txn Date, Value Date, Description, Ref No./Cheque No., Branch Code, Debit, Credit, Balance\n" +
-                "• Kotak: #(or) S.No, Date, Description, Chq/Ref. No., Withdrawal (Dr.), Deposit (Cr.), Balance"
-              );
-            }
-
-            // Extract statement rows
             parsedRows = [];
-            const detectedBank = headerInfo.bank;
-            const badge = modal.querySelector("#detectedFormatBadge");
-            badge.textContent = detectedBank === 'SBI' ? '🏛️ SBI Format' : '🏢 Kotak Format';
-            badge.style.display = "inline-block";
-
             let totalDebit = 0;
             let totalCredit = 0;
+            const fileNameLower = file.name.toLowerCase();
 
-            for (let r = headerInfo.rowIndex + 1; r < matrix.length; r++) {
-              const row = matrix[r];
-              if (!Array.isArray(row) || row.length === 0) continue;
+            if (fileNameLower.endsWith(".pdf")) {
+              if (typeof window.pdfjsLib === "undefined") {
+                throw new Error("PDF processing engine (PDF.js) is initializing. Please ensure you have internet access or try again in a moment.");
+              }
+              window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+              const pdfData = new Uint8Array(e.target.result);
+              const pdfDoc = await window.pdfjsLib.getDocument({ data: pdfData }).promise;
 
-              const dateRaw = row[headerInfo.dateCol];
-              const descRaw = row[headerInfo.descCol];
-              const debitRaw = headerInfo.debitCol !== -1 ? row[headerInfo.debitCol] : '';
-              const creditRaw = headerInfo.creditCol !== -1 ? row[headerInfo.creditCol] : '';
-              const balRaw = headerInfo.balanceCol !== -1 ? row[headerInfo.balanceCol] : '';
-              const refRaw = headerInfo.refCol !== -1 ? row[headerInfo.refCol] : '';
-              const valDateRaw = headerInfo.valueDateCol !== -1 ? row[headerInfo.valueDateCol] : '';
-              const branchRaw = headerInfo.branchCol !== -1 ? row[headerInfo.branchCol] : '';
+              const allPdfLines = [];
+              for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                const page = await pdfDoc.getPage(pageNum);
+                const textContent = await page.getTextContent();
+                const items = textContent.items;
 
-              const debitAmt = cleanAmount(debitRaw);
-              const creditAmt = cleanAmount(creditRaw);
-              const balAmt = cleanAmount(balRaw);
-              const cleanTxnDate = cleanDate(dateRaw);
-              const cleanValDate = cleanDate(valDateRaw);
-              const cleanDesc = String(descRaw || '').trim();
-              const cleanRef = String(refRaw || '').trim();
-              const cleanBranch = String(branchRaw || '').trim();
+                const yGroups = {};
+                for (const item of items) {
+                  if (!item.str || item.str.trim() === '') continue;
+                  const y = Math.round(item.transform[5] / 3) * 3;
+                  if (!yGroups[y]) yGroups[y] = [];
+                  yGroups[y].push({
+                    text: item.str,
+                    x: item.transform[4],
+                    width: item.width
+                  });
+                }
 
-              // Skip rows that don't have valid dates or amounts (e.g. summary text / footers)
-              if (!cleanTxnDate && !cleanDesc) continue;
-              if (debitAmt === 0 && creditAmt === 0 && !cleanDesc) continue;
-              if (cleanDesc.toLowerCase().includes('total') || cleanDesc.toLowerCase().includes('end of statement')) continue;
+                const sortedY = Object.keys(yGroups).map(Number).sort((a, b) => b - a);
+                for (const y of sortedY) {
+                  const lineItems = yGroups[y];
+                  lineItems.sort((a, b) => a.x - b.x);
+                  allPdfLines.push(lineItems);
+                }
+              }
 
-              totalDebit += debitAmt;
-              totalCredit += creditAmt;
+              const pdfResult = parsePdfLinesToStatementRows(allPdfLines, bankFormatChoice);
+              if (!pdfResult.rows || pdfResult.rows.length === 0) {
+                throw new Error("Could not extract statement rows from this PDF. Please ensure this is a valid SBI or Kotak bank statement.");
+              }
 
-              const rowObj = {
-                uid: 'tx_' + r + '_' + Date.now(),
-                bank_format: detectedBank,
-                txn_date: cleanTxnDate || todayStr,
-                value_date: cleanValDate || cleanTxnDate || null,
-                description: cleanDesc,
-                ref_no: cleanRef || null,
-                branch_code: cleanBranch || null,
-                debit_amount: debitAmt,
-                credit_amount: creditAmt,
-                balance: balAmt,
-                txn_type: creditAmt > 0 ? 'inflow' : 'outflow',
-                status: 'pending', // 'pending', 'validated', 'held'
-                hold_reason: '',
-                user_description: '',
-                matched: null,
-                db_id: null
-              };
+              const detectedBank = pdfResult.bank;
+              const badge = modal.querySelector("#detectedFormatBadge");
+              badge.textContent = detectedBank === 'SBI' ? '🏛️ SBI Format (PDF)' : '🏢 Kotak Format (PDF)';
+              badge.style.display = "inline-block";
 
-              // Auto-suggest CA note for unmapped bank charges
-              const dl = cleanDesc.toLowerCase();
-              if (dl.includes('sms')) rowObj.user_description = 'Bank SMS Charges';
-              else if (dl.includes('chg') || dl.includes('charge')) rowObj.user_description = 'Bank Charges';
-              else if (dl.includes('int') || dl.includes('interest')) rowObj.user_description = 'Bank Interest Earned';
-              else if (dl.includes('bounce') || dl.includes('return')) rowObj.user_description = 'Cheque Bounce / Return Charges';
-              else if (dl.includes('amc') || dl.includes('annual')) rowObj.user_description = 'Bank Annual Maintenance Charges';
+              for (let r = 0; r < pdfResult.rows.length; r++) {
+                const pRow = pdfResult.rows[r];
+                totalDebit += pRow.debit_amount;
+                totalCredit += pRow.credit_amount;
 
-              // Perform auto-match against ERP transactions
-              rowObj.matched = findSystemMatch(rowObj);
+                const rowObj = {
+                  uid: 'tx_pdf_' + r + '_' + Date.now(),
+                  bank_format: detectedBank,
+                  txn_date: pRow.txn_date || todayStr,
+                  value_date: pRow.value_date || pRow.txn_date || null,
+                  description: pRow.description,
+                  ref_no: pRow.ref_no || null,
+                  branch_code: pRow.branch_code || null,
+                  debit_amount: pRow.debit_amount,
+                  credit_amount: pRow.credit_amount,
+                  balance: pRow.balance,
+                  txn_type: pRow.credit_amount > 0 ? 'inflow' : 'outflow',
+                  status: 'pending',
+                  hold_reason: '',
+                  user_description: '',
+                  matched: null,
+                  db_id: null
+                };
 
-              parsedRows.push(rowObj);
+                const dl = (pRow.description || '').toLowerCase();
+                if (dl.includes('sms')) rowObj.user_description = 'Bank SMS Charges';
+                else if (dl.includes('chg') || dl.includes('charge')) rowObj.user_description = 'Bank Charges';
+                else if (dl.includes('int') || dl.includes('interest')) rowObj.user_description = 'Bank Interest Earned';
+                else if (dl.includes('bounce') || dl.includes('return')) rowObj.user_description = 'Cheque Bounce / Return Charges';
+                else if (dl.includes('amc') || dl.includes('annual')) rowObj.user_description = 'Bank Annual Maintenance Charges';
+
+                rowObj.matched = findSystemMatch(rowObj);
+                parsedRows.push(rowObj);
+              }
+            } else {
+              // CSV or Excel
+              let matrix = [];
+              if (fileNameLower.endsWith(".csv")) {
+                const text = new TextDecoder("utf-8").decode(e.target.result);
+                matrix = parseCsvToMatrix(text);
+              } else if (typeof window.XLSX !== "undefined") {
+                const data = new Uint8Array(e.target.result);
+                const workbook = window.XLSX.read(data, { type: "array", cellDates: true });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+              } else {
+                throw new Error("Excel parsing engine (SheetJS) is initializing. Please wait 2 seconds and try again.");
+              }
+
+              if (!matrix || matrix.length === 0) {
+                throw new Error("Uploaded file is empty or could not be parsed.");
+              }
+
+              const headerInfo = scanAndDetectHeaders(matrix, bankFormatChoice);
+              if (!headerInfo) {
+                throw new Error(
+                  "Could not detect valid SBI or Kotak headers in this statement. Please check the file headers:\n" +
+                  "• SBI: Txn Date, Value Date, Description, Ref No./Cheque No., Branch Code, Debit, Credit, Balance\n" +
+                  "• Kotak: #(or) S.No, Date, Description, Chq/Ref. No., Withdrawal (Dr.), Deposit (Cr.), Balance"
+                );
+              }
+
+              const detectedBank = headerInfo.bank;
+              const badge = modal.querySelector("#detectedFormatBadge");
+              badge.textContent = detectedBank === 'SBI' ? '🏛️ SBI Format' : '🏢 Kotak Format';
+              badge.style.display = "inline-block";
+
+              for (let r = headerInfo.rowIndex + 1; r < matrix.length; r++) {
+                const row = matrix[r];
+                if (!Array.isArray(row) || row.length === 0) continue;
+
+                const dateRaw = row[headerInfo.dateCol];
+                const descRaw = row[headerInfo.descCol];
+                const debitRaw = headerInfo.debitCol !== -1 ? row[headerInfo.debitCol] : '';
+                const creditRaw = headerInfo.creditCol !== -1 ? row[headerInfo.creditCol] : '';
+                const balRaw = headerInfo.balanceCol !== -1 ? row[headerInfo.balanceCol] : '';
+                const refRaw = headerInfo.refCol !== -1 ? row[headerInfo.refCol] : '';
+                const valDateRaw = headerInfo.valueDateCol !== -1 ? row[headerInfo.valueDateCol] : '';
+                const branchRaw = headerInfo.branchCol !== -1 ? row[headerInfo.branchCol] : '';
+
+                const debitAmt = cleanAmount(debitRaw);
+                const creditAmt = cleanAmount(creditRaw);
+                const balAmt = cleanAmount(balRaw);
+                const cleanTxnDate = cleanDate(dateRaw);
+                const cleanValDate = cleanDate(valDateRaw);
+                const cleanDesc = String(descRaw || '').trim();
+                const cleanRef = String(refRaw || '').trim();
+                const cleanBranch = String(branchRaw || '').trim();
+
+                if (!cleanTxnDate && !cleanDesc) continue;
+                if (debitAmt === 0 && creditAmt === 0 && !cleanDesc) continue;
+                if (cleanDesc.toLowerCase().includes('total') || cleanDesc.toLowerCase().includes('end of statement')) continue;
+
+                totalDebit += debitAmt;
+                totalCredit += creditAmt;
+
+                const rowObj = {
+                  uid: 'tx_' + r + '_' + Date.now(),
+                  bank_format: detectedBank,
+                  txn_date: cleanTxnDate || todayStr,
+                  value_date: cleanValDate || cleanTxnDate || null,
+                  description: cleanDesc,
+                  ref_no: cleanRef || null,
+                  branch_code: cleanBranch || null,
+                  debit_amount: debitAmt,
+                  credit_amount: creditAmt,
+                  balance: balAmt,
+                  txn_type: creditAmt > 0 ? 'inflow' : 'outflow',
+                  status: 'pending',
+                  hold_reason: '',
+                  user_description: '',
+                  matched: null,
+                  db_id: null
+                };
+
+                const dl = cleanDesc.toLowerCase();
+                if (dl.includes('sms')) rowObj.user_description = 'Bank SMS Charges';
+                else if (dl.includes('chg') || dl.includes('charge')) rowObj.user_description = 'Bank Charges';
+                else if (dl.includes('int') || dl.includes('interest')) rowObj.user_description = 'Bank Interest Earned';
+                else if (dl.includes('bounce') || dl.includes('return')) rowObj.user_description = 'Cheque Bounce / Return Charges';
+                else if (dl.includes('amc') || dl.includes('annual')) rowObj.user_description = 'Bank Annual Maintenance Charges';
+
+                rowObj.matched = findSystemMatch(rowObj);
+                parsedRows.push(rowObj);
+              }
             }
 
             if (parsedRows.length === 0) {

@@ -4592,7 +4592,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
             <table class="data-table" style="font-size:12.5px;width:100%;min-width:1160px;">
               <thead>
                 <tr style="background:var(--bg-secondary);">
-                  <th style="width:38px;text-align:center;">#</th>
+                  <th style="width:38px;text-align:center;">S.No</th>
                   <th style="min-width:260px;">Product Name & Model</th>
                   <th style="width:125px;">Serial No.</th>
                   <th style="width:75px;text-align:center;">Qty</th>

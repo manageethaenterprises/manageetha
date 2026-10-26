@@ -16,7 +16,7 @@ function checkAuthAndRedirect() {
           localStorage.removeItem("erp_token");
           localStorage.removeItem("erp_user");
           localStorage.removeItem("erp_session_expires_at");
-          sessionStorage.setItem("erp_session_expired", "Your session has expired after 10 minutes. Please sign in again.");
+          sessionStorage.setItem("erp_session_expired", "Your session has expired due to 10 minutes of inactivity. Please sign in again.");
           return;
         }
       }

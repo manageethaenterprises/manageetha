@@ -474,7 +474,7 @@ function startHeartbeat() {
     try {
       const res = await fetch(`${API_BASE}/auth?action=heartbeat`, { headers: authHeaders() });
       if (res && res.status === 401) {
-        triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+        triggerAutoLogout("Your session has expired due to 10 minutes of inactivity. Please sign in again.");
       }
     } catch (e) {}
   }
@@ -999,14 +999,18 @@ function setDate() {
   });
 }
 
-// ═══════════════ AUTOMATIC SESSION TIMEOUT (10 MINUTES) ═══════════════
+// ═══════════════ AUTOMATIC SESSION TIMEOUT (10 MINUTES INACTIVITY) ═══════════════
 // Applies to all users EXCEPT superadmin.
-// Automatically logs out after 10 minutes even if idle and even if page is not refreshed.
+// Automatically logs out only after 10 minutes of complete inactivity.
+// Any user interaction (typing, clicking, scrolling, mouse movement, API calls) resets the timer.
 
 let sessionTimeoutTimer = null;
 let sessionWatchdogTimer = null;
+let sessionTimeoutDurationMs = 600 * 1000; // 10 minutes default (600 seconds)
+let lastActivityResetTime = 0;
+let sessionActivityListenersAttached = false;
 
-function triggerAutoLogout(reason = "Your session has expired after 10 minutes. Please sign in again.") {
+function triggerAutoLogout(reason = "Your session has expired due to 10 minutes of inactivity. Please sign in again.") {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
   if (sessionWatchdogTimer) clearInterval(sessionWatchdogTimer);
@@ -1038,9 +1042,35 @@ function checkSessionTimeout() {
   if (!user || user.role === "superadmin") return;
 
   const expiresAt = parseInt(localStorage.getItem("erp_session_expires_at") || "0", 10);
-  if (expiresAt && Date.now() >= expiresAt) {
-    triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+  if (!expiresAt) return;
+
+  const remaining = expiresAt - Date.now();
+  if (remaining <= 0) {
+    triggerAutoLogout("Your session has expired due to 10 minutes of inactivity. Please sign in again.");
+  } else {
+    // Session is still active; ensure timer fires when remaining time actually runs out
+    if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+    sessionTimeoutTimer = setTimeout(checkSessionTimeout, remaining);
   }
+}
+
+// Reset session activity whenever the user interacts (typing, clicking, etc.)
+function resetSessionActivity() {
+  const user = window.currentUser || getUser();
+  if (!user || user.role === "superadmin") return;
+
+  const now = Date.now();
+  // Throttle updates to at most once every 2 seconds to avoid overhead during fast typing
+  if (now - lastActivityResetTime < 2000) return;
+  lastActivityResetTime = now;
+
+  const newExpiresAt = now + sessionTimeoutDurationMs;
+  try {
+    localStorage.setItem("erp_session_expires_at", newExpiresAt.toString());
+  } catch (e) {}
+
+  if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+  sessionTimeoutTimer = setTimeout(checkSessionTimeout, sessionTimeoutDurationMs);
 }
 
 function initSessionTimeout(authData) {
@@ -1056,48 +1086,84 @@ function initSessionTimeout(authData) {
   }
 
   const durationSeconds = (authData && authData.session_timeout_seconds) ? authData.session_timeout_seconds : 600;
-  const durationMs = durationSeconds * 1000;
+  sessionTimeoutDurationMs = durationSeconds * 1000;
 
+  // Set fresh expiry from current time
+  const now = Date.now();
   let expiresAt = parseInt(localStorage.getItem("erp_session_expires_at") || "0", 10);
-  if (!expiresAt || isNaN(expiresAt)) {
-    expiresAt = Date.now() + durationMs;
+  if (!expiresAt || isNaN(expiresAt) || expiresAt <= now) {
+    expiresAt = now + sessionTimeoutDurationMs;
     localStorage.setItem("erp_session_expires_at", expiresAt.toString());
   }
 
-  const remaining = expiresAt - Date.now();
+  const remaining = expiresAt - now;
   if (remaining <= 0) {
-    triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+    triggerAutoLogout("Your session has expired due to 10 minutes of inactivity. Please sign in again.");
     return;
   }
 
-  // 1. Precise countdown timer: fires automatically without needing any refresh or click
+  // 1. Inactivity countdown timer
   if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
-  sessionTimeoutTimer = setTimeout(() => {
-    triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
-  }, remaining);
+  sessionTimeoutTimer = setTimeout(checkSessionTimeout, remaining);
 
-  // 2. Watchdog interval (every 3 seconds): ensures timeout fires even if browser throttled timers or laptop was idle / asleep
+  // 2. Watchdog interval (every 3 seconds): catches wake-up from sleep or throttled timers
   if (sessionWatchdogTimer) clearInterval(sessionWatchdogTimer);
   sessionWatchdogTimer = setInterval(checkSessionTimeout, 3000);
 
-  // 3. Tab focus & visibility handlers: instant logout upon waking up or switching tabs
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") checkSessionTimeout();
-  });
-  window.addEventListener("focus", checkSessionTimeout);
+  // 3. Attach activity listeners to track user typing, mouse movement, clicks, scrolling, etc.
+  if (!sessionActivityListenersAttached) {
+    const activityEvents = [
+      "keydown", "keyup", "input",
+      "mousedown", "pointerdown", "touchstart",
+      "click", "scroll", "wheel", "mousemove"
+    ];
+
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, resetSessionActivity, { capture: true, passive: true });
+    });
+
+    // Multi-tab sync: if user is active in another tab, reset timer in this tab too
+    window.addEventListener("storage", (e) => {
+      if (e.key === "erp_session_expires_at") {
+        const otherExpiresAt = parseInt(e.newValue || "0", 10);
+        if (otherExpiresAt > Date.now()) {
+          const rem = otherExpiresAt - Date.now();
+          if (sessionTimeoutTimer) clearTimeout(sessionTimeoutTimer);
+          sessionTimeoutTimer = setTimeout(checkSessionTimeout, rem);
+        }
+      } else if (e.key === "erp_token" && !e.newValue) {
+        triggerAutoLogout("You have been signed out.");
+      }
+    });
+
+    // Tab visibility and focus: check if timed out while away, or extend if active
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        checkSessionTimeout();
+      }
+    });
+    window.addEventListener("focus", checkSessionTimeout);
+
+    sessionActivityListenersAttached = true;
+  }
 }
 
-// Global API interceptor to catch token expiration (401) on any API call
+// Global API interceptor to catch token expiration (401) on any API call & track activity
 (function setupApiAuthInterceptor() {
   const nativeFetch = window.fetch;
   window.fetch = async function (...args) {
+    // Reset inactivity timer when an API call is made (excluding background heartbeat)
+    const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+    if (url.includes('/api/') && !url.includes('/auth?action=heartbeat')) {
+      resetSessionActivity();
+    }
+
     const res = await nativeFetch.apply(this, args);
     if (res && res.status === 401) {
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
       if (url.includes('/api/') && !url.includes('/auth/login') && !url.includes('/auth?action=logout')) {
         const user = window.currentUser || getUser();
         if (!user || user.role !== 'superadmin') {
-          triggerAutoLogout("Your session has expired after 10 minutes. Please sign in again.");
+          triggerAutoLogout("Your session has expired due to 10 minutes of inactivity. Please sign in again.");
         }
       }
     }

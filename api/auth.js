@@ -118,8 +118,8 @@ function getISTTime(d = new Date()) {
       };
 
       const isSuperadmin = (user.role === "superadmin");
-      // Session timeout: 10 minutes for all users except superadmin
-      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: isSuperadmin ? "24h" : "10m" });
+      // Token is valid for 24 hours so active users typing and working are not logged out. Inactivity timeout (10 minutes) is enforced when user is idle.
+      const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
 
       // Get companies list (all for superadmin, assigned company + branches for others)
       let companies = [];

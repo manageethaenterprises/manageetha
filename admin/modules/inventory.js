@@ -4617,6 +4617,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
             }
             .mp-entry-table input[type=number] {
               -moz-appearance: textfield !important;
+              appearance: textfield !important;
             }
             .mp-entry-table .form-input {
               box-sizing: border-box !important;

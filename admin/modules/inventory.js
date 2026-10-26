@@ -4522,7 +4522,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
   } catch (e) {}
 
   overlay.innerHTML = `
-    <div class="modal-box" style="max-width:940px;width:98%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div class="modal-box" style="max-width:1380px;width:96vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
       <div class="modal-header">
         <h3 style="font-size:17px;font-weight:700;color:var(--text1);margin:0;">📝 Multi-Product Purchase Entry & Stock Receipt</h3>
         <button class="modal-close closeMpModal">&times;</button>
@@ -4530,7 +4530,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
 
       <form id="multiPurchaseForm" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
         <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1;">
-          <div class="form-grid" style="grid-template-columns:1.5fr 1fr 1fr 1fr;gap:10px 14px;margin-bottom:10px;background:var(--bg-primary);padding:14px;border-radius:10px;border:1px solid var(--border);">
+          <div class="form-grid" style="grid-template-columns:1.5fr 1.1fr 1fr 1.2fr;gap:12px 16px;margin-bottom:12px;background:var(--bg-primary);padding:14px 18px;border-radius:10px;border:1px solid var(--border);">
             <div class="form-group" style="margin-bottom:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <label class="form-label" style="font-size:12px;font-weight:600;margin:0;">Select Primary Supplier *</label>
@@ -4560,7 +4560,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
           </div>
 
           <!-- PAYMENT & INTEREST SETTINGS -->
-          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:10px 14px;margin-bottom:14px;background:var(--bg-card, #f8fafc);padding:12px 14px;border-radius:8px;border:1px solid var(--border);">
+          <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:12px 16px;margin-bottom:14px;background:var(--bg-card, #f8fafc);padding:12px 18px;border-radius:8px;border:1px solid var(--border);">
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11.5px;font-weight:600;margin-bottom:3px;">Paid Amount (₹)</label>
               <input type="number" step="0.01" id="mpPaidAmt" class="form-input" placeholder="Leave blank if fully paid" style="padding:5px 8px;font-size:12.5px;">
@@ -4588,19 +4588,20 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
             <button type="button" class="btn btn-xs btn-outline" id="mpAddQuickProdHeaderBtn" style="font-size:12px;">✨ + Create New Product in Catalog</button>
           </div>
 
-          <div class="table-container" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;">
-            <table class="data-table" style="font-size:12.5px;">
+          <div class="table-container" style="max-height:380px;overflow-y:auto;overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <table class="data-table" style="font-size:12.5px;width:100%;min-width:1160px;">
               <thead>
                 <tr style="background:var(--bg-secondary);">
-                  <th style="width:40px;">#</th>
-                  <th style="min-width:220px;">Product Name & Model</th>
-                  <th style="width:120px;">Serial No.</th>
-                  <th style="width:80px;">Qty</th>
-                  <th style="width:110px;">Pur Rate (Excl ₹)</th>
-                  <th style="width:80px;">GST %</th>
-                  <th style="width:100px;">Transport (₹)</th>
-                  <th style="width:120px;">Line Total (₹)</th>
-                  <th style="width:40px;text-align:center;">Action</th>
+                  <th style="width:38px;text-align:center;">#</th>
+                  <th style="min-width:260px;">Product Name & Model</th>
+                  <th style="width:125px;">Serial No.</th>
+                  <th style="width:75px;text-align:center;">Qty</th>
+                  <th style="width:120px;">Pur Rate (Excl ₹)</th>
+                  <th style="width:75px;text-align:center;">GST %</th>
+                  <th style="width:115px;" title="Packaging Charges (₹)">Packaging (₹)</th>
+                  <th style="width:115px;" title="Transport Expenses (₹)">Transport (₹)</th>
+                  <th style="width:130px;text-align:right;">Line Total (₹)</th>
+                  <th style="width:48px;text-align:center;">Action</th>
                 </tr>
               </thead>
               <tbody id="mpItemsTableBody">
@@ -4658,18 +4659,20 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       loadedProducts.map(p => {
         const modelStr = p.model ? ` [${p.model}]` : '';
         const brandStr = p.brand ? ` (${p.brand})` : '';
-        return `<option value="${p.id}" data-rate="${p.purchase_rate || 0}" data-gst="${p.gst_rate || 18}" data-model="${esc(p.model || '')}" data-serial="${esc(p.serial_no || '')}" ${p.id == selectedProdId ? 'selected' : ''}>${esc(p.name)}${esc(modelStr)}${esc(brandStr)}</option>`;
+        return `<option value="${p.id}" data-rate="${p.purchase_rate || 0}" data-gst="${p.gst_rate || 18}" data-pkg="${p.packaging_charges || 0}" data-transport="${p.transport_expenses || 0}" data-model="${esc(p.model || '')}" data-serial="${esc(p.serial_no || '')}" ${p.id == selectedProdId ? 'selected' : ''}>${esc(p.name)}${esc(modelStr)}${esc(brandStr)}</option>`;
       }).join("");
   }
 
-  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '') {
+  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '', initialPkg = 0, initialTransport = 0) {
     itemRowIndex++;
     const tr = document.createElement("tr");
     tr.id = `mpRow_${itemRowIndex}`;
     const initProd = initialProdId ? loadedProducts.find(p => p.id == initialProdId) : null;
     const effectiveModel = initialModel || (initProd && initProd.model) || '';
+    const effectivePkg = initialPkg || (initProd && initProd.packaging_charges) || 0;
+    const effectiveTransport = initialTransport || (initProd && initProd.transport_expenses) || 0;
     tr.innerHTML = `
-      <td>${tbody.children.length + 1}</td>
+      <td style="text-align:center;font-weight:600;color:var(--text3);">${tbody.children.length + 1}</td>
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <div style="display:flex;gap:6px;align-items:center;">
@@ -4682,12 +4685,13 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
         </div>
       </td>
       <td><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 6px;font-size:12px;"></td>
-      <td><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;"></td>
+      <td><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;text-align:center;"></td>
       <td><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 6px;font-size:12px;"></td>
-      <td><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;"></td>
-      <td><input type="number" step="0.01" class="form-input mpTransport" value="0" style="padding:4px 6px;font-size:12px;"></td>
-      <td class="mpLineTotal" style="font-weight:700;color:var(--text1);vertical-align:middle;">₹0.00</td>
-      <td style="text-align:center;"><button type="button" class="btn btn-xs btn-danger mpDelRowBtn" style="padding:2px 6px;">&times;</button></td>
+      <td><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;text-align:center;"></td>
+      <td><input type="number" step="0.01" class="form-input mpPackaging" value="${effectivePkg}" placeholder="0" style="padding:4px 6px;font-size:12px;" title="Packaging Charges (₹)"></td>
+      <td><input type="number" step="0.01" class="form-input mpTransport" value="${effectiveTransport}" placeholder="0" style="padding:4px 6px;font-size:12px;" title="Transport Expenses (₹)"></td>
+      <td class="mpLineTotal" style="font-weight:700;color:var(--text1);vertical-align:middle;text-align:right;">₹0.00</td>
+      <td style="text-align:center;"><button type="button" class="btn btn-xs btn-danger mpDelRowBtn" title="Remove row" style="padding:2px 6px;">&times;</button></td>
     `;
 
     tbody.appendChild(tr);
@@ -4696,6 +4700,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     const qtyInp = tr.querySelector(".mpQty");
     const rateInp = tr.querySelector(".mpRate");
     const gstInp = tr.querySelector(".mpGst");
+    const packagingInp = tr.querySelector(".mpPackaging");
     const transportInp = tr.querySelector(".mpTransport");
     const totalTd = tr.querySelector(".mpLineTotal");
 
@@ -4703,8 +4708,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       const q = parseFloat(qtyInp.value || 0);
       const r = parseFloat(rateInp.value || 0);
       const g = parseFloat(gstInp.value || 0);
+      const pkg = parseFloat(packagingInp.value || 0);
       const t = parseFloat(transportInp.value || 0);
-      const tot = (q * r * (1 + g / 100)) + t;
+      const tot = (q * r * (1 + g / 100)) + pkg + t;
       totalTd.textContent = `₹${tot.toFixed(2)}`;
       calcGrandTotal();
     }
@@ -4714,6 +4720,12 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       if (opt && opt.value) {
         if (!rateInp.value || rateInp.value == 0) rateInp.value = opt.dataset.rate || 0;
         gstInp.value = opt.dataset.gst || 18;
+        if (opt.dataset.pkg && (!packagingInp.value || packagingInp.value == 0)) {
+          packagingInp.value = opt.dataset.pkg;
+        }
+        if (opt.dataset.transport && (!transportInp.value || transportInp.value == 0)) {
+          transportInp.value = opt.dataset.transport;
+        }
         const modelInp = tr.querySelector(".mpModelInp");
         if (modelInp) {
           const foundP = loadedProducts.find(x => x.id == opt.value);
@@ -4723,7 +4735,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       calcRowTotal();
     });
 
-    [qtyInp, rateInp, gstInp, transportInp].forEach(inp => inp.addEventListener("input", calcRowTotal));
+    [qtyInp, rateInp, gstInp, packagingInp, transportInp].forEach(inp => inp.addEventListener("input", calcRowTotal));
 
     tr.querySelector(".mpInlineAddProdBtn").addEventListener("click", () => {
       openQuickAddProductModal((newP) => {
@@ -4735,6 +4747,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
         prodSel.value = newP.id;
         rateInp.value = newP.purchase_rate || 0;
         gstInp.value = newP.gst_rate || 18;
+        packagingInp.value = newP.packaging_charges || 0;
+        transportInp.value = newP.transport_expenses || 0;
         const modelInp = tr.querySelector(".mpModelInp");
         if (modelInp) modelInp.value = newP.model || "";
         calcRowTotal();
@@ -4744,6 +4758,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     tr.querySelector(".mpDelRowBtn").addEventListener("click", () => {
       if (tbody.children.length <= 1) return alert("At least 1 item row required.");
       tr.remove();
+      Array.from(tbody.children).forEach((row, idx) => {
+        if (row.children[0]) row.children[0].textContent = idx + 1;
+      });
       calcGrandTotal();
     });
 
@@ -4756,8 +4773,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       const q = parseFloat(tr.querySelector(".mpQty")?.value || 0);
       const r = parseFloat(tr.querySelector(".mpRate")?.value || 0);
       const g = parseFloat(tr.querySelector(".mpGst")?.value || 0);
+      const pkg = parseFloat(tr.querySelector(".mpPackaging")?.value || 0);
       const t = parseFloat(tr.querySelector(".mpTransport")?.value || 0);
-      grand += (q * r * (1 + g / 100)) + t;
+      grand += (q * r * (1 + g / 100)) + pkg + t;
     });
     overlay.querySelector("#mpGrandTotalText").textContent = `₹${grand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
   }
@@ -4773,7 +4791,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
         const val = sel.value;
         sel.innerHTML = renderProductOptionsHtml(val);
       });
-      addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18);
+      addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18, '', newP.model || '', newP.packaging_charges || 0, newP.transport_expenses || 0);
     });
   });
 
@@ -4797,6 +4815,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
           quantity: tr.querySelector(".mpQty").value,
           rate: tr.querySelector(".mpRate").value,
           gst_rate: tr.querySelector(".mpGst").value,
+          packaging_charges: tr.querySelector(".mpPackaging") ? tr.querySelector(".mpPackaging").value : 0,
           transport_expenses: tr.querySelector(".mpTransport").value
         });
       }

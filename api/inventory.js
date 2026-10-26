@@ -83,11 +83,12 @@ async function getNextSkuNumber(sql, compId) {
   }
 }
 
-function calculateRates(purchase_rate, purchase_rate_incl_tax, transport_expenses, gst_rate, selling_percentage, user_selling_rate, user_mrp) {
+function calculateRates(purchase_rate, purchase_rate_incl_tax, transport_expenses, gst_rate, selling_percentage, user_selling_rate, user_mrp, packaging_charges) {
   let prExcl = parseFloat(purchase_rate || 0);
   let prIncl = parseFloat(purchase_rate_incl_tax || 0);
   let gst = parseFloat(gst_rate || 0);
   let transport = parseFloat(transport_expenses || 0);
+  let packaging = parseFloat(packaging_charges || 0);
   let sellPct = parseFloat(selling_percentage || 0);
 
   if (prExcl > 0) {
@@ -100,7 +101,7 @@ function calculateRates(purchase_rate, purchase_rate_incl_tax, transport_expense
   let finalMrp = (user_mrp !== undefined && user_mrp !== null && user_mrp !== "" && parseFloat(user_mrp) > 0) ? parseFloat(user_mrp) : null;
 
   if (finalSellingRate === null || isNaN(finalSellingRate) || finalSellingRate <= 0) {
-    const baseCostExcl = prExcl + transport;
+    const baseCostExcl = prExcl + transport + packaging;
     if (sellPct > 0) {
       finalSellingRate = Math.round((baseCostExcl * (1 + sellPct / 100)) * 100) / 100;
     } else {
@@ -118,6 +119,7 @@ function calculateRates(purchase_rate, purchase_rate_incl_tax, transport_expense
     purchase_rate: Math.round(prExcl * 100) / 100,
     purchase_rate_incl_tax: Math.round(prIncl * 100) / 100,
     transport_expenses: Math.round(transport * 100) / 100,
+    packaging_charges: Math.round(packaging * 100) / 100,
     selling_percentage: Math.round(sellPct * 100) / 100,
     selling_rate: Math.round((finalSellingRate || 0) * 100) / 100,
     mrp: Math.round((finalMrp || 0) * 100) / 100
@@ -325,9 +327,12 @@ module.exports = async function handler(req, res) {
     try {
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS purchase_rate_incl_tax NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS transport_expenses NUMERIC(15,2) DEFAULT 0;`;
+      await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS packaging_charges NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS selling_percentage NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS serial_no VARCHAR(255);`;
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS serial_no VARCHAR(255);`;
+      await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS packaging_charges NUMERIC(15,2) DEFAULT 0;`;
+      await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS transport_expenses NUMERIC(15,2) DEFAULT 0;`;
       try { await sql`ALTER TABLE products ALTER COLUMN selling_percentage TYPE NUMERIC(15,2);`; } catch(e){}
       try { await sql`ALTER TABLE products ALTER COLUMN gst_rate TYPE NUMERIC(15,2);`; } catch(e){}
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS company_id INT REFERENCES companies(id) ON DELETE SET NULL;`;
@@ -1668,7 +1673,8 @@ module.exports = async function handler(req, res) {
         const rate = parseFloat(i.rate || i.purchase_rate || 0);
         const gstRate = parseFloat(i.gst_rate || 18);
         const transport = parseFloat(i.transport_expenses || 0);
-        const lineTotal = (qty * rate * (1 + gstRate / 100)) + transport;
+        const packaging = parseFloat(i.packaging_charges || i.packaging || 0);
+        const lineTotal = (qty * rate * (1 + gstRate / 100)) + transport + packaging;
         grandTotal += lineTotal;
       });
 
@@ -1700,11 +1706,12 @@ module.exports = async function handler(req, res) {
         const rate = parseFloat(item.rate || item.purchase_rate || 0);
         const gstRate = parseFloat(item.gst_rate || 18);
         const transport = parseFloat(item.transport_expenses || 0);
-        const lineTotal = (qty * rate * (1 + gstRate / 100)) + transport;
+        const packaging = parseFloat(item.packaging_charges || item.packaging || 0);
+        const lineTotal = (qty * rate * (1 + gstRate / 100)) + transport + packaging;
         const itemSupId = safeInt(item.supplier_id) || supId;
 
         if (prodId) {
-          const curP = (await sql`SELECT transport_expenses, gst_rate, selling_percentage FROM products WHERE id = ${prodId}`)[0] || {};
+          const curP = (await sql`SELECT transport_expenses, packaging_charges, gst_rate, selling_percentage FROM products WHERE id = ${prodId}`)[0] || {};
           const rates = calculateRates(
             rate,
             null,
@@ -1712,7 +1719,8 @@ module.exports = async function handler(req, res) {
             gstRate || curP.gst_rate || 18,
             curP.selling_percentage || 0,
             null,
-            null
+            null,
+            curP.packaging_charges || packaging || 0
           );
 
           await sql`
@@ -1724,13 +1732,14 @@ module.exports = async function handler(req, res) {
               mrp = ${rates.mrp},
               serial_no = COALESCE(${item.serial_no || item.product_serial_no || null}, serial_no),
               model = COALESCE(${item.model ? item.model.trim() : null}, model),
-              supplier_id = COALESCE(${itemSupId}, supplier_id)
+              supplier_id = COALESCE(${itemSupId}, supplier_id),
+              packaging_charges = COALESCE(${packaging > 0 ? packaging : null}, packaging_charges)
             WHERE id = ${prodId}
           `;
 
           await sql`
-            INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no)
-            VALUES (${purId}, ${prodId}, ${qty}, ${rate}, ${lineTotal}, ${item.serial_no || item.product_serial_no || null})
+            INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no, packaging_charges, transport_expenses)
+            VALUES (${purId}, ${prodId}, ${qty}, ${rate}, ${lineTotal}, ${item.serial_no || item.product_serial_no || null}, ${packaging}, ${transport})
           `;
 
           await sql`

@@ -1,5 +1,5 @@
 const { getSQL } = require("../shared/db");
-const { getNextFamilyPoNumber } = require("../shared/companyFamily");
+const { getNextFamilyPoNumber, getCompanyFamilyInfo } = require("../shared/companyFamily");
 const jwt = require("jsonwebtoken");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
@@ -351,6 +351,20 @@ module.exports = async function handler(req, res) {
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS opening_balance_date DATE;`;
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS opening_balance_notes TEXT;`;
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS opening_balance_doc TEXT;`;
+      try {
+        await sql`
+          UPDATE suppliers s
+          SET company_id = p.company_id
+          FROM purchases p
+          WHERE s.company_id IS NULL AND p.supplier_id = s.id AND p.company_id IS NOT NULL;
+        `;
+        await sql`
+          UPDATE suppliers s
+          SET company_id = pr.company_id
+          FROM products pr
+          WHERE s.company_id IS NULL AND pr.supplier_id = s.id AND pr.company_id IS NOT NULL;
+        `;
+      } catch (e) {}
       await sql`
         CREATE TABLE IF NOT EXISTS inter_branch_transfers (
           id SERIAL PRIMARY KEY,
@@ -388,15 +402,58 @@ module.exports = async function handler(req, res) {
     const isAll = isSuperAdmin && (!compQuery || compQuery === "all" || isNaN(parseInt(compQuery, 10)));
     const targetCompId = !isAll ? (parseInt(compQuery, 10) || parseInt(user.company_id, 10) || 1) : null;
 
-    // ═══════════════ SUPPLIERS MASTER (UNIVERSAL) ═══════════════
+    // ═══════════════ SUPPLIERS MASTER (SCOPED BY USER COMPANY) ═══════════════
     if (action === "suppliers-list") {
-      const rows = await sql`
-        SELECT s.*, c.name as company_name
-        FROM suppliers s
-        LEFT JOIN companies c ON s.company_id = c.id
-        WHERE s.is_active = true
-        ORDER BY s.legal_name ASC
-      `;
+      const userRole = (user && user.role ? user.role : "").toLowerCase();
+      const isSuper = (userRole === "superadmin");
+      const userCompId = safeInt(user?.company_id) || 1;
+      const reqCompId = safeInt(req.query.company_id || req.body?.company_id);
+
+      let targetCompIds = [];
+      let isAll = false;
+
+      if (isSuper && (!reqCompId || req.query.company_id === "all")) {
+        isAll = true;
+      } else {
+        const compToInspect = (isSuper && reqCompId) ? reqCompId : userCompId;
+        try {
+          const famInfo = await getCompanyFamilyInfo(sql, compToInspect);
+          targetCompIds = (famInfo && famInfo.familyCompIds && famInfo.familyCompIds.length > 0)
+            ? famInfo.familyCompIds
+            : [compToInspect];
+        } catch (e) {
+          targetCompIds = [compToInspect];
+        }
+      }
+
+      let rows;
+      if (isAll) {
+        rows = await sql`
+          SELECT s.*, c.name as company_name
+          FROM suppliers s
+          LEFT JOIN companies c ON s.company_id = c.id
+          WHERE s.is_active = true
+          ORDER BY s.legal_name ASC
+        `;
+      } else {
+        rows = await sql`
+          SELECT s.*, c.name as company_name
+          FROM suppliers s
+          LEFT JOIN companies c ON s.company_id = c.id
+          WHERE s.is_active = true
+            AND (
+              s.company_id = ANY(${targetCompIds})
+              OR (
+                s.company_id IS NULL
+                AND (
+                  EXISTS (SELECT 1 FROM products p WHERE p.supplier_id = s.id AND p.company_id = ANY(${targetCompIds}))
+                  OR EXISTS (SELECT 1 FROM purchases pu WHERE pu.supplier_id = s.id AND pu.company_id = ANY(${targetCompIds}))
+                )
+              )
+            )
+          ORDER BY s.legal_name ASC
+        `;
+      }
       return res.status(200).json({ success: true, suppliers: rows });
     }
 
@@ -407,7 +464,7 @@ module.exports = async function handler(req, res) {
         opening_balance, opening_balance_type, opening_balance_date, opening_balance_notes, opening_balance_doc
       } = req.body;
       if (!legal_name || !legal_name.trim()) return res.status(400).json({ error: "Supplier Legal Name required" });
-      const compId = safeInt(company_id);
+      const compId = safeInt(company_id) || safeInt(user.company_id) || 1;
       const contactsStr = typeof contacts_json === 'object' ? JSON.stringify(contacts_json) : (contacts_json || null);
 
       const newSup = await sql`
@@ -439,7 +496,7 @@ module.exports = async function handler(req, res) {
       const supId = safeInt(id);
       if (!supId || !legal_name || !legal_name.trim()) return res.status(400).json({ error: "Supplier ID and Legal Name required" });
 
-      const compId = safeInt(company_id);
+      const compId = safeInt(company_id) || (isSuperAdmin ? null : (safeInt(user.company_id) || 1));
       const contactsStr = typeof contacts_json === 'object' ? JSON.stringify(contacts_json) : (contacts_json || null);
 
       const updated = await sql`

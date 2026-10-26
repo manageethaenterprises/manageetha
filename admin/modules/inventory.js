@@ -172,13 +172,17 @@ async function getCompaniesList() {
 
 // ── Global Helper: Add/Edit Supplier Modal ──
 // ── Global Helper: Add/Edit Supplier Modal ──
-async function openSupplierModal(supplierObj = null, onSuccessCallback = null) {
+async function openSupplierModal(supplierObj = null, onSuccessCallback = null, defaultCompId = null) {
   const isEdit = !!supplierObj;
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px);";
 
-  const compOptionsHtml = await getCompaniesOptionsHtml(supplierObj?.company_id);
+  const userObj = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+  const isSuper = (userObj?.role || '').toLowerCase() === 'superadmin';
+  const effectiveCompId = supplierObj?.company_id || defaultCompId || (isSuper ? (selectedCompanyId !== 'all' ? selectedCompanyId : null) : (userObj?.company_id || 1));
+
+  const compOptionsHtml = await getCompaniesOptionsHtml(effectiveCompId);
   const homeState = (typeof currentUser !== 'undefined' && currentUser?.company_state) ? currentUser.company_state : "Andhra Pradesh";
   const supState = supplierObj?.supply_state || homeState;
 
@@ -208,7 +212,7 @@ async function openSupplierModal(supplierObj = null, onSuccessCallback = null) {
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding:16px 22px;background:var(--bg-secondary,#f1f5f9);">
         <div>
           <h3 style="font-size:16.5px;font-weight:700;color:var(--text1);margin:0;display:flex;align-items:center;gap:8px;">
-            ${isEdit ? '✏️ Edit Universal Supplier' : '🚚 Add New Universal Supplier'}
+            ${isEdit ? '✏️ Edit Supplier' : '🚚 Add New Supplier'}
           </h3>
           <div style="font-size:12px;color:var(--text3);margin-top:2px;">Register supplier profile, banking credentials, credit terms & opening balance ledger entry.</div>
         </div>
@@ -227,7 +231,7 @@ async function openSupplierModal(supplierObj = null, onSuccessCallback = null) {
               <div class="form-group" style="grid-column: span 2;">
                 <label class="form-label" style="font-weight:600;font-size:12px;">Target Company Branch</label>
                 <select id="supCompanyId" class="form-select">
-                  <option value="">-- All Companies (Universal Supplier) --</option>
+                  ${isSuper ? '<option value="">-- All Companies (Universal Supplier) --</option>' : ''}
                   ${compOptionsHtml}
                 </select>
               </div>
@@ -479,7 +483,7 @@ async function openSupplierModal(supplierObj = null, onSuccessCallback = null) {
 
     const payload = {
       id: supplierObj?.id,
-      company_id: overlay.querySelector("#supCompanyId").value || null,
+      company_id: overlay.querySelector("#supCompanyId").value || (isSuper ? null : (userObj?.company_id || 1)),
       legal_name: overlay.querySelector("#supLegalName").value.trim(),
       trade_name: overlay.querySelector("#supTradeName").value.trim() || null,
       gstin: overlay.querySelector("#supGstin").value.trim() || null,
@@ -834,7 +838,7 @@ async function loadProductsSubTab() {
 
               <div class="form-group" style="grid-column: span 2;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <label class="form-label" style="margin:0;">Assigned Universal Supplier / dealer</label>
+                  <label class="form-label" style="margin:0;">Assigned Supplier / Dealer</label>
                   <button type="button" class="btn btn-sm btn-outline" id="quickAddSupInProdBtn">+ Add New Supplier</button>
                 </div>
                 <select id="pSupplierId" class="form-select">
@@ -975,7 +979,9 @@ async function loadProductsSubTab() {
   // Populate supplier select in modal
   async function populateSuppliersDropdown(selectedSupId = null) {
     try {
-      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list`, { headers: authHeaders() });
+      const curCompId = getActiveCompId();
+      const compParam = (curCompId && curCompId !== 'all') ? `&company_id=${curCompId}` : (curCompId === 'all' ? `&company_id=all` : '');
+      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
       const data = await res.json();
       if (data.success && data.suppliers) {
         const sel = document.getElementById("pSupplierId");
@@ -1138,7 +1144,7 @@ async function loadProductsSubTab() {
         const sel = document.getElementById("pSupplierId");
         if (sel && newSup) sel.value = newSup.id;
       });
-    });
+    }, compId !== 'all' ? compId : null);
   });
 
   on("prodModalClose", "click", () => { document.getElementById("prodModal").style.display = "none"; });
@@ -1534,24 +1540,26 @@ window.downloadProductImportTemplate = function() {
   if (typeof showToast === "function") showToast("Import template downloaded successfully!", "success");
 };
 
-// ── SubTab 2: Universal Suppliers Master ──
+// ── SubTab 2: Suppliers Master ──
 async function loadSuppliersSubTab() {
   const subContent = document.getElementById("invSubContent");
   const compOptionsHtml = await getCompaniesOptionsHtml();
+  const userObj = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+  const isSuper = (userObj?.role || '').toLowerCase() === 'superadmin';
 
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
       <div>
-        <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">🚚 Universal dealers & Suppliers Master</h3>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px;">Manage global suppliers separated by company branches with contact person & multiple email directories.</div>
+        <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">🚚 Dealers & Suppliers Master</h3>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px;">Manage suppliers separated by company branches with contact person & multiple email directories.</div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <select id="supCompanyFilter" class="form-select" style="max-width:200px;font-size:12.5px;padding:6px 10px;">
-          <option value="all">-- All Companies --</option>
+          ${isSuper ? '<option value="all">-- All Companies --</option>' : ''}
           ${compOptionsHtml}
         </select>
         <input type="text" id="supSearchInp" class="form-input" placeholder="🔍 Search legal name, GSTIN, location, contact, email..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:280px;">
-        <button class="btn btn-primary" id="addSupMainBtn">+ Register New Universal Supplier</button>
+        <button class="btn btn-primary" id="addSupMainBtn">+ Register New Supplier</button>
       </div>
     </div>
 
@@ -1571,7 +1579,7 @@ async function loadSuppliersSubTab() {
           </tr>
         </thead>
         <tbody id="supTableBody">
-          <tr><td colspan="9" style="text-align:center;padding:20px;"><div class="spinner"></div> Fetching universal suppliers...</td></tr>
+          <tr><td colspan="9" style="text-align:center;padding:20px;"><div class="spinner"></div> Fetching suppliers...</td></tr>
         </tbody>
       </table>
     </div>
@@ -1587,7 +1595,9 @@ async function loadSuppliersSubTab() {
 
   async function fetchSuppliers() {
     try {
-      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list`, { headers: authHeaders() });
+      const curCompId = document.getElementById("supCompanyFilter")?.value || getActiveCompId();
+      const compParam = (curCompId && curCompId !== 'all') ? `&company_id=${curCompId}` : (curCompId === 'all' ? `&company_id=all` : '');
+      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
       const data = await res.json();
       if (!data.success) return;
 
@@ -1756,7 +1766,7 @@ async function loadSuppliersSubTab() {
   });
 
   on("supSearchInp", "input", renderSuppliersTable);
-  on("supCompanyFilter", "change", renderSuppliersTable);
+  on("supCompanyFilter", "change", () => fetchSuppliers());
   on("addSupMainBtn", "click", () => {
     openSupplierModal(null, () => fetchSuppliers());
   });
@@ -2917,7 +2927,8 @@ async function loadReorderSubTab() {
       }
 
       const initialHomeState = getCompanyHomeState();
-      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list`, { headers: authHeaders() });
+      const compParam = (compIdToUse && compIdToUse !== 'all') ? `&company_id=${compIdToUse}` : '';
+      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
       const sData = await sRes.json();
       const suppliersList = sData.suppliers || [];
       const compOptionsHtml = await getCompaniesOptionsHtml(compId !== 'all' ? compId : null);
@@ -3345,7 +3356,9 @@ async function loadInventoryPurchaseOrderSubTab() {
 // ── Shared Purchase Order Modals & Utilities ──
 async function openEditPOModal(po, onSuccess) {
   try {
-    const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list`, { headers: authHeaders() });
+    const poCompId = po.company_id || getActiveCompId();
+    const compParam = (poCompId && poCompId !== 'all') ? `&company_id=${poCompId}` : '';
+    const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
     const sData = await sRes.json();
     const suppliersList = sData.suppliers || [];
     const compOptionsHtml = await getCompaniesOptionsHtml(po.company_id);
@@ -3694,7 +3707,7 @@ function printPurchaseOrder(po, items) {
       <div class="grid-2">
         <div class="info-card">
           <h4>dealer / SUPPLIER DETAILS</h4>
-          <div style="font-size:14px;font-weight:bold;color:#0f172a;">${esc(po.supplier_name || 'Universal Supplier')}</div>
+          <div style="font-size:14px;font-weight:bold;color:#0f172a;">${esc(po.supplier_name || 'Supplier')}</div>
           ${po.supplier_trade_name ? `<div>Trade Name: ${esc(po.supplier_trade_name)}</div>` : ''}
           <div>GSTIN: <strong>${esc(po.supplier_gstin || 'N/A')}</strong></div>
           <div>Phone: ${esc(po.supplier_phone || '—')}</div>
@@ -4014,7 +4027,8 @@ async function loadStockReceiptSubTab() {
         updateSrGstCalculation();
       }
 
-      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list`, { headers: authHeaders() });
+      const compParam = (compId && compId !== 'all') ? `&company_id=${compId}` : (compId === 'all' ? `&company_id=all` : '');
+      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
       const sData = await sRes.json();
       const srSupplierId = document.getElementById("srSupplierId");
       if (srSupplierId && sData.success && sData.suppliers) {
@@ -4178,7 +4192,9 @@ async function loadStockReceiptSubTab() {
 
   async function openEditReceiptModal(r, onSuccess) {
     try {
-      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list`, { headers: authHeaders() });
+      const recCompId = r.company_id || getActiveCompId();
+      const compParam = (recCompId && recCompId !== 'all') ? `&company_id=${recCompId}` : '';
+      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
       const sData = await sRes.json();
       const suppliersList = sData.suppliers || [];
 
@@ -4482,15 +4498,16 @@ function openQuickAddProductModal(onProductCreated) {
 
 async function getSuppliersList(cId) {
   try {
-    const compId = cId || (typeof getActiveCompId === 'function' ? getActiveCompId() : 1) || 1;
-    const targetCompId = (compId && compId !== 'all') ? compId : 1;
+    const activeCId = (typeof getActiveCompId === 'function') ? getActiveCompId() : 1;
+    const compId = (cId !== undefined && cId !== null) ? cId : activeCId;
+    const compParam = (compId && compId !== 'all') ? `&company_id=${compId}` : (compId === 'all' ? `&company_id=all` : '');
     let list = [];
-    const res = await fetch(`${API_BASE}/inventory?action=suppliers-list&company_id=${targetCompId}`, { headers: authHeaders() });
+    const res = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
     const d = await res.json();
     if (d.success && Array.isArray(d.suppliers) && d.suppliers.length > 0) {
       list = d.suppliers;
     } else {
-      const vRes = await fetch(`${API_BASE}/employees?action=dealers-list&company_id=${targetCompId}`, { headers: authHeaders() });
+      const vRes = await fetch(`${API_BASE}/employees?action=dealers-list${compParam}`, { headers: authHeaders() });
       const vData = await vRes.json();
       if (vData.success && Array.isArray(vData.dealers)) {
         list = vData.dealers;
@@ -4637,7 +4654,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
           suppliers.map(s => `<option value="${s.id}">${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("");
         sel.value = newSup.id;
       }
-    });
+    }, targetCompId);
   });
 
   const fileInp = overlay.querySelector("#mpFileInp");

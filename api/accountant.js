@@ -447,6 +447,601 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, message: "Bank statement deleted successfully!" });
     }
 
+    // ═══════════════ BANK STATEMENT PARSED TRANSACTIONS & RECONCILIATION ═══════════════
+    else if (action === "reconcile-system-transactions") {
+      const bankAccId = parseInt(req.query.bank_account_id || req.body?.bank_account_id);
+      if (!bankAccId) return res.status(400).json({ error: "Bank Account ID required" });
+
+      const accRows = await sql`SELECT * FROM bank_accounts WHERE id = ${bankAccId}`;
+      if (accRows.length === 0) return res.status(404).json({ error: "Bank account not found" });
+      const bankAcc = accRows[0];
+      const compId = bankAcc.company_id;
+
+      // Inflows: Sales, Sale Payments, General Payments, Services, Capital Entries
+      let inflows = [];
+      try {
+        const salesRows = await sql`
+          SELECT 
+            s.id, 'sales' as module,
+            COALESCE(s.customer_name, c.name, 'Customer') as party_name,
+            COALESCE(s.challan_number, 'INV-' || s.id) as ref_no,
+            s.sale_date as txn_date,
+            COALESCE(s.paid_amount, s.grand_total, 0) as amount,
+            s.payment_mode
+          FROM sales s
+          LEFT JOIN customers c ON s.customer_id = c.id
+          WHERE s.company_id = ${compId}
+            AND COALESCE(s.paid_amount, s.grand_total, 0) > 0
+          ORDER BY s.sale_date DESC LIMIT 500
+        `;
+        inflows = inflows.concat(salesRows);
+      } catch (e) {}
+
+      try {
+        const spRows = await sql`
+          SELECT 
+            sp.id, 'sale_payments' as module,
+            COALESCE(s.customer_name, c.name, 'Customer') as party_name,
+            COALESCE(sp.transaction_ref, sp.cheque_dd_no, 'RCPT-' || sp.id) as ref_no,
+            sp.payment_date as txn_date,
+            sp.amount as amount,
+            sp.payment_mode
+          FROM sale_payments sp
+          LEFT JOIN sales s ON sp.sale_id = s.id
+          LEFT JOIN customers c ON s.customer_id = c.id
+          WHERE sp.company_id = ${compId}
+            AND sp.amount > 0
+          ORDER BY sp.payment_date DESC LIMIT 500
+        `;
+        inflows = inflows.concat(spRows);
+      } catch (e) {}
+
+      try {
+        const pRows = await sql`
+          SELECT 
+            p.id, 'payments' as module,
+            COALESCE(c.name, 'Customer') as party_name,
+            COALESCE(p.notification_ref, 'PAY-' || p.id) as ref_no,
+            p.payment_date as txn_date,
+            p.amount as amount,
+            p.payment_mode
+          FROM payments p
+          LEFT JOIN customers c ON p.customer_id = c.id
+          WHERE p.company_id = ${compId}
+            AND p.amount > 0
+          ORDER BY p.payment_date DESC LIMIT 300
+        `;
+        inflows = inflows.concat(pRows);
+      } catch (e) {}
+
+      try {
+        const srvRows = await sql`
+          SELECT 
+            sp.id, 'service_payments' as module,
+            COALESCE(sj.customer_name, 'Service Customer') as party_name,
+            COALESCE(sp.receipt_number, sp.transaction_ref, 'JOB-' || sp.job_id) as ref_no,
+            DATE(sp.payment_date) as txn_date,
+            sp.amount as amount,
+            sp.payment_mode
+          FROM service_payments sp
+          LEFT JOIN service_jobs sj ON sp.job_id = sj.id
+          WHERE sp.company_id = ${compId}
+            AND sp.amount > 0
+          ORDER BY sp.payment_date DESC LIMIT 300
+        `;
+        inflows = inflows.concat(srvRows);
+      } catch (e) {}
+
+      try {
+        const capRows = await sql`
+          SELECT 
+            ce.id, 'capital_entries' as module,
+            'Working Capital Addition' as party_name,
+            COALESCE(ce.reason, 'Capital Deposit') as ref_no,
+            ce.effective_date as txn_date,
+            CASE WHEN ce.new_value > COALESCE(ce.old_value, 0) THEN (ce.new_value - COALESCE(ce.old_value, 0)) ELSE ce.new_value END as amount,
+            'Bank' as payment_mode
+          FROM capital_entries ce
+          WHERE ce.company_id = ${compId}
+            AND (ce.new_value > COALESCE(ce.old_value, 0) OR ce.new_value > 0)
+          ORDER BY ce.effective_date DESC LIMIT 100
+        `;
+        inflows = inflows.concat(capRows);
+      } catch (e) {}
+
+      // Outflows: Expenses, Purchases, Loans
+      let outflows = [];
+      try {
+        const expRows = await sql`
+          SELECT 
+            e.id, 'expenses' as module,
+            COALESCE(e.dealer_receiver, e.dealer_receiver_company, e.category, 'Expense Payee') as party_name,
+            COALESCE(e.receipt_number, e.transaction_ref, e.category) as ref_no,
+            e.expense_date as txn_date,
+            e.amount as amount,
+            e.payment_mode
+          FROM expenses e
+          WHERE e.company_id = ${compId}
+            AND e.amount > 0
+          ORDER BY e.expense_date DESC LIMIT 500
+        `;
+        outflows = outflows.concat(expRows);
+      } catch (e) {}
+
+      try {
+        const purRows = await sql`
+          SELECT 
+            p.id, 'purchases' as module,
+            COALESCE(d.name, 'Supplier') as party_name,
+            COALESCE(p.purchase_invoice_no, 'PUR-' || p.id) as ref_no,
+            COALESCE(p.purchase_date, CURRENT_DATE) as txn_date,
+            COALESCE(p.paid_amount, p.grand_total, p.total_amount, 0) as amount,
+            'Bank' as payment_mode
+          FROM purchases p
+          LEFT JOIN dealers d ON p.supplier_id = d.id
+          WHERE p.company_id = ${compId}
+            AND COALESCE(p.paid_amount, p.grand_total, p.total_amount, 0) > 0
+          ORDER BY p.purchase_date DESC LIMIT 500
+        `;
+        outflows = outflows.concat(purRows);
+      } catch (e) {}
+
+      try {
+        const loanRows = await sql`
+          SELECT 
+            li.id, 'loans' as module,
+            COALESCE(l.lender_name, 'Loan Lender') as party_name,
+            COALESCE(li.payment_ref, l.loan_account_number, 'EMI #' || li.installment_number) as ref_no,
+            COALESCE(li.payment_date, li.due_date) as txn_date,
+            COALESCE(li.paid_amount, li.total_emi, 0) as amount,
+            'Bank' as payment_mode
+          FROM loan_installments li
+          LEFT JOIN loans l ON li.loan_id = l.id
+          WHERE l.company_id = ${compId}
+            AND COALESCE(li.paid_amount, li.total_emi, 0) > 0
+          ORDER BY COALESCE(li.payment_date, li.due_date) DESC LIMIT 200
+        `;
+        outflows = outflows.concat(loanRows);
+      } catch (e) {}
+
+      return res.status(200).json({ success: true, bank_account: bankAcc, inflows, outflows });
+    }
+
+    else if (action === "statement-transaction-validate") {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS bank_statement_transactions (
+            id SERIAL PRIMARY KEY,
+            bank_statement_id INT REFERENCES bank_statements(id) ON DELETE CASCADE,
+            bank_account_id INT REFERENCES bank_accounts(id) ON DELETE CASCADE,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            bank_format VARCHAR(50),
+            txn_date DATE NOT NULL,
+            value_date DATE,
+            description TEXT,
+            ref_no VARCHAR(100),
+            branch_code VARCHAR(100),
+            txn_type VARCHAR(20) NOT NULL,
+            debit_amount NUMERIC(15,2) DEFAULT 0,
+            credit_amount NUMERIC(15,2) DEFAULT 0,
+            balance NUMERIC(15,2) DEFAULT 0,
+            system_matched_id INT,
+            system_matched_module VARCHAR(50),
+            system_matched_party VARCHAR(255),
+            system_matched_amount NUMERIC(15,2),
+            system_matched_date DATE,
+            system_matched_ref VARCHAR(100),
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            hold_reason TEXT,
+            user_description TEXT,
+            validated_at TIMESTAMP,
+            validated_by INT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+      } catch (e) {}
+
+      const {
+        id, bank_statement_id, bank_account_id, company_id, bank_format,
+        txn_date, value_date, description, ref_no, branch_code, txn_type,
+        debit_amount, credit_amount, balance,
+        system_matched_id, system_matched_module, system_matched_party,
+        system_matched_amount, system_matched_date, system_matched_ref,
+        user_description
+      } = req.body;
+
+      const txId = parseInt(id);
+      if (txId) {
+        const existing = await sql`SELECT * FROM bank_statement_transactions WHERE id = ${txId}`;
+        if (existing.length === 0) return res.status(404).json({ error: "Transaction not found" });
+
+        // If previously held, enforce that a proper description is provided
+        if (existing[0].status === 'held') {
+          const finalDesc = (user_description || existing[0].user_description || '').trim();
+          if (!finalDesc) {
+            return res.status(400).json({ error: "Proper description is required to validate a held transaction." });
+          }
+        }
+
+        const updated = await sql`
+          UPDATE bank_statement_transactions
+          SET 
+            status = 'validated',
+            user_description = ${user_description !== undefined ? user_description : existing[0].user_description},
+            validated_at = NOW(),
+            validated_by = ${user.id},
+            updated_at = NOW()
+          WHERE id = ${txId}
+          RETURNING *
+        `;
+        return res.status(200).json({ success: true, transaction: updated[0], message: "Transaction validated successfully!" });
+      } else {
+        const bankAccId = parseInt(bank_account_id);
+        if (!bankAccId) return res.status(400).json({ error: "Bank Account ID required" });
+        const acc = await sql`SELECT company_id FROM bank_accounts WHERE id = ${bankAccId}`;
+        if (acc.length === 0) return res.status(404).json({ error: "Bank account not found" });
+        const compId = company_id ? parseInt(company_id) : acc[0].company_id;
+
+        const inserted = await sql`
+          INSERT INTO bank_statement_transactions (
+            bank_statement_id, bank_account_id, company_id, bank_format,
+            txn_date, value_date, description, ref_no, branch_code, txn_type,
+            debit_amount, credit_amount, balance,
+            system_matched_id, system_matched_module, system_matched_party,
+            system_matched_amount, system_matched_date, system_matched_ref,
+            status, hold_reason, user_description, validated_at, validated_by
+          ) VALUES (
+            ${bank_statement_id ? parseInt(bank_statement_id) : null},
+            ${bankAccId}, ${compId}, ${bank_format || 'SBI'},
+            ${txn_date || sql`CURRENT_DATE`}, ${value_date || null}, ${description || null},
+            ${ref_no || null}, ${branch_code || null}, ${txn_type || 'inflow'},
+            ${parseFloat(debit_amount || 0)}, ${parseFloat(credit_amount || 0)}, ${parseFloat(balance || 0)},
+            ${system_matched_id ? parseInt(system_matched_id) : null}, ${system_matched_module || null},
+            ${system_matched_party || null}, ${system_matched_amount ? parseFloat(system_matched_amount) : null},
+            ${system_matched_date || null}, ${system_matched_ref || null},
+            'validated', null, ${user_description || null}, NOW(), ${user.id}
+          )
+          RETURNING *
+        `;
+        return res.status(200).json({ success: true, transaction: inserted[0], message: "Transaction validated and saved for CA references!" });
+      }
+    }
+
+    else if (action === "statement-transaction-hold") {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS bank_statement_transactions (
+            id SERIAL PRIMARY KEY,
+            bank_statement_id INT REFERENCES bank_statements(id) ON DELETE CASCADE,
+            bank_account_id INT REFERENCES bank_accounts(id) ON DELETE CASCADE,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            bank_format VARCHAR(50),
+            txn_date DATE NOT NULL,
+            value_date DATE,
+            description TEXT,
+            ref_no VARCHAR(100),
+            branch_code VARCHAR(100),
+            txn_type VARCHAR(20) NOT NULL,
+            debit_amount NUMERIC(15,2) DEFAULT 0,
+            credit_amount NUMERIC(15,2) DEFAULT 0,
+            balance NUMERIC(15,2) DEFAULT 0,
+            system_matched_id INT,
+            system_matched_module VARCHAR(50),
+            system_matched_party VARCHAR(255),
+            system_matched_amount NUMERIC(15,2),
+            system_matched_date DATE,
+            system_matched_ref VARCHAR(100),
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            hold_reason TEXT,
+            user_description TEXT,
+            validated_at TIMESTAMP,
+            validated_by INT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+      } catch (e) {}
+
+      const {
+        id, bank_statement_id, bank_account_id, company_id, bank_format,
+        txn_date, value_date, description, ref_no, branch_code, txn_type,
+        debit_amount, credit_amount, balance,
+        system_matched_id, system_matched_module, system_matched_party,
+        system_matched_amount, system_matched_date, system_matched_ref,
+        hold_reason, user_description
+      } = req.body;
+
+      const trimmedReason = (hold_reason || '').trim();
+      if (!trimmedReason) {
+        return res.status(400).json({ error: "Hold reason / description is mandatory to hold a transaction." });
+      }
+
+      const txId = parseInt(id);
+      if (txId) {
+        const updated = await sql`
+          UPDATE bank_statement_transactions
+          SET 
+            status = 'held',
+            hold_reason = ${trimmedReason},
+            user_description = ${user_description || null},
+            updated_at = NOW()
+          WHERE id = ${txId}
+          RETURNING *
+        `;
+        return res.status(200).json({ success: true, transaction: updated[0], message: "Transaction placed on hold." });
+      } else {
+        const bankAccId = parseInt(bank_account_id);
+        if (!bankAccId) return res.status(400).json({ error: "Bank Account ID required" });
+        const acc = await sql`SELECT company_id FROM bank_accounts WHERE id = ${bankAccId}`;
+        if (acc.length === 0) return res.status(404).json({ error: "Bank account not found" });
+        const compId = company_id ? parseInt(company_id) : acc[0].company_id;
+
+        const inserted = await sql`
+          INSERT INTO bank_statement_transactions (
+            bank_statement_id, bank_account_id, company_id, bank_format,
+            txn_date, value_date, description, ref_no, branch_code, txn_type,
+            debit_amount, credit_amount, balance,
+            system_matched_id, system_matched_module, system_matched_party,
+            system_matched_amount, system_matched_date, system_matched_ref,
+            status, hold_reason, user_description
+          ) VALUES (
+            ${bank_statement_id ? parseInt(bank_statement_id) : null},
+            ${bankAccId}, ${compId}, ${bank_format || 'SBI'},
+            ${txn_date || sql`CURRENT_DATE`}, ${value_date || null}, ${description || null},
+            ${ref_no || null}, ${branch_code || null}, ${txn_type || 'inflow'},
+            ${parseFloat(debit_amount || 0)}, ${parseFloat(credit_amount || 0)}, ${parseFloat(balance || 0)},
+            ${system_matched_id ? parseInt(system_matched_id) : null}, ${system_matched_module || null},
+            ${system_matched_party || null}, ${system_matched_amount ? parseFloat(system_matched_amount) : null},
+            ${system_matched_date || null}, ${system_matched_ref || null},
+            'held', ${trimmedReason}, ${user_description || null}
+          )
+          RETURNING *
+        `;
+        return res.status(200).json({ success: true, transaction: inserted[0], message: "Transaction placed on hold." });
+      }
+    }
+
+    else if (action === "statement-transactions-list") {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS bank_statement_transactions (
+            id SERIAL PRIMARY KEY,
+            bank_statement_id INT REFERENCES bank_statements(id) ON DELETE CASCADE,
+            bank_account_id INT REFERENCES bank_accounts(id) ON DELETE CASCADE,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            bank_format VARCHAR(50),
+            txn_date DATE NOT NULL,
+            value_date DATE,
+            description TEXT,
+            ref_no VARCHAR(100),
+            branch_code VARCHAR(100),
+            txn_type VARCHAR(20) NOT NULL,
+            debit_amount NUMERIC(15,2) DEFAULT 0,
+            credit_amount NUMERIC(15,2) DEFAULT 0,
+            balance NUMERIC(15,2) DEFAULT 0,
+            system_matched_id INT,
+            system_matched_module VARCHAR(50),
+            system_matched_party VARCHAR(255),
+            system_matched_amount NUMERIC(15,2),
+            system_matched_date DATE,
+            system_matched_ref VARCHAR(100),
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            hold_reason TEXT,
+            user_description TEXT,
+            validated_at TIMESTAMP,
+            validated_by INT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+      } catch (e) {}
+
+      const bankAccId = parseInt(req.query.bank_account_id || req.body?.bank_account_id);
+      if (!bankAccId) return res.status(400).json({ error: "Bank Account ID required" });
+
+      let fromDate = req.query.from_date || req.body?.from_date;
+      let toDate = req.query.to_date || req.body?.to_date;
+      const status = req.query.status || req.body?.status || 'all';
+      const allTime = req.query.all_time === 'true' || req.body?.all_time === true;
+
+      // Strict user rule: If no filter, show today's!
+      let filterToday = false;
+      if (!allTime && !fromDate && !toDate) {
+        filterToday = true;
+      }
+
+      let rows;
+      if (filterToday) {
+        if (status === 'validated') {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status = 'validated'
+              AND t.txn_date = CURRENT_DATE
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        } else if (status === 'held') {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status = 'held'
+              AND t.txn_date = CURRENT_DATE
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        } else {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status IN ('validated', 'held')
+              AND t.txn_date = CURRENT_DATE
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        }
+      } else if (fromDate && toDate) {
+        if (status === 'validated') {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status = 'validated'
+              AND t.txn_date >= ${fromDate} AND t.txn_date <= ${toDate}
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        } else if (status === 'held') {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status = 'held'
+              AND t.txn_date >= ${fromDate} AND t.txn_date <= ${toDate}
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        } else {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status IN ('validated', 'held')
+              AND t.txn_date >= ${fromDate} AND t.txn_date <= ${toDate}
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        }
+      } else {
+        if (status === 'validated') {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status = 'validated'
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        } else if (status === 'held') {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status = 'held'
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        } else {
+          rows = await sql`
+            SELECT t.*, u.username as validated_by_name
+            FROM bank_statement_transactions t
+            LEFT JOIN users u ON t.validated_by = u.id
+            WHERE t.bank_account_id = ${bankAccId}
+              AND t.status IN ('validated', 'held')
+            ORDER BY t.txn_date DESC, t.id DESC
+          `;
+        }
+      }
+
+      return res.status(200).json({ success: true, transactions: rows, is_today_default: filterToday });
+    }
+
+    else if (action === "statement-batch-validate") {
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS bank_statement_transactions (
+            id SERIAL PRIMARY KEY,
+            bank_statement_id INT REFERENCES bank_statements(id) ON DELETE CASCADE,
+            bank_account_id INT REFERENCES bank_accounts(id) ON DELETE CASCADE,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            bank_format VARCHAR(50),
+            txn_date DATE NOT NULL,
+            value_date DATE,
+            description TEXT,
+            ref_no VARCHAR(100),
+            branch_code VARCHAR(100),
+            txn_type VARCHAR(20) NOT NULL,
+            debit_amount NUMERIC(15,2) DEFAULT 0,
+            credit_amount NUMERIC(15,2) DEFAULT 0,
+            balance NUMERIC(15,2) DEFAULT 0,
+            system_matched_id INT,
+            system_matched_module VARCHAR(50),
+            system_matched_party VARCHAR(255),
+            system_matched_amount NUMERIC(15,2),
+            system_matched_date DATE,
+            system_matched_ref VARCHAR(100),
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            hold_reason TEXT,
+            user_description TEXT,
+            validated_at TIMESTAMP,
+            validated_by INT REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          )
+        `;
+      } catch (e) {}
+
+      const { items } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "No transactions provided to validate" });
+      }
+
+      let count = 0;
+      for (const item of items) {
+        try {
+          if (item.id) {
+            await sql`
+              UPDATE bank_statement_transactions
+              SET status = 'validated', validated_at = NOW(), validated_by = ${user.id}, updated_at = NOW()
+              WHERE id = ${parseInt(item.id)}
+            `;
+            count++;
+          } else {
+            const bankAccId = parseInt(item.bank_account_id);
+            if (!bankAccId) continue;
+            const acc = await sql`SELECT company_id FROM bank_accounts WHERE id = ${bankAccId}`;
+            if (acc.length === 0) continue;
+            const compId = item.company_id ? parseInt(item.company_id) : acc[0].company_id;
+
+            await sql`
+              INSERT INTO bank_statement_transactions (
+                bank_statement_id, bank_account_id, company_id, bank_format,
+                txn_date, value_date, description, ref_no, branch_code, txn_type,
+                debit_amount, credit_amount, balance,
+                system_matched_id, system_matched_module, system_matched_party,
+                system_matched_amount, system_matched_date, system_matched_ref,
+                status, hold_reason, user_description, validated_at, validated_by
+              ) VALUES (
+                ${item.bank_statement_id ? parseInt(item.bank_statement_id) : null},
+                ${bankAccId}, ${compId}, ${item.bank_format || 'SBI'},
+                ${item.txn_date || sql`CURRENT_DATE`}, ${item.value_date || null}, ${item.description || null},
+                ${item.ref_no || null}, ${item.branch_code || null}, ${item.txn_type || 'inflow'},
+                ${parseFloat(item.debit_amount || 0)}, ${parseFloat(item.credit_amount || 0)}, ${parseFloat(item.balance || 0)},
+                ${item.system_matched_id ? parseInt(item.system_matched_id) : null}, ${item.system_matched_module || null},
+                ${item.system_matched_party || null}, ${item.system_matched_amount ? parseFloat(item.system_matched_amount) : null},
+                ${item.system_matched_date || null}, ${item.system_matched_ref || null},
+                'validated', null, ${item.user_description || null}, NOW(), ${user.id}
+              )
+            `;
+            count++;
+          }
+        } catch (err) {}
+      }
+      return res.status(200).json({ success: true, count, message: `${count} transactions validated successfully!` });
+    }
+
+    else if (action === "statement-transaction-delete") {
+      const txId = parseInt(req.query.id || req.body?.id);
+      if (!txId) return res.status(400).json({ error: "Transaction ID required" });
+
+      await sql`DELETE FROM bank_statement_transactions WHERE id = ${txId}`;
+      return res.status(200).json({ success: true, message: "Statement transaction removed successfully!" });
+    }
+
     // ═══════════════ ASSETS & LIABILITIES MANAGEMENT ═══════════════
     else if (action === "assets-liabilities-list" || action === "get-assets-liabilities") {
       try {

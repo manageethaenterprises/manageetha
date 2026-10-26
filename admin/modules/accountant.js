@@ -1292,12 +1292,14 @@ async function loadSettingsSubTab() {
     });
   }
 
-  // Modal: Bank Statement Upload & History
+  // Modal: Bank Statement Upload & Reconciliation
   function openBankStatementModal(acc) {
     let modal = document.getElementById("bankStatementModal");
     if (modal) modal.remove();
 
     const todayStr = new Date().toISOString().split('T')[0];
+    const initialBankFormat = (acc.bank_name || '').toLowerCase().includes('kotak') ? 'KOTAK'
+      : ((acc.bank_name || '').toLowerCase().includes('sbi') || (acc.bank_name || '').toLowerCase().includes('state bank')) ? 'SBI' : 'auto';
 
     modal = document.createElement("div");
     modal.id = "bankStatementModal";
@@ -1315,55 +1317,279 @@ async function loadSettingsSubTab() {
     modal.style.boxSizing = "border-box";
 
     modal.innerHTML = `
-      <div class="modal-box" style="max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.4);overflow:hidden;position:relative;margin:auto;">
-        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
-          <h4 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);">
-            📄 Bank Statements — ${esc(acc.bank_name)} (${esc(acc.account_number.slice(-4))})
-          </h4>
-          <span class="close-modal" id="closeBankStmtBtn" style="cursor:pointer;font-size:22px;font-weight:bold;line-height:1;color:var(--text2);">&times;</span>
+      <div class="modal-box" style="max-width:1420px;width:96vw;height:92vh;display:flex;flex-direction:column;background:var(--bg-secondary);border:1px solid var(--border);border-radius:14px;box-shadow:0 25px 60px rgba(0,0,0,0.45);overflow:hidden;position:relative;margin:auto;">
+        <!-- Modal Header -->
+        <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--bg-secondary);color:var(--text1);flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="font-size:24px;">📄</div>
+            <div>
+              <div style="font-size:16px;font-weight:700;color:var(--text1);display:flex;align-items:center;gap:8px;">
+                Bank Statement & Reconciliation — ${esc(acc.bank_name)}
+                <span style="font-size:11px;background:var(--primary);color:#fff;padding:2px 8px;border-radius:12px;font-weight:600;">•••• ${esc(acc.account_number.slice(-4))}</span>
+              </div>
+              <div style="font-size:11.5px;color:var(--text3);margin-top:2px;">
+                Branch: ${esc(acc.branch_name || 'Main')} • IFSC: ${esc(acc.ifsc_code || '—')} • Current Balance: <strong style="color:var(--success);">${formatCurrency(acc.current_balance || 0)}</strong>
+              </div>
+            </div>
+          </div>
+          <span class="close-modal" id="closeBankStmtBtn" style="cursor:pointer;font-size:24px;font-weight:bold;line-height:1;color:var(--text2);">&times;</span>
         </div>
 
-        <div style="padding:20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:18px;">
-          <!-- Upload Box -->
-          <div style="border:1px solid var(--border);border-radius:10px;padding:16px;background:var(--bg-primary);">
-            <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-              📤 Upload New Bank Statement Document
+        <!-- Navigation Tabs Bar -->
+        <div style="display:flex;background:var(--bg-primary);border-bottom:1px solid var(--border);padding:0 20px;gap:8px;flex-shrink:0;">
+          <button type="button" class="stmt-tab-btn active" data-tab="tabReconcile" style="padding:10px 16px;border:none;background:none;font-size:12.5px;font-weight:700;color:var(--primary);border-bottom:2px solid var(--primary);cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <span>📊</span> Parse & Reconcile Statement
+          </button>
+          <button type="button" class="stmt-tab-btn" data-tab="tabAudit" style="padding:10px 16px;border:none;background:none;font-size:12.5px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <span>📋</span> Reconciled & Held List (CA Reference)
+          </button>
+          <button type="button" class="stmt-tab-btn" data-tab="tabArchive" style="padding:10px 16px;border:none;background:none;font-size:12.5px;font-weight:600;color:var(--text2);border-bottom:2px solid transparent;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <span>📁</span> Uploaded Files Archive
+          </button>
+        </div>
+
+        <!-- Tab 1: Parse & Reconcile Statement -->
+        <div id="tabReconcileSection" style="padding:18px 20px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;">
+          <!-- Upload & Controls Bar -->
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;padding:14px 18px;">
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;justify-content:space-between;">
+              <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;flex:1;">
+                <div style="min-width:210px;">
+                  <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;">
+                    Bank Header Format
+                  </label>
+                  <select id="bankFormatSelect" class="form-control" style="font-size:12px;padding:6px 10px;">
+                    <option value="auto" ${initialBankFormat === 'auto' ? 'selected' : ''}>🔍 Auto-Detect (SBI / Kotak)</option>
+                    <option value="SBI" ${initialBankFormat === 'SBI' ? 'selected' : ''}>🏛️ State Bank of India (SBI)</option>
+                    <option value="KOTAK" ${initialBankFormat === 'KOTAK' ? 'selected' : ''}>🏢 Kotak Mahindra Bank</option>
+                  </select>
+                </div>
+
+                <div style="flex:1;min-width:260px;">
+                  <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;">
+                    Select Statement File (.xlsx, .xls, .csv) *
+                  </label>
+                  <input type="file" id="reconcileFileInput" class="form-control" accept=".xlsx,.xls,.csv" style="font-size:12px;padding:5px 8px;">
+                </div>
+
+                <div style="display:flex;gap:6px;">
+                  <button type="button" id="parseReconcileBtn" class="btn btn-primary btn-sm" style="font-size:12px;padding:7px 14px;white-space:nowrap;">
+                    ⚡ Parse & Auto-Match
+                  </button>
+                  <button type="button" id="clearParsedBtn" class="btn btn-secondary btn-sm" style="font-size:12px;padding:7px 12px;display:none;">
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <!-- Save copy to server checkbox -->
+              <div style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px;">
+                <input type="checkbox" id="archiveFileCopyCheck" checked style="cursor:pointer;">
+                <label for="archiveFileCopyCheck" style="cursor:pointer;margin:0;">Archive file copy to server</label>
+              </div>
             </div>
 
-            <form id="stmtUploadForm">
+            <!-- Header Guidelines Reminder -->
+            <div style="display:flex;gap:16px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:11px;color:var(--text3);flex-wrap:wrap;">
+              <div>
+                <strong style="color:var(--text2);">SBI Headers:</strong> Txn Date | Value Date | Description | Ref No./Cheque No. | Branch Code | Debit | Credit | Balance
+              </div>
+              <div style="border-left:1px solid var(--border);padding-left:14px;">
+                <strong style="color:var(--text2);">Kotak Headers:</strong> #(or) S.No | Date | Description | Chq/Ref. No. | Withdrawal (Dr.) | Deposit (Cr.) | Balance
+              </div>
+            </div>
+          </div>
+
+          <!-- Summary Metrics Cards (shown after parse) -->
+          <div id="parseSummaryBar" style="display:none;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;">
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+              <div style="font-size:10.5px;color:var(--text3);font-weight:600;">TOTAL TRANSACTIONS</div>
+              <div id="statTotalCount" style="font-size:18px;font-weight:800;color:var(--text1);margin-top:2px;">0</div>
+            </div>
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+              <div style="font-size:10.5px;color:var(--danger);font-weight:600;">TOTAL DEBITS (OUTFLOW)</div>
+              <div id="statTotalDebit" style="font-size:16px;font-weight:800;color:var(--danger);margin-top:2px;">₹0.00</div>
+            </div>
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+              <div style="font-size:10.5px;color:var(--success);font-weight:600;">TOTAL CREDITS (INFLOW)</div>
+              <div id="statTotalCredit" style="font-size:16px;font-weight:800;color:var(--success);margin-top:2px;">₹0.00</div>
+            </div>
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+              <div style="font-size:10.5px;color:var(--primary);font-weight:600;">AUTO-MATCHED</div>
+              <div id="statMatchedCount" style="font-size:18px;font-weight:800;color:var(--primary);margin-top:2px;">0</div>
+            </div>
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:10px 12px;">
+              <div style="font-size:10.5px;color:var(--warning);font-weight:600;">UNMAPPED / CHARGES</div>
+              <div id="statUnmappedCount" style="font-size:18px;font-weight:800;color:var(--warning);margin-top:2px;">0</div>
+            </div>
+            <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:center;">
+              <button type="button" id="batchValidateMatchedBtn" class="btn btn-sm btn-success" style="width:100%;font-size:11.5px;font-weight:700;padding:8px 10px;">
+                ✅ Validate All Matched
+              </button>
+            </div>
+          </div>
+
+          <!-- Reconciliation Table Container -->
+          <div style="flex:1;min-height:280px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;background:var(--bg-primary);overflow:hidden;">
+            <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg-secondary);display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:var(--text1);">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span>⚖️ Side-by-Side Statement & Internal System Reconciliation</span>
+                <span id="detectedFormatBadge" style="display:none;font-size:10px;padding:2px 8px;border-radius:10px;background:var(--primary);color:#fff;">SBI</span>
+              </div>
+              <div style="font-size:11px;color:var(--text3);font-weight:normal;" id="reconcileInstructionsText">
+                Upload a statement above to parse rows and compare against system inflows & outflows.
+              </div>
+            </div>
+
+            <div class="table-container" style="flex:1;overflow-y:auto;overflow-x:auto;">
+              <table class="data-table" id="reconcileTable" style="font-size:11.5px;width:100%;border-collapse:collapse;">
+                <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                  <tr>
+                    <th style="width:40px;text-align:center;">#</th>
+                    <th style="min-width:180px;">Statement Details (Date & Description)</th>
+                    <th style="width:110px;">Ref / Chq No</th>
+                    <th style="width:100px;text-align:right;">Debit (Outflow)</th>
+                    <th style="width:100px;text-align:right;">Credit (Inflow)</th>
+                    <th style="width:95px;text-align:right;">Balance</th>
+                    <th style="min-width:220px;border-left:2px solid var(--border);">ERP System Mapping (Party & Ref)</th>
+                    <th style="min-width:190px;">CA Description / Audit Notes</th>
+                    <th style="width:145px;text-align:center;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="reconcileTableBody">
+                  <tr>
+                    <td colspan="9" style="text-align:center;padding:50px 20px;color:var(--text3);">
+                      <div style="font-size:36px;margin-bottom:10px;">📄</div>
+                      <div style="font-weight:600;font-size:13px;color:var(--text2);">No Statement Loaded Yet</div>
+                      <div style="font-size:11.5px;margin-top:4px;">Please choose an SBI or Kotak bank statement (.xlsx, .xls, .csv) above and click "Parse & Auto-Match"</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Reconciled & Held List (CA Reference) -->
+        <div id="tabAuditSection" style="display:none;padding:18px 20px;overflow-y:auto;flex:1;min-height:0;flex-direction:column;gap:14px;">
+          <!-- Filter Controls -->
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:10px;padding:14px 18px;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;">
+            <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;">
+              <div>
+                <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:3px;">From Date</label>
+                <input type="date" id="auditFromDate" class="form-control" value="${todayStr}" style="font-size:12px;padding:5px 8px;">
+              </div>
+              <div>
+                <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:3px;">To Date</label>
+                <input type="date" id="auditToDate" class="form-control" value="${todayStr}" style="font-size:12px;padding:5px 8px;">
+              </div>
+              <div>
+                <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:3px;">Status Filter</label>
+                <select id="auditStatusFilter" class="form-control" style="font-size:12px;padding:5px 8px;">
+                  <option value="all">All (Validated & On Hold)</option>
+                  <option value="validated">✅ Validated Only</option>
+                  <option value="held">⏳ On Hold Only</option>
+                </select>
+              </div>
+
+              <!-- Quick Date Buttons -->
+              <div style="display:flex;gap:4px;padding-bottom:1px;">
+                <button type="button" class="btn btn-xs btn-secondary audit-quick-date" data-range="today" style="font-size:11px;padding:5px 8px;">Today</button>
+                <button type="button" class="btn btn-xs btn-secondary audit-quick-date" data-range="yesterday" style="font-size:11px;padding:5px 8px;">Yesterday</button>
+                <button type="button" class="btn btn-xs btn-secondary audit-quick-date" data-range="month" style="font-size:11px;padding:5px 8px;">This Month</button>
+                <button type="button" class="btn btn-xs btn-secondary audit-quick-date" data-range="all" style="font-size:11px;padding:5px 8px;">All Time</button>
+              </div>
+
+              <button type="button" id="auditApplyFilterBtn" class="btn btn-primary btn-sm" style="font-size:12px;padding:6px 12px;">
+                🔍 Filter
+              </button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button type="button" id="exportAuditCsvBtn" class="btn btn-secondary btn-sm" style="font-size:12px;padding:6px 12px;white-space:nowrap;">
+                📥 Export for CA (CSV)
+              </button>
+            </div>
+          </div>
+
+          <!-- Date Filter Status Notice -->
+          <div id="auditDateNotice" style="font-size:11px;color:var(--text3);padding:0 4px;">
+            Showing transactions for <strong>Today (${todayStr})</strong>. Adjust dates above to filter.
+          </div>
+
+          <!-- Audit Table Container -->
+          <div style="flex:1;min-height:300px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;background:var(--bg-primary);overflow:hidden;">
+            <div class="table-container" style="flex:1;overflow-y:auto;overflow-x:auto;">
+              <table class="data-table" id="auditTable" style="font-size:11.5px;width:100%;border-collapse:collapse;">
+                <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+                  <tr>
+                    <th style="width:40px;text-align:center;">#</th>
+                    <th style="width:90px;">Txn Date</th>
+                    <th style="min-width:180px;">Bank Narration / Description</th>
+                    <th style="width:110px;">Ref / Chq No</th>
+                    <th style="width:95px;text-align:right;">Debit (Dr)</th>
+                    <th style="width:95px;text-align:right;">Credit (Cr)</th>
+                    <th style="min-width:170px;">Matched Party & System Ref</th>
+                    <th style="width:90px;text-align:center;">Status</th>
+                    <th style="min-width:160px;">Hold Reason</th>
+                    <th style="min-width:180px;">CA Audit Notes / Description</th>
+                    <th style="width:110px;text-align:center;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="auditTableBody">
+                  <tr>
+                    <td colspan="11" style="text-align:center;padding:40px 20px;color:var(--text3);">
+                      <div class="spinner"></div> Loading transactions for today...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Uploaded Files Archive -->
+        <div id="tabArchiveSection" style="display:none;padding:18px 20px;overflow-y:auto;flex:1;min-height:0;flex-direction:column;gap:16px;">
+          <!-- Manual Upload Box -->
+          <div style="border:1px solid var(--border);border-radius:10px;padding:16px;background:var(--bg-primary);">
+            <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+              📤 Upload & Store Statement Document
+            </div>
+
+            <form id="stmtArchiveUploadForm">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                 <div class="form-group" style="margin:0;">
-                  <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Statement Period From</label>
-                  <input type="date" class="form-control" id="stmtFromDate" value="${todayStr}" style="font-size:12px;">
+                  <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Period From</label>
+                  <input type="date" class="form-control" id="archiveFromDate" value="${todayStr}" style="font-size:12px;">
                 </div>
                 <div class="form-group" style="margin:0;">
-                  <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Statement Period To</label>
-                  <input type="date" class="form-control" id="stmtToDate" value="${todayStr}" style="font-size:12px;">
+                  <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Period To</label>
+                  <input type="date" class="form-control" id="archiveToDate" value="${todayStr}" style="font-size:12px;">
                 </div>
               </div>
 
               <div class="form-group" style="margin-bottom:10px;">
                 <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Select Statement File (PDF, Excel, CSV, Image) *</label>
-                <input type="file" class="form-control" id="stmtFileInput" accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg" required style="font-size:12px;">
+                <input type="file" class="form-control" id="archiveFileInput" accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg" required style="font-size:12px;">
               </div>
 
               <div class="form-group" style="margin-bottom:12px;">
                 <label style="display:block;font-size:11px;font-weight:600;margin-bottom:3px;color:var(--text2);">Remarks / Notes (Optional)</label>
-                <input type="text" class="form-control" id="stmtNotesInput" placeholder="e.g. Q3 October 2026 Bank Reconciliation Statement" style="font-size:12px;">
+                <input type="text" class="form-control" id="archiveNotesInput" placeholder="e.g. October 2026 Monthly Statement" style="font-size:12px;">
               </div>
 
               <div style="display:flex;justify-content:flex-end;">
-                <button type="submit" class="btn btn-primary btn-sm" id="uploadStmtSubmitBtn">
-                  📤 Upload Statement
+                <button type="submit" class="btn btn-primary btn-sm" id="archiveUploadSubmitBtn">
+                  📤 Upload Document
                 </button>
               </div>
             </form>
           </div>
 
-          <!-- History Table -->
+          <!-- Archive History Table -->
           <div>
-            <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:8px;">📋 Uploaded Statements History</div>
-            <div class="table-container" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+            <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:8px;">📋 Statement Documents Repository</div>
+            <div class="table-container" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
               <table class="data-table" style="font-size:12px;">
                 <thead>
                   <tr>
@@ -1394,7 +1620,1198 @@ async function loadSettingsSubTab() {
     modal.querySelector("#closeBankStmtBtn").addEventListener("click", close);
     modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
 
-    async function loadStatements() {
+    // Tab switching
+    const tabBtns = modal.querySelectorAll(".stmt-tab-btn");
+    const tabReconcile = modal.querySelector("#tabReconcileSection");
+    const tabAudit = modal.querySelector("#tabAuditSection");
+    const tabArchive = modal.querySelector("#tabArchiveSection");
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        tabBtns.forEach(b => {
+          b.classList.remove("active");
+          b.style.color = "var(--text2)";
+          b.style.borderBottomColor = "transparent";
+        });
+        btn.classList.add("active");
+        btn.style.color = "var(--primary)";
+        btn.style.borderBottomColor = "var(--primary)";
+
+        tabReconcile.style.display = "none";
+        tabAudit.style.display = "none";
+        tabArchive.style.display = "none";
+
+        const tab = btn.dataset.tab;
+        if (tab === "tabReconcile") {
+          tabReconcile.style.display = "flex";
+        } else if (tab === "tabAudit") {
+          tabAudit.style.display = "flex";
+          loadAuditTransactions();
+        } else if (tab === "tabArchive") {
+          tabArchive.style.display = "flex";
+          loadStatementsArchive();
+        }
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // PARSING & RECONCILIATION ENGINE (TAB 1)
+    // ═══════════════════════════════════════════════════════════
+    let parsedRows = [];
+    let systemInflows = [];
+    let systemOutflows = [];
+
+    // Helper: Normalize strings for header matching
+    function normText(str) {
+      if (!str) return '';
+      return String(str)
+        .toLowerCase()
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/[#\.\/\(\)\:]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Helper: Parse currency / amounts
+    function cleanAmount(val) {
+      if (val === null || val === undefined || val === '') return 0;
+      if (typeof val === 'number') return isNaN(val) ? 0 : Math.abs(val);
+      const str = String(val).replace(/,/g, '').replace(/[^\d.-]/g, '').trim();
+      const n = parseFloat(str);
+      return isNaN(n) ? 0 : Math.abs(n);
+    }
+
+    // Helper: Parse dates
+    function cleanDate(val) {
+      if (!val) return '';
+      if (val instanceof Date && !isNaN(val.getTime())) {
+        return val.toISOString().split('T')[0];
+      }
+      if (typeof val === 'number') {
+        const epoch = new Date(1899, 11, 30);
+        const date = new Date(epoch.getTime() + val * 86400000);
+        if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+      }
+      const s = String(val).trim();
+      // Match DD/MM/YYYY or DD-MM-YYYY
+      const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+      if (dmy) {
+        return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+      }
+      // Match DD-Mon-YYYY (e.g. 24-Oct-2026, 24 Oct 2026)
+      const dMonY = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3})[\/\-\s]+(\d{4})/);
+      if (dMonY) {
+        const months = { jan:'01', feb:'02', mar:'03', apr:'04', may:'05', jun:'06', jul:'07', aug:'08', sep:'09', oct:'10', nov:'11', dec:'12' };
+        const m = months[dMonY[2].toLowerCase()] || '01';
+        return `${dMonY[3]}-${m}-${dMonY[1].padStart(2, '0')}`;
+      }
+      // Match YYYY-MM-DD
+      const ymd = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+      if (ymd) {
+        return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
+      }
+      return s;
+    }
+
+    // Parse CSV lines fallback
+    function parseCsvToMatrix(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+      return lines.map(line => {
+        const row = [];
+        let insideQuote = false;
+        let entry = '';
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (insideQuote && line[i + 1] === '"') {
+              entry += '"';
+              i++;
+            } else {
+              insideQuote = !insideQuote;
+            }
+          } else if (c === ',' && !insideQuote) {
+            row.push(entry.trim());
+            entry = '';
+          } else {
+            entry += c;
+          }
+        }
+        row.push(entry.trim());
+        return row;
+      });
+    }
+
+    // Detect Header Row & Columns for SBI and Kotak
+    function scanAndDetectHeaders(matrix, forcedBank = 'auto') {
+      for (let r = 0; r < Math.min(matrix.length, 40); r++) {
+        const row = matrix[r];
+        if (!Array.isArray(row) || row.length < 4) continue;
+        const normCols = row.map(c => normText(c));
+
+        // SBI signatures:
+        // Must have: Txn Date (or Value Date) AND Description AND (Debit OR Credit)
+        const sbiTxnDateIdx = normCols.findIndex(c => c.includes('txn date') || c.includes('transaction date'));
+        const sbiValDateIdx = normCols.findIndex(c => c.includes('value date'));
+        const sbiDescIdx = normCols.findIndex(c => c.includes('description') || c.includes('narration') || c.includes('particular'));
+        const sbiRefIdx = normCols.findIndex(c => c.includes('ref no') || c.includes('cheque no') || c.includes('chq no'));
+        const sbiBranchIdx = normCols.findIndex(c => c.includes('branch code') || c.includes('branch'));
+        const sbiDebitIdx = normCols.findIndex(c => c === 'debit' || c.includes('debit'));
+        const sbiCreditIdx = normCols.findIndex(c => c === 'credit' || c.includes('credit'));
+        const sbiBalIdx = normCols.findIndex(c => c.includes('balance'));
+
+        const isSbi = (sbiTxnDateIdx !== -1 || sbiValDateIdx !== -1) && sbiDescIdx !== -1 && (sbiDebitIdx !== -1 || sbiCreditIdx !== -1);
+
+        // Kotak signatures:
+        // Must have: (Withdrawal or Dr) AND (Deposit or Cr) AND (Date or Chq/Ref or S.No)
+        const kotakWithdrawIdx = normCols.findIndex(c => c.includes('withdrawal') || c.includes('withdrawal dr') || c === 'dr');
+        const kotakDepositIdx = normCols.findIndex(c => c.includes('deposit') || c.includes('deposit cr') || c === 'cr');
+        const kotakDateIdx = normCols.findIndex(c => c === 'date' || c.includes('date'));
+        const kotakDescIdx = normCols.findIndex(c => c.includes('description') || c.includes('narration') || c.includes('particular'));
+        const kotakRefIdx = normCols.findIndex(c => c.includes('chq ref') || c.includes('ref no') || c.includes('chq'));
+        const kotakSnoIdx = normCols.findIndex(c => c === 'or s no' || c.includes('s no') || c.includes('sl no') || c === '#' || c.includes('sr no'));
+        const kotakBalIdx = normCols.findIndex(c => c.includes('balance'));
+
+        const isKotak = (kotakWithdrawIdx !== -1 || kotakDepositIdx !== -1) && kotakDescIdx !== -1 && (kotakDateIdx !== -1 || kotakRefIdx !== -1);
+
+        if (forcedBank === 'SBI' && isSbi) {
+          return {
+            rowIndex: r,
+            bank: 'SBI',
+            dateCol: sbiTxnDateIdx !== -1 ? sbiTxnDateIdx : sbiValDateIdx,
+            valueDateCol: sbiValDateIdx,
+            descCol: sbiDescIdx,
+            refCol: sbiRefIdx,
+            branchCol: sbiBranchIdx,
+            debitCol: sbiDebitIdx,
+            creditCol: sbiCreditIdx,
+            balanceCol: sbiBalIdx
+          };
+        }
+
+        if (forcedBank === 'KOTAK' && isKotak) {
+          return {
+            rowIndex: r,
+            bank: 'KOTAK',
+            dateCol: kotakDateIdx !== -1 ? kotakDateIdx : 1,
+            valueDateCol: -1,
+            descCol: kotakDescIdx,
+            refCol: kotakRefIdx,
+            branchCol: -1,
+            debitCol: kotakWithdrawIdx,
+            creditCol: kotakDepositIdx,
+            balanceCol: kotakBalIdx
+          };
+        }
+
+        if (forcedBank === 'auto') {
+          if (isSbi) {
+            return {
+              rowIndex: r,
+              bank: 'SBI',
+              dateCol: sbiTxnDateIdx !== -1 ? sbiTxnDateIdx : sbiValDateIdx,
+              valueDateCol: sbiValDateIdx,
+              descCol: sbiDescIdx,
+              refCol: sbiRefIdx,
+              branchCol: sbiBranchIdx,
+              debitCol: sbiDebitIdx,
+              creditCol: sbiCreditIdx,
+              balanceCol: sbiBalIdx
+            };
+          }
+          if (isKotak) {
+            return {
+              rowIndex: r,
+              bank: 'KOTAK',
+              dateCol: kotakDateIdx !== -1 ? kotakDateIdx : 1,
+              valueDateCol: -1,
+              descCol: kotakDescIdx,
+              refCol: kotakRefIdx,
+              branchCol: -1,
+              debitCol: kotakWithdrawIdx,
+              creditCol: kotakDepositIdx,
+              balanceCol: kotakBalIdx
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    // Load System Transactions for Auto-Matching
+    async function loadSystemTransactions() {
+      try {
+        const res = await fetch(`${API_BASE}/accountant?action=reconcile-system-transactions&bank_account_id=${acc.id}`, { headers: authHeaders() });
+        const d = await res.json();
+        if (d.success) {
+          systemInflows = d.inflows || [];
+          systemOutflows = d.outflows || [];
+        }
+      } catch (err) {
+        console.warn("Could not fetch system transactions for auto-match:", err);
+      }
+    }
+
+    // Auto-match a statement row against system transactions
+    function findSystemMatch(row) {
+      const isCredit = row.credit_amount > 0;
+      const targetAmt = isCredit ? row.credit_amount : row.debit_amount;
+      const pool = isCredit ? systemInflows : systemOutflows;
+      if (!pool || pool.length === 0 || targetAmt <= 0) return null;
+
+      const rowDescLower = (row.description || '').toLowerCase();
+      const rowRefLower = (row.ref_no || '').toLowerCase();
+      const rowDateObj = row.txn_date ? new Date(row.txn_date) : null;
+
+      let bestMatch = null;
+      let highestScore = 0;
+
+      for (const item of pool) {
+        const itemAmt = parseFloat(item.amount || 0);
+        if (isNaN(itemAmt)) continue;
+
+        let score = 0;
+        const diff = Math.abs(itemAmt - targetAmt);
+
+        // Exact amount match
+        if (diff < 0.01) {
+          score += 60;
+        } else if (diff <= 1.0) {
+          score += 30;
+        } else {
+          continue; // Amount doesn't match
+        }
+
+        // Party name match in statement narration
+        const partyLower = (item.party_name || '').toLowerCase();
+        if (partyLower && partyLower.length > 2 && rowDescLower.includes(partyLower)) {
+          score += 30;
+        }
+
+        // Reference number match
+        const refLower = (item.ref_no || '').toLowerCase();
+        if (refLower && refLower.length > 2 && (rowDescLower.includes(refLower) || rowRefLower.includes(refLower))) {
+          score += 30;
+        }
+
+        // Date proximity (within 7 days)
+        if (rowDateObj && item.txn_date) {
+          const itemDateObj = new Date(item.txn_date);
+          const daysDiff = Math.abs((rowDateObj - itemDateObj) / (1000 * 60 * 60 * 24));
+          if (daysDiff <= 3) score += 20;
+          else if (daysDiff <= 7) score += 10;
+        }
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestMatch = item;
+        }
+      }
+
+      if (bestMatch && highestScore >= 60) {
+        return {
+          id: bestMatch.id,
+          module: bestMatch.module,
+          party_name: bestMatch.party_name,
+          ref_no: bestMatch.ref_no,
+          txn_date: cleanDate(bestMatch.txn_date),
+          amount: parseFloat(bestMatch.amount),
+          score: highestScore
+        };
+      }
+      return null;
+    }
+
+    // Parse button handler
+    modal.querySelector("#parseReconcileBtn").addEventListener("click", async () => {
+      const fileInput = modal.querySelector("#reconcileFileInput");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        showToast("Please choose an SBI or Kotak bank statement file", "warning");
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const bankFormatChoice = modal.querySelector("#bankFormatSelect").value;
+      const parseBtn = modal.querySelector("#parseReconcileBtn");
+
+      parseBtn.disabled = true;
+      parseBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Parsing & Matching...`;
+
+      try {
+        // First ensure system transactions are loaded
+        await loadSystemTransactions();
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            let matrix = [];
+            const fileNameLower = file.name.toLowerCase();
+
+            if (fileNameLower.endsWith(".csv")) {
+              const text = new TextDecoder("utf-8").decode(e.target.result);
+              matrix = parseCsvToMatrix(text);
+            } else if (typeof window.XLSX !== "undefined") {
+              const data = new Uint8Array(e.target.result);
+              const workbook = window.XLSX.read(data, { type: "array", cellDates: true });
+              const firstSheetName = workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[firstSheetName];
+              matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+            } else {
+              throw new Error("Excel parsing engine (SheetJS) is initializing. Please wait 2 seconds and try again.");
+            }
+
+            if (!matrix || matrix.length === 0) {
+              throw new Error("Uploaded file is empty or could not be parsed.");
+            }
+
+            const headerInfo = scanAndDetectHeaders(matrix, bankFormatChoice);
+            if (!headerInfo) {
+              throw new Error(
+                "Could not detect valid SBI or Kotak headers in this statement. Please check the file headers:\n" +
+                "• SBI: Txn Date, Value Date, Description, Ref No./Cheque No., Branch Code, Debit, Credit, Balance\n" +
+                "• Kotak: #(or) S.No, Date, Description, Chq/Ref. No., Withdrawal (Dr.), Deposit (Cr.), Balance"
+              );
+            }
+
+            // Extract statement rows
+            parsedRows = [];
+            const detectedBank = headerInfo.bank;
+            const badge = modal.querySelector("#detectedFormatBadge");
+            badge.textContent = detectedBank === 'SBI' ? '🏛️ SBI Format' : '🏢 Kotak Format';
+            badge.style.display = "inline-block";
+
+            let totalDebit = 0;
+            let totalCredit = 0;
+
+            for (let r = headerInfo.rowIndex + 1; r < matrix.length; r++) {
+              const row = matrix[r];
+              if (!Array.isArray(row) || row.length === 0) continue;
+
+              const dateRaw = row[headerInfo.dateCol];
+              const descRaw = row[headerInfo.descCol];
+              const debitRaw = headerInfo.debitCol !== -1 ? row[headerInfo.debitCol] : '';
+              const creditRaw = headerInfo.creditCol !== -1 ? row[headerInfo.creditCol] : '';
+              const balRaw = headerInfo.balanceCol !== -1 ? row[headerInfo.balanceCol] : '';
+              const refRaw = headerInfo.refCol !== -1 ? row[headerInfo.refCol] : '';
+              const valDateRaw = headerInfo.valueDateCol !== -1 ? row[headerInfo.valueDateCol] : '';
+              const branchRaw = headerInfo.branchCol !== -1 ? row[headerInfo.branchCol] : '';
+
+              const debitAmt = cleanAmount(debitRaw);
+              const creditAmt = cleanAmount(creditRaw);
+              const balAmt = cleanAmount(balRaw);
+              const cleanTxnDate = cleanDate(dateRaw);
+              const cleanValDate = cleanDate(valDateRaw);
+              const cleanDesc = String(descRaw || '').trim();
+              const cleanRef = String(refRaw || '').trim();
+              const cleanBranch = String(branchRaw || '').trim();
+
+              // Skip rows that don't have valid dates or amounts (e.g. summary text / footers)
+              if (!cleanTxnDate && !cleanDesc) continue;
+              if (debitAmt === 0 && creditAmt === 0 && !cleanDesc) continue;
+              if (cleanDesc.toLowerCase().includes('total') || cleanDesc.toLowerCase().includes('end of statement')) continue;
+
+              totalDebit += debitAmt;
+              totalCredit += creditAmt;
+
+              const rowObj = {
+                uid: 'tx_' + r + '_' + Date.now(),
+                bank_format: detectedBank,
+                txn_date: cleanTxnDate || todayStr,
+                value_date: cleanValDate || cleanTxnDate || null,
+                description: cleanDesc,
+                ref_no: cleanRef || null,
+                branch_code: cleanBranch || null,
+                debit_amount: debitAmt,
+                credit_amount: creditAmt,
+                balance: balAmt,
+                txn_type: creditAmt > 0 ? 'inflow' : 'outflow',
+                status: 'pending', // 'pending', 'validated', 'held'
+                hold_reason: '',
+                user_description: '',
+                matched: null,
+                db_id: null
+              };
+
+              // Auto-suggest CA note for unmapped bank charges
+              const dl = cleanDesc.toLowerCase();
+              if (dl.includes('sms')) rowObj.user_description = 'Bank SMS Charges';
+              else if (dl.includes('chg') || dl.includes('charge')) rowObj.user_description = 'Bank Charges';
+              else if (dl.includes('int') || dl.includes('interest')) rowObj.user_description = 'Bank Interest Earned';
+              else if (dl.includes('bounce') || dl.includes('return')) rowObj.user_description = 'Cheque Bounce / Return Charges';
+              else if (dl.includes('amc') || dl.includes('annual')) rowObj.user_description = 'Bank Annual Maintenance Charges';
+
+              // Perform auto-match against ERP transactions
+              rowObj.matched = findSystemMatch(rowObj);
+
+              parsedRows.push(rowObj);
+            }
+
+            if (parsedRows.length === 0) {
+              throw new Error("No transaction rows found under the detected header row.");
+            }
+
+            // Save document file copy if checked
+            if (modal.querySelector("#archiveFileCopyCheck").checked) {
+              try {
+                const reader2 = new FileReader();
+                reader2.onload = async (evt) => {
+                  try {
+                    await fetch(`${API_BASE}/accountant?action=bank-statement-upload`, {
+                      method: "POST",
+                      headers: authHeaders(),
+                      body: JSON.stringify({
+                        bank_account_id: acc.id,
+                        statement_period_from: parsedRows[0]?.txn_date || todayStr,
+                        statement_period_to: parsedRows[parsedRows.length - 1]?.txn_date || todayStr,
+                        file_name: file.name,
+                        file_url: evt.target.result,
+                        notes: `Parsed ${parsedRows.length} transactions via ${detectedBank} format`
+                      })
+                    });
+                  } catch (e) {}
+                };
+                reader2.readAsDataURL(file);
+              } catch (e) {}
+            }
+
+            // Update Metrics
+            modal.querySelector("#statTotalCount").textContent = parsedRows.length;
+            modal.querySelector("#statTotalDebit").textContent = formatCurrency(totalDebit);
+            modal.querySelector("#statTotalCredit").textContent = formatCurrency(totalCredit);
+            const matchedCount = parsedRows.filter(r => r.matched).length;
+            modal.querySelector("#statMatchedCount").textContent = matchedCount;
+            modal.querySelector("#statUnmappedCount").textContent = parsedRows.length - matchedCount;
+            modal.querySelector("#parseSummaryBar").style.display = "grid";
+            modal.querySelector("#clearParsedBtn").style.display = "inline-block";
+
+            renderReconciliationTable();
+            showToast(`Parsed ${parsedRows.length} transactions (${matchedCount} auto-matched with ERP)!`, "success");
+          } catch (err) {
+            alert(err.message);
+            showToast(err.message, "error");
+          } finally {
+            parseBtn.disabled = false;
+            parseBtn.innerHTML = `⚡ Parse & Auto-Match`;
+          }
+        };
+
+        reader.readAsArrayBuffer(file);
+      } catch (e) {
+        showToast("Error reading file: " + e.message, "error");
+        parseBtn.disabled = false;
+        parseBtn.innerHTML = `⚡ Parse & Auto-Match`;
+      }
+    });
+
+    // Clear parsed statement
+    modal.querySelector("#clearParsedBtn").addEventListener("click", () => {
+      parsedRows = [];
+      modal.querySelector("#reconcileFileInput").value = "";
+      modal.querySelector("#parseSummaryBar").style.display = "none";
+      modal.querySelector("#clearParsedBtn").style.display = "none";
+      modal.querySelector("#detectedFormatBadge").style.display = "none";
+      modal.querySelector("#reconcileTableBody").innerHTML = `
+        <tr>
+          <td colspan="9" style="text-align:center;padding:50px 20px;color:var(--text3);">
+            <div style="font-size:36px;margin-bottom:10px;">📄</div>
+            <div style="font-weight:600;font-size:13px;color:var(--text2);">Statement Cleared</div>
+            <div style="font-size:11.5px;margin-top:4px;">Upload another statement to begin reconciliation.</div>
+          </td>
+        </tr>
+      `;
+    });
+
+    // Render Reconciliation Table Rows
+    function renderReconciliationTable() {
+      const tbody = modal.querySelector("#reconcileTableBody");
+      if (parsedRows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3);">No transactions parsed</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = parsedRows.map((r, idx) => {
+        const isCredit = r.credit_amount > 0;
+        const matched = r.matched;
+        const isHeld = r.status === 'held';
+        const isValidated = r.status === 'validated';
+
+        // Statement Amount Badges
+        const debitHtml = r.debit_amount > 0
+          ? `<span style="color:var(--danger);font-weight:700;">- ${formatCurrency(r.debit_amount)}</span>`
+          : '<span style="color:var(--text3);">—</span>';
+
+        const creditHtml = r.credit_amount > 0
+          ? `<span style="color:var(--success);font-weight:700;">+ ${formatCurrency(r.credit_amount)}</span>`
+          : '<span style="color:var(--text3);">—</span>';
+
+        // System Mapping Column
+        let systemHtml = '';
+        if (matched) {
+          systemHtml = `
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="badge" style="background:rgba(34,197,94,0.15);color:var(--success);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">
+                  ✅ ${esc(matched.module.toUpperCase())} MATCH
+                </span>
+                <strong style="color:var(--text1);font-size:12px;">${esc(matched.party_name)}</strong>
+              </div>
+              <div style="font-size:11px;color:var(--text2);">
+                Ref: <strong style="color:var(--text1);">${esc(matched.ref_no)}</strong> • Date: ${matched.txn_date || '—'}
+              </div>
+              <div style="font-size:10.5px;color:var(--text3);">
+                System Amount: <strong style="color:${isCredit ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(matched.amount)}</strong>
+              </div>
+            </div>
+          `;
+        } else {
+          systemHtml = `
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warning);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">
+                  ⚠️ UNMAPPED / CHARGE
+                </span>
+                <span style="font-size:10.5px;color:var(--text3);">No ERP entry</span>
+              </div>
+              <!-- Quick Description Chips -->
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank Charges" style="font-size:9.5px;padding:1px 5px;">+ Charges</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank SMS Charges" style="font-size:9.5px;padding:1px 5px;">+ SMS</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank Interest" style="font-size:9.5px;padding:1px 5px;">+ Interest</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Cheque Bounce Fee" style="font-size:9.5px;padding:1px 5px;">+ Bounce</button>
+              </div>
+            </div>
+          `;
+        }
+
+        // Action Column Buttons & Status
+        let actionHtml = '';
+        if (isValidated) {
+          actionHtml = `
+            <div style="text-align:center;">
+              <span class="badge" style="background:var(--success);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:12px;display:inline-block;">
+                ✅ Validated
+              </span>
+            </div>
+          `;
+        } else if (isHeld) {
+          actionHtml = `
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+              <span class="badge" style="background:var(--warning);color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:12px;">
+                ⏳ On Hold
+              </span>
+              <button type="button" class="btn btn-xs btn-success validate-row-btn" data-uid="${r.uid}" style="font-size:10.5px;padding:3px 8px;width:100%;">
+                Validate Now
+              </button>
+            </div>
+          `;
+        } else {
+          actionHtml = `
+            <div style="display:flex;gap:4px;justify-content:center;">
+              <button type="button" class="btn btn-xs btn-success validate-row-btn" data-uid="${r.uid}" style="font-size:11px;padding:4px 9px;" title="Validate and store for CA reporting">
+                Validate
+              </button>
+              <button type="button" class="btn btn-xs btn-warning hold-row-btn" data-uid="${r.uid}" style="font-size:11px;padding:4px 8px;" title="Put on hold with reason">
+                Hold
+              </button>
+            </div>
+          `;
+        }
+
+        return `
+          <tr id="row_${r.uid}" style="${isValidated ? 'background:rgba(34,197,94,0.06);' : isHeld ? 'background:rgba(245,158,11,0.08);' : ''}">
+            <td style="text-align:center;color:var(--text3);font-size:11px;">${idx + 1}</td>
+            <td>
+              <div style="font-weight:700;color:var(--text1);display:flex;align-items:center;gap:6px;">
+                <span>${r.txn_date}</span>
+                ${r.value_date && r.value_date !== r.txn_date ? `<span style="font-size:10px;color:var(--text3);font-weight:normal;">(Val: ${r.value_date})</span>` : ''}
+              </div>
+              <div style="font-size:11px;color:var(--text2);margin-top:2px;max-width:280px;word-break:break-word;">
+                ${esc(r.description)}
+              </div>
+              ${r.branch_code ? `<div style="font-size:10px;color:var(--text3);">Branch: ${esc(r.branch_code)}</div>` : ''}
+            </td>
+            <td>
+              <span style="font-size:11px;color:var(--text1);font-weight:600;">${esc(r.ref_no || '—')}</span>
+            </td>
+            <td style="text-align:right;">${debitHtml}</td>
+            <td style="text-align:right;">${creditHtml}</td>
+            <td style="text-align:right;color:var(--text2);font-weight:600;">${formatCurrency(r.balance || 0)}</td>
+            <td style="border-left:2px solid var(--border);">${systemHtml}</td>
+            <td>
+              <input type="text" class="form-control form-control-sm tx-desc-input" data-uid="${r.uid}"
+                     placeholder="CA Reference / Notes..." value="${esc(r.user_description || '')}"
+                     style="font-size:11px;padding:4px 8px;width:100%;box-sizing:border-box;">
+
+              <!-- Inline Hold Reason Input Box (hidden by default unless user clicks Hold) -->
+              <div class="inline-hold-box" id="hold_box_${r.uid}" style="display:${isHeld ? 'block' : 'none'};margin-top:6px;background:rgba(245,158,11,0.12);padding:6px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);">
+                <div style="font-size:10px;font-weight:700;color:var(--warning);margin-bottom:3px;">
+                  ⚠️ Hold Reason (Required) *
+                </div>
+                <input type="text" class="form-control form-control-sm tx-hold-reason-input" data-uid="${r.uid}"
+                       placeholder="Enter why this transaction is held..." value="${esc(r.hold_reason || '')}"
+                       style="font-size:11px;padding:4px 6px;margin-bottom:4px;border-color:var(--warning);">
+                <div style="display:flex;justify-content:flex-end;gap:4px;">
+                  <button type="button" class="btn btn-xs btn-secondary cancel-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 6px;">Cancel</button>
+                  <button type="button" class="btn btn-xs btn-warning confirm-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 8px;font-weight:700;">Save Hold</button>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center;">${actionHtml}</td>
+          </tr>
+        `;
+      }).join("");
+
+      // Attach description input sync
+      tbody.querySelectorAll(".tx-desc-input").forEach(input => {
+        input.addEventListener("input", (e) => {
+          const row = parsedRows.find(r => r.uid === e.target.dataset.uid);
+          if (row) row.user_description = e.target.value;
+        });
+      });
+
+      // Quick Chips for unmapped
+      tbody.querySelectorAll(".quick-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const uid = btn.dataset.uid;
+          const text = btn.dataset.text;
+          const row = parsedRows.find(r => r.uid === uid);
+          if (row) {
+            row.user_description = text;
+            const input = tbody.querySelector(`.tx-desc-input[data-uid="${uid}"]`);
+            if (input) input.value = text;
+          }
+        });
+      });
+
+      // Hold Button Click: Reveals hold box
+      tbody.querySelectorAll(".hold-row-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const uid = btn.dataset.uid;
+          const holdBox = tbody.querySelector(`#hold_box_${uid}`);
+          if (holdBox) {
+            holdBox.style.display = "block";
+            const input = holdBox.querySelector(".tx-hold-reason-input");
+            if (input) input.focus();
+          }
+        });
+      });
+
+      // Cancel Hold inline
+      tbody.querySelectorAll(".cancel-hold-inline-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const uid = btn.dataset.uid;
+          const holdBox = tbody.querySelector(`#hold_box_${uid}`);
+          if (holdBox) holdBox.style.display = "none";
+        });
+      });
+
+      // Confirm Hold inline
+      tbody.querySelectorAll(".confirm-hold-inline-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const uid = btn.dataset.uid;
+          const row = parsedRows.find(r => r.uid === uid);
+          if (!row) return;
+
+          const holdInput = tbody.querySelector(`.tx-hold-reason-input[data-uid="${uid}"]`);
+          const reason = (holdInput ? holdInput.value : '').trim();
+
+          if (!reason) {
+            alert("Hold reason is required. Please enter why this transaction is held.");
+            showToast("Hold reason is required to hold a transaction.", "warning");
+            if (holdInput) holdInput.focus();
+            return;
+          }
+
+          row.hold_reason = reason;
+          const descInput = tbody.querySelector(`.tx-desc-input[data-uid="${uid}"]`);
+          if (descInput) row.user_description = descInput.value.trim();
+
+          // Save to server
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+          try {
+            const payload = {
+              id: row.db_id || null,
+              bank_account_id: acc.id,
+              bank_format: row.bank_format,
+              txn_date: row.txn_date,
+              value_date: row.value_date,
+              description: row.description,
+              ref_no: row.ref_no,
+              branch_code: row.branch_code,
+              txn_type: row.txn_type,
+              debit_amount: row.debit_amount,
+              credit_amount: row.credit_amount,
+              balance: row.balance,
+              system_matched_id: row.matched?.id || null,
+              system_matched_module: row.matched?.module || null,
+              system_matched_party: row.matched?.party_name || null,
+              system_matched_amount: row.matched?.amount || null,
+              system_matched_date: row.matched?.txn_date || null,
+              system_matched_ref: row.matched?.ref_no || null,
+              hold_reason: row.hold_reason,
+              user_description: row.user_description
+            };
+
+            const res = await fetch(`${API_BASE}/accountant?action=statement-transaction-hold`, {
+              method: "POST",
+              headers: authHeaders(),
+              body: JSON.stringify(payload)
+            });
+            const d = await res.json();
+            if (d.success) {
+              row.status = 'held';
+              row.db_id = d.transaction.id;
+              showToast("Transaction marked as On Hold and saved for CA audit.", "warning");
+              renderReconciliationTable();
+            } else {
+              alert(d.error || "Failed to hold transaction");
+              showToast(d.error || "Failed to hold transaction", "error");
+            }
+          } catch (err) {
+            showToast("Hold error: " + err.message, "error");
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = `Save Hold`;
+          }
+        });
+      });
+
+      // Validate Button Click
+      tbody.querySelectorAll(".validate-row-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const uid = btn.dataset.uid;
+          const row = parsedRows.find(r => r.uid === uid);
+          if (!row) return;
+
+          const descInput = tbody.querySelector(`.tx-desc-input[data-uid="${uid}"]`);
+          const userDesc = (descInput ? descInput.value : row.user_description || '').trim();
+
+          // Enforce description if unmapped or was previously on hold
+          if (!row.matched && !userDesc) {
+            // For unmapped transactions (e.g. bank charges), prompt to enter description
+            const entered = prompt("Enter description for this transaction for CA references (e.g. Bank Charges, Interest, etc.):", row.user_description || "Bank Charges");
+            if (entered === null) return;
+            if (!entered.trim()) {
+              alert("Description cannot be empty for unmapped bank transactions.");
+              showToast("Description cannot be empty for unmapped bank transactions.", "warning");
+              return;
+            }
+            row.user_description = entered.trim();
+            if (descInput) descInput.value = row.user_description;
+          } else {
+            row.user_description = userDesc;
+          }
+
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Validating...`;
+
+          try {
+            const payload = {
+              id: row.db_id || null,
+              bank_account_id: acc.id,
+              bank_format: row.bank_format,
+              txn_date: row.txn_date,
+              value_date: row.value_date,
+              description: row.description,
+              ref_no: row.ref_no,
+              branch_code: row.branch_code,
+              txn_type: row.txn_type,
+              debit_amount: row.debit_amount,
+              credit_amount: row.credit_amount,
+              balance: row.balance,
+              system_matched_id: row.matched?.id || null,
+              system_matched_module: row.matched?.module || (row.matched ? null : 'bank_charges'),
+              system_matched_party: row.matched?.party_name || (row.matched ? null : (row.user_description || 'Bank')),
+              system_matched_amount: row.matched?.amount || (row.debit_amount > 0 ? row.debit_amount : row.credit_amount),
+              system_matched_date: row.matched?.txn_date || row.txn_date,
+              system_matched_ref: row.matched?.ref_no || row.ref_no,
+              user_description: row.user_description
+            };
+
+            const res = await fetch(`${API_BASE}/accountant?action=statement-transaction-validate`, {
+              method: "POST",
+              headers: authHeaders(),
+              body: JSON.stringify(payload)
+            });
+            const d = await res.json();
+            if (d.success) {
+              row.status = 'validated';
+              row.db_id = d.transaction.id;
+              showToast("Transaction validated and stored for CA reference!", "success");
+              renderReconciliationTable();
+            } else {
+              alert(d.error || "Failed to validate transaction");
+              showToast(d.error || "Failed to validate transaction", "error");
+            }
+          } catch (err) {
+            showToast("Validation error: " + err.message, "error");
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    // Batch Validate All Matched Button
+    modal.querySelector("#batchValidateMatchedBtn").addEventListener("click", async () => {
+      const matchedPending = parsedRows.filter(r => r.matched && r.status !== 'validated');
+      if (matchedPending.length === 0) {
+        showToast("No unvalidated matched transactions to validate.", "info");
+        return;
+      }
+
+      if (!confirm(`Validate all ${matchedPending.length} automatically matched transactions and store them in DB for CA audit?`)) return;
+
+      const btn = modal.querySelector("#batchValidateMatchedBtn");
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Validating (${matchedPending.length})...`;
+
+      const items = matchedPending.map(r => ({
+        id: r.db_id || null,
+        bank_account_id: acc.id,
+        bank_format: r.bank_format,
+        txn_date: r.txn_date,
+        value_date: r.value_date,
+        description: r.description,
+        ref_no: r.ref_no,
+        branch_code: r.branch_code,
+        txn_type: r.txn_type,
+        debit_amount: r.debit_amount,
+        credit_amount: r.credit_amount,
+        balance: r.balance,
+        system_matched_id: r.matched?.id || null,
+        system_matched_module: r.matched?.module || null,
+        system_matched_party: r.matched?.party_name || null,
+        system_matched_amount: r.matched?.amount || null,
+        system_matched_date: r.matched?.txn_date || null,
+        system_matched_ref: r.matched?.ref_no || null,
+        user_description: r.user_description || `Auto-reconciled with ${r.matched?.party_name}`
+      }));
+
+      try {
+        const res = await fetch(`${API_BASE}/accountant?action=statement-batch-validate`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ items })
+        });
+        const d = await res.json();
+        if (d.success) {
+          matchedPending.forEach(r => r.status = 'validated');
+          showToast(`Successfully validated ${d.count} transactions!`, "success");
+          renderReconciliationTable();
+        } else {
+          showToast(d.error || "Batch validate failed", "error");
+        }
+      } catch (err) {
+        showToast("Batch validation error: " + err.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `✅ Validate All Matched`;
+      }
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // RECONCILED & HELD TRANSACTIONS (TAB 2: CA REFERENCE)
+    // ═══════════════════════════════════════════════════════════
+    let auditList = [];
+
+    async function loadAuditTransactions(isAllTime = false) {
+      const tbody = modal.querySelector("#auditTableBody");
+      const fromDate = modal.querySelector("#auditFromDate").value;
+      const toDate = modal.querySelector("#auditToDate").value;
+      const status = modal.querySelector("#auditStatusFilter").value;
+      const notice = modal.querySelector("#auditDateNotice");
+
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3);"><div class="spinner"></div> Loading transactions...</td></tr>`;
+
+      try {
+        let url = `${API_BASE}/accountant?action=statement-transactions-list&bank_account_id=${acc.id}&status=${status}`;
+        if (isAllTime) {
+          url += `&all_time=true`;
+          notice.innerHTML = `Showing <strong>All-Time</strong> transactions.`;
+        } else if (fromDate && toDate) {
+          url += `&from_date=${fromDate}&to_date=${toDate}`;
+          notice.innerHTML = `Showing transactions from <strong>${fromDate}</strong> to <strong>${toDate}</strong>.`;
+        } else {
+          notice.innerHTML = `Showing transactions for <strong>Today (${todayStr})</strong>. Adjust dates above to filter.`;
+        }
+
+        const res = await fetch(url, { headers: authHeaders() });
+        const data = await res.json();
+        if (data.success) {
+          auditList = data.transactions || [];
+          renderAuditTable();
+        } else {
+          tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--danger);">${esc(data.error || "Failed to load transactions")}</td></tr>`;
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--danger);">Error: ${esc(err.message)}</td></tr>`;
+      }
+    }
+
+    function renderAuditTable() {
+      const tbody = modal.querySelector("#auditTableBody");
+      if (auditList.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="11" style="text-align:center;padding:45px 20px;color:var(--text3);">
+              <div style="font-size:32px;margin-bottom:8px;">📋</div>
+              <div style="font-weight:600;font-size:13px;color:var(--text2);">No Transactions Found for Selected Range</div>
+              <div style="font-size:11px;margin-top:4px;">No validated or held transactions recorded for this period. Try selecting "All Time" or upload and validate statements.</div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = auditList.map((t, idx) => {
+        const isHeld = t.status === 'held';
+        const isValidated = t.status === 'validated';
+        const debitAmt = parseFloat(t.debit_amount || 0);
+        const creditAmt = parseFloat(t.credit_amount || 0);
+
+        const statusBadge = isValidated
+          ? `<span class="badge" style="background:var(--success);color:#fff;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:10px;">✅ Validated</span>`
+          : `<span class="badge" style="background:var(--warning);color:#fff;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:10px;">⏳ On Hold</span>`;
+
+        let partyModule = '—';
+        if (t.system_matched_party || t.system_matched_module) {
+          partyModule = `
+            <div>
+              <strong style="color:var(--text1);font-size:11.5px;">${esc(t.system_matched_party || 'Party')}</strong>
+              <div style="font-size:10.5px;color:var(--text2);">${esc(t.system_matched_module ? t.system_matched_module.toUpperCase() : '')} ${t.system_matched_ref ? '• ' + esc(t.system_matched_ref) : ''}</div>
+              ${t.system_matched_date ? `<div style="font-size:10px;color:var(--text3);">Sys Date: ${t.system_matched_date.split('T')[0]}</div>` : ''}
+            </div>
+          `;
+        }
+
+        // Action column: For held items, enforce description before validating!
+        let actionCol = '';
+        if (isHeld) {
+          actionCol = `
+            <div style="display:flex;flex-direction:column;gap:3px;align-items:center;">
+              <button type="button" class="btn btn-xs btn-success audit-validate-held-btn" data-id="${t.id}" style="font-size:11px;padding:3px 8px;width:100%;">
+                ✅ Validate
+              </button>
+              <button type="button" class="btn btn-xs btn-outline-danger audit-delete-tx-btn" data-id="${t.id}" style="font-size:10px;padding:2px 6px;" title="Delete Record">
+                Delete
+              </button>
+            </div>
+          `;
+        } else {
+          actionCol = `
+            <div style="display:flex;justify-content:center;gap:4px;">
+              <button type="button" class="btn btn-xs btn-outline-danger audit-delete-tx-btn" data-id="${t.id}" style="font-size:10px;padding:2px 6px;" title="Delete Record">
+                🗑️
+              </button>
+            </div>
+          `;
+        }
+
+        return `
+          <tr id="audit_row_${t.id}" style="${isHeld ? 'background:rgba(245,158,11,0.06);' : ''}">
+            <td style="text-align:center;color:var(--text3);">${idx + 1}</td>
+            <td style="font-weight:600;color:var(--text1);">${t.txn_date ? t.txn_date.split('T')[0] : '—'}</td>
+            <td>
+              <div style="font-size:11.5px;color:var(--text1);font-weight:600;">${esc(t.description || '—')}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:1px;">Format: ${esc(t.bank_format || 'Bank')}</div>
+            </td>
+            <td><strong style="color:var(--text2);">${esc(t.ref_no || '—')}</strong></td>
+            <td style="text-align:right;">
+              ${debitAmt > 0 ? `<strong style="color:var(--danger);">- ${formatCurrency(debitAmt)}</strong>` : '<span style="color:var(--text3);">—</span>'}
+            </td>
+            <td style="text-align:right;">
+              ${creditAmt > 0 ? `<strong style="color:var(--success);">+ ${formatCurrency(creditAmt)}</strong>` : '<span style="color:var(--text3);">—</span>'}
+            </td>
+            <td>${partyModule}</td>
+            <td style="text-align:center;">${statusBadge}</td>
+            <td>
+              ${isHeld ? `
+                <div style="color:var(--warning);font-size:11px;font-weight:600;background:rgba(245,158,11,0.1);padding:4px 6px;border-radius:4px;border-left:2px solid var(--warning);">
+                  ${esc(t.hold_reason || 'Reason not specified')}
+                </div>
+              ` : '<span style="color:var(--text3);">—</span>'}
+            </td>
+            <td>
+              ${isHeld ? `
+                <div>
+                  <input type="text" class="form-control form-control-sm audit-held-desc-input" data-id="${t.id}"
+                         placeholder="Enter description to validate *" value="${esc(t.user_description || '')}"
+                         style="font-size:11px;padding:4px 6px;min-width:160px;border-color:var(--warning);">
+                  <div style="font-size:9.5px;color:var(--danger);margin-top:2px;font-weight:600;">* Description required to validate</div>
+                </div>
+              ` : `
+                <div style="font-size:11px;color:var(--text1);">${esc(t.user_description || '—')}</div>
+                ${t.validated_by_name ? `<div style="font-size:9.5px;color:var(--text3);">By: ${esc(t.validated_by_name)}</div>` : ''}
+              `}
+            </td>
+            <td style="text-align:center;">${actionCol}</td>
+          </tr>
+        `;
+      }).join("");
+
+      // Validate Held Transaction with Mandatory Description Enforcement
+      tbody.querySelectorAll(".audit-validate-held-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          const rowEl = tbody.querySelector(`#audit_row_${id}`);
+          const descInput = rowEl ? rowEl.querySelector(".audit-held-desc-input") : null;
+          const descValue = (descInput ? descInput.value : '').trim();
+
+          // USER MANDATORY REQUIREMENT:
+          // "for hold transactions can be validated after entering the proper description and if the description is not added or empty they cannot be validated in this page"
+          if (!descValue) {
+            alert("Proper description is required to validate a held transaction. Please enter why it is being cleared/validated.");
+            showToast("Proper description is required to validate a held transaction. Description cannot be empty.", "warning");
+            if (descInput) {
+              descInput.focus();
+              descInput.style.borderColor = "var(--danger)";
+              descInput.style.boxShadow = "0 0 0 2px rgba(239,68,68,0.2)";
+            }
+            return;
+          }
+
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+
+          try {
+            const res = await fetch(`${API_BASE}/accountant?action=statement-transaction-validate`, {
+              method: "POST",
+              headers: authHeaders(),
+              body: JSON.stringify({
+                id: parseInt(id),
+                user_description: descValue
+              })
+            });
+            const d = await res.json();
+            if (d.success) {
+              showToast("Held transaction validated successfully with proper description!", "success");
+              loadAuditTransactions();
+            } else {
+              alert(d.error || "Validation failed");
+              showToast(d.error || "Validation failed", "error");
+            }
+          } catch (err) {
+            showToast("Validation error: " + err.message, "error");
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = `✅ Validate`;
+          }
+        });
+      });
+
+      // Delete record from audit view
+      tbody.querySelectorAll(".audit-delete-tx-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Are you sure you want to delete this statement transaction record?")) return;
+          try {
+            const res = await fetch(`${API_BASE}/accountant?action=statement-transaction-delete&id=${btn.dataset.id}`, {
+              method: "POST",
+              headers: authHeaders()
+            });
+            const d = await res.json();
+            if (d.success) {
+              showToast("Transaction record deleted", "success");
+              loadAuditTransactions();
+            } else {
+              showToast(d.error || "Delete failed", "error");
+            }
+          } catch (e) {
+            showToast("Delete error: " + e.message, "error");
+          }
+        });
+      });
+    }
+
+    // Apply Filter Button
+    modal.querySelector("#auditApplyFilterBtn").addEventListener("click", () => {
+      loadAuditTransactions(false);
+    });
+
+    // Quick Date Buttons
+    modal.querySelectorAll(".audit-quick-date").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const range = btn.dataset.range;
+        const fromInput = modal.querySelector("#auditFromDate");
+        const toInput = modal.querySelector("#auditToDate");
+
+        if (range === "today") {
+          fromInput.value = todayStr;
+          toInput.value = todayStr;
+          loadAuditTransactions(false);
+        } else if (range === "yesterday") {
+          const y = new Date();
+          y.setDate(y.getDate() - 1);
+          const yStr = y.toISOString().split('T')[0];
+          fromInput.value = yStr;
+          toInput.value = yStr;
+          loadAuditTransactions(false);
+        } else if (range === "month") {
+          const now = new Date();
+          const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+          fromInput.value = firstDay;
+          toInput.value = todayStr;
+          loadAuditTransactions(false);
+        } else if (range === "all") {
+          fromInput.value = "";
+          toInput.value = "";
+          loadAuditTransactions(true);
+        }
+      });
+    });
+
+    // Export for CA (CSV)
+    modal.querySelector("#exportAuditCsvBtn").addEventListener("click", () => {
+      if (auditList.length === 0) {
+        showToast("No records available to export.", "warning");
+        return;
+      }
+
+      const headers = [
+        "Txn Date", "Format", "Bank Narration", "Ref / Cheque No",
+        "Debit (Outflow)", "Credit (Inflow)", "Balance",
+        "Matched Party", "Matched Module", "System Ref", "System Date",
+        "Status", "Hold Reason", "CA Audit Description", "Validated By"
+      ];
+
+      const csvRows = [headers.join(",")];
+
+      auditList.forEach(t => {
+        const row = [
+          t.txn_date ? t.txn_date.split('T')[0] : '',
+          `"${(t.bank_format || 'Bank').replace(/"/g, '""')}"`,
+          `"${(t.description || '').replace(/"/g, '""')}"`,
+          `"${(t.ref_no || '').replace(/"/g, '""')}"`,
+          parseFloat(t.debit_amount || 0).toFixed(2),
+          parseFloat(t.credit_amount || 0).toFixed(2),
+          parseFloat(t.balance || 0).toFixed(2),
+          `"${(t.system_matched_party || '').replace(/"/g, '""')}"`,
+          `"${(t.system_matched_module || '').replace(/"/g, '""')}"`,
+          `"${(t.system_matched_ref || '').replace(/"/g, '""')}"`,
+          t.system_matched_date ? t.system_matched_date.split('T')[0] : '',
+          t.status || 'pending',
+          `"${(t.hold_reason || '').replace(/"/g, '""')}"`,
+          `"${(t.user_description || '').replace(/"/g, '""')}"`,
+          `"${(t.validated_by_name || '').replace(/"/g, '""')}"`
+        ];
+        csvRows.push(row.join(","));
+      });
+
+      const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `CA_Bank_Reconciliation_${acc.bank_name}_${todayStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("CA Reconciliation CSV exported successfully!", "success");
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // STATEMENT DOCUMENTS ARCHIVE (TAB 3)
+    // ═══════════════════════════════════════════════════════════
+    async function loadStatementsArchive() {
       const tbody = modal.querySelector("#bankStmtsTableBody");
       try {
         const res = await fetch(`${API_BASE}/accountant?action=bank-statements-list&bank_account_id=${acc.id}`, { headers: authHeaders() });
@@ -1439,13 +2856,11 @@ async function loadSettingsSubTab() {
                 const d = await r.json();
                 if (d.success) {
                   showToast(d.message, "success");
-                  loadStatements();
+                  loadStatementsArchive();
                 } else {
-                  showModalError(modal, d.error || "Delete failed");
                   showToast(d.error || "Delete failed", "error");
                 }
               } catch (e) {
-                showModalError(modal, e.message);
                 showToast(e.message, "error");
               }
             });
@@ -1456,26 +2871,21 @@ async function loadSettingsSubTab() {
       }
     }
 
-    loadStatements();
-
-    modal.querySelector("#stmtUploadForm").addEventListener("submit", async (e) => {
+    modal.querySelector("#stmtArchiveUploadForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      hideModalError(modal);
-      const fileInput = modal.querySelector("#stmtFileInput");
+      const fileInput = modal.querySelector("#archiveFileInput");
       if (!fileInput.files || fileInput.files.length === 0) {
-        showModalError(modal, "Please choose a statement file to upload");
         showToast("Please choose a statement file to upload", "warning");
         return;
       }
 
       const file = fileInput.files[0];
       if (file.size > 2.5 * 1024 * 1024) {
-        showModalError(modal, "File size exceeds 2.5 MB limit. Please choose a smaller or compressed file.");
         showToast("File size exceeds 2.5 MB limit. Please choose a smaller or compressed file.", "error");
         return;
       }
 
-      const submitBtn = modal.querySelector("#uploadStmtSubmitBtn");
+      const submitBtn = modal.querySelector("#archiveUploadSubmitBtn");
       submitBtn.disabled = true;
       submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Uploading...`;
 
@@ -1484,11 +2894,11 @@ async function loadSettingsSubTab() {
         const fileUrl = evt.target.result;
         const payload = {
           bank_account_id: acc.id,
-          statement_period_from: modal.querySelector("#stmtFromDate").value || null,
-          statement_period_to: modal.querySelector("#stmtToDate").value || null,
+          statement_period_from: modal.querySelector("#archiveFromDate").value || null,
+          statement_period_to: modal.querySelector("#archiveToDate").value || null,
           file_name: file.name,
           file_url: fileUrl,
-          notes: modal.querySelector("#stmtNotesInput").value.trim() || null
+          notes: modal.querySelector("#archiveNotesInput").value.trim() || null
         };
 
         try {
@@ -1499,20 +2909,17 @@ async function loadSettingsSubTab() {
           });
           const d = await res.json();
           if (d.success) {
-            hideModalError(modal);
             showToast(d.message, "success");
-            modal.querySelector("#stmtUploadForm").reset();
-            loadStatements();
+            modal.querySelector("#stmtArchiveUploadForm").reset();
+            loadStatementsArchive();
           } else {
-            showModalError(modal, d.error || "Upload failed");
             showToast(d.error || "Upload failed", "error");
           }
         } catch (err) {
-          showModalError(modal, "Upload error: " + err.message);
           showToast("Upload error: " + err.message, "error");
         } finally {
           submitBtn.disabled = false;
-          submitBtn.innerHTML = `📤 Upload Statement`;
+          submitBtn.innerHTML = `📤 Upload Document`;
         }
       };
       reader.readAsDataURL(file);

@@ -1442,23 +1442,36 @@ async function loadSettingsSubTab() {
             </div>
 
             <div class="table-container" style="flex:1;overflow-y:auto;overflow-x:auto;">
-              <table class="data-table" id="reconcileTable" style="font-size:11.5px;width:100%;border-collapse:collapse;">
+              <table class="data-table" id="reconcileTable" style="font-size:11.5px;width:100%;min-width:1380px;border-collapse:collapse;table-layout:fixed;">
+                <colgroup>
+                  <col style="width: 40px;">
+                  <col style="width: 250px;">
+                  <col style="width: 170px;">
+                  <col style="width: 110px;">
+                  <col style="width: 110px;">
+                  <col style="width: 105px;">
+                  <col style="width: 170px;">
+                  <col style="width: 140px;">
+                  <col style="width: 220px;">
+                  <col style="width: 135px;">
+                </colgroup>
                 <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
                   <tr>
-                    <th style="width:40px;text-align:center;">#</th>
-                    <th style="min-width:180px;">Statement Details (Date & Description)</th>
-                    <th style="width:110px;">Ref / Chq No</th>
-                    <th style="width:100px;text-align:right;">Debit (Outflow)</th>
-                    <th style="width:100px;text-align:right;">Credit (Inflow)</th>
-                    <th style="width:95px;text-align:right;">Balance</th>
-                    <th style="min-width:220px;border-left:2px solid var(--border);">ERP System Mapping (Party & Ref)</th>
-                    <th style="min-width:190px;">CA Description / Audit Notes</th>
-                    <th style="width:145px;text-align:center;">Action</th>
+                    <th style="width:40px;text-align:center;padding:10px 8px;white-space:nowrap;">S.No.</th>
+                    <th style="width:250px;padding:10px 8px;white-space:nowrap;">Statement Details (Date & Description)</th>
+                    <th style="width:170px;padding:10px 8px;white-space:nowrap;">Statement Ref / Chq No</th>
+                    <th style="width:110px;text-align:right;padding:10px 8px;white-space:nowrap;">Debit (Outflow)</th>
+                    <th style="width:110px;text-align:right;padding:10px 8px;white-space:nowrap;">Credit (Inflow)</th>
+                    <th style="width:105px;text-align:right;padding:10px 8px;white-space:nowrap;">Balance</th>
+                    <th style="width:170px;padding:10px 8px;border-left:2px solid var(--border);white-space:nowrap;background:rgba(99,102,241,0.04);">ERP System Mapping (Party)</th>
+                    <th style="width:140px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Ref / Chq No</th>
+                    <th style="width:220px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Date & Description</th>
+                    <th style="width:135px;text-align:center;padding:10px 8px;white-space:nowrap;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="reconcileTableBody">
                   <tr>
-                    <td colspan="9" style="text-align:center;padding:50px 20px;color:var(--text3);">
+                    <td colspan="10" style="text-align:center;padding:50px 20px;color:var(--text3);">
                       <div style="font-size:36px;margin-bottom:10px;">📄</div>
                       <div style="font-weight:600;font-size:13px;color:var(--text2);">No Statement Loaded Yet</div>
                       <div style="font-size:11.5px;margin-top:4px;">Please choose an SBI or Kotak bank statement (Excel, CSV or PDF) above and click "Parse & Auto-Match"</div>
@@ -1520,25 +1533,40 @@ async function loadSettingsSubTab() {
           <!-- Audit Table Container -->
           <div style="flex:1;min-height:300px;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:10px;background:var(--bg-primary);overflow:hidden;">
             <div class="table-container" style="flex:1;overflow-y:auto;overflow-x:auto;">
-              <table class="data-table" id="auditTable" style="font-size:11.5px;width:100%;border-collapse:collapse;">
+              <table class="data-table" id="auditTable" style="font-size:11.5px;width:100%;min-width:1450px;border-collapse:collapse;table-layout:fixed;">
+                <colgroup>
+                  <col style="width: 40px;">
+                  <col style="width: 85px;">
+                  <col style="width: 230px;">
+                  <col style="width: 140px;">
+                  <col style="width: 100px;">
+                  <col style="width: 100px;">
+                  <col style="width: 160px;">
+                  <col style="width: 130px;">
+                  <col style="width: 190px;">
+                  <col style="width: 85px;">
+                  <col style="width: 140px;">
+                  <col style="width: 110px;">
+                </colgroup>
                 <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
                   <tr>
-                    <th style="width:40px;text-align:center;">#</th>
-                    <th style="width:90px;">Txn Date</th>
-                    <th style="min-width:180px;">Bank Narration / Description</th>
-                    <th style="width:110px;">Ref / Chq No</th>
-                    <th style="width:95px;text-align:right;">Debit (Dr)</th>
-                    <th style="width:95px;text-align:right;">Credit (Cr)</th>
-                    <th style="min-width:170px;">Matched Party & System Ref</th>
-                    <th style="width:90px;text-align:center;">Status</th>
-                    <th style="min-width:160px;">Hold Reason</th>
-                    <th style="min-width:180px;">CA Audit Notes / Description</th>
-                    <th style="width:110px;text-align:center;">Action</th>
+                    <th style="width:40px;text-align:center;padding:10px 8px;white-space:nowrap;">S.No.</th>
+                    <th style="width:85px;padding:10px 8px;white-space:nowrap;">Txn Date</th>
+                    <th style="width:230px;padding:10px 8px;white-space:nowrap;">Bank Narration / Description</th>
+                    <th style="width:140px;padding:10px 8px;white-space:nowrap;">Statement Ref</th>
+                    <th style="width:100px;text-align:right;padding:10px 8px;white-space:nowrap;">Debit (Dr)</th>
+                    <th style="width:100px;text-align:right;padding:10px 8px;white-space:nowrap;">Credit (Cr)</th>
+                    <th style="width:160px;padding:10px 8px;border-left:2px solid var(--border);white-space:nowrap;background:rgba(99,102,241,0.04);">ERP Party / Payee</th>
+                    <th style="width:130px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Ref / Chq No</th>
+                    <th style="width:190px;padding:10px 8px;white-space:nowrap;background:rgba(99,102,241,0.04);">System Date & Description</th>
+                    <th style="width:85px;text-align:center;padding:10px 8px;white-space:nowrap;">Status</th>
+                    <th style="width:140px;padding:10px 8px;white-space:nowrap;">Hold Reason</th>
+                    <th style="width:110px;text-align:center;padding:10px 8px;white-space:nowrap;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="auditTableBody">
                   <tr>
-                    <td colspan="11" style="text-align:center;padding:40px 20px;color:var(--text3);">
+                    <td colspan="12" style="text-align:center;padding:40px 20px;color:var(--text3);">
                       <div class="spinner"></div> Loading transactions for today...
                     </td>
                   </tr>
@@ -2424,7 +2452,7 @@ async function loadSettingsSubTab() {
       modal.querySelector("#detectedFormatBadge").style.display = "none";
       modal.querySelector("#reconcileTableBody").innerHTML = `
         <tr>
-          <td colspan="9" style="text-align:center;padding:50px 20px;color:var(--text3);">
+          <td colspan="10" style="text-align:center;padding:50px 20px;color:var(--text3);">
             <div style="font-size:36px;margin-bottom:10px;">📄</div>
             <div style="font-weight:600;font-size:13px;color:var(--text2);">Statement Cleared</div>
             <div style="font-size:11.5px;margin-top:4px;">Upload another statement to begin reconciliation.</div>
@@ -2437,7 +2465,7 @@ async function loadSettingsSubTab() {
     function renderReconciliationTable() {
       const tbody = modal.querySelector("#reconcileTableBody");
       if (parsedRows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text3);">No transactions parsed</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text3);">No transactions parsed</td></tr>`;
         return;
       }
 
@@ -2456,40 +2484,86 @@ async function loadSettingsSubTab() {
           ? `<span style="color:var(--success);font-weight:700;">+ ${formatCurrency(r.credit_amount)}</span>`
           : '<span style="color:var(--text3);">—</span>';
 
-        // System Mapping Column
-        let systemHtml = '';
+        // 1. ERP System Mapping (Party) Column
+        let systemPartyHtml = '';
         if (matched) {
-          systemHtml = `
-            <div style="display:flex;flex-direction:column;gap:2px;">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span class="badge" style="background:rgba(34,197,94,0.15);color:var(--success);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">
-                  ✅ ${esc(matched.module.toUpperCase())} MATCH
-                </span>
-                <strong style="color:var(--text1);font-size:12px;">${esc(matched.party_name)}</strong>
+          systemPartyHtml = `
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <span class="badge" style="background:rgba(34,197,94,0.15);color:var(--success);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;display:inline-block;width:fit-content;">
+                ✅ ${esc(matched.module.toUpperCase())} MATCH
+              </span>
+              <strong style="color:var(--text1);font-size:12px;line-height:1.35;word-break:break-word;overflow-wrap:break-word;">${esc(matched.party_name)}</strong>
+            </div>
+          `;
+        } else {
+          systemPartyHtml = `
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warning);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;display:inline-block;width:fit-content;">
+                ⚠️ UNMAPPED / CHARGE
+              </span>
+              <span style="font-size:11px;color:var(--text3);">No ERP entry</span>
+            </div>
+          `;
+        }
+
+        // 2. System Ref / Chq No Column
+        let systemRefHtml = '';
+        if (matched) {
+          systemRefHtml = `
+            <div style="font-size:11.5px;color:var(--text1);font-weight:700;font-family:monospace;line-height:1.35;word-break:break-word;overflow-wrap:break-word;">
+              ${esc(matched.ref_no || '—')}
+            </div>
+          `;
+        } else {
+          systemRefHtml = `<span style="color:var(--text3);font-size:11.5px;">—</span>`;
+        }
+
+        // 3. System Date & Description Column
+        let systemDescHtml = '';
+        if (matched) {
+          systemDescHtml = `
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <div style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span>📅 Date: <strong style="color:var(--text1);">${matched.txn_date || '—'}</strong></span>
+                <span>•</span>
+                <span>Amt: <strong style="color:${isCredit ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(matched.amount)}</strong></span>
               </div>
-              <div style="font-size:11px;color:var(--text2);">
-                Ref: <strong style="color:var(--text1);">${esc(matched.ref_no)}</strong> • Date: ${matched.txn_date || '—'}
-              </div>
-              <div style="font-size:10.5px;color:var(--text3);">
-                System Amount: <strong style="color:${isCredit ? 'var(--success)' : 'var(--danger)'};">${formatCurrency(matched.amount)}</strong>
+              <input type="text" class="form-control form-control-sm tx-desc-input" data-uid="${r.uid}"
+                     placeholder="Audit notes / description..." value="${esc(r.user_description || '')}"
+                     style="font-size:11px;padding:5px 8px;width:100%;box-sizing:border-box;border-radius:6px;border:1px solid var(--border);">
+              <div class="inline-hold-box" id="hold_box_${r.uid}" style="display:${isHeld ? 'block' : 'none'};margin-top:4px;background:rgba(245,158,11,0.12);padding:6px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);">
+                <div style="font-size:10px;font-weight:700;color:var(--warning);margin-bottom:3px;">⚠️ Hold Reason (Required) *</div>
+                <input type="text" class="form-control form-control-sm tx-hold-reason-input" data-uid="${r.uid}"
+                       placeholder="Reason for holding this transaction..." value="${esc(r.hold_reason || '')}"
+                       style="font-size:11px;padding:3px 6px;width:100%;box-sizing:border-box;margin-bottom:4px;border-color:var(--warning);">
+                <div style="display:flex;justify-content:flex-end;gap:4px;">
+                  <button type="button" class="btn btn-xs btn-secondary cancel-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 6px;">Cancel</button>
+                  <button type="button" class="btn btn-xs btn-warning confirm-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 8px;font-weight:700;">Save Hold</button>
+                </div>
               </div>
             </div>
           `;
         } else {
-          systemHtml = `
-            <div>
-              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                <span class="badge" style="background:rgba(245,158,11,0.15);color:var(--warning);font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;">
-                  ⚠️ UNMAPPED / CHARGE
-                </span>
-                <span style="font-size:10.5px;color:var(--text3);">No ERP entry</span>
+          systemDescHtml = `
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <input type="text" class="form-control form-control-sm tx-desc-input" data-uid="${r.uid}"
+                     placeholder="Enter description (e.g. Bank Charges)..." value="${esc(r.user_description || '')}"
+                     style="font-size:11px;padding:5px 8px;width:100%;box-sizing:border-box;border-radius:6px;border:1px solid var(--border);">
+              <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:1px;">
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank Charges" style="font-size:9.5px;padding:2px 6px;border-radius:4px;">+ Charges</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank SMS Charges" style="font-size:9.5px;padding:2px 6px;border-radius:4px;">+ SMS</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank Interest" style="font-size:9.5px;padding:2px 6px;border-radius:4px;">+ Interest</button>
+                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Cheque Bounce Fee" style="font-size:9.5px;padding:2px 6px;border-radius:4px;">+ Bounce</button>
               </div>
-              <!-- Quick Description Chips -->
-              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
-                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank Charges" style="font-size:9.5px;padding:1px 5px;">+ Charges</button>
-                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank SMS Charges" style="font-size:9.5px;padding:1px 5px;">+ SMS</button>
-                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Bank Interest" style="font-size:9.5px;padding:1px 5px;">+ Interest</button>
-                <button type="button" class="btn btn-xs btn-outline-secondary quick-chip" data-uid="${r.uid}" data-text="Cheque Bounce Fee" style="font-size:9.5px;padding:1px 5px;">+ Bounce</button>
+              <div class="inline-hold-box" id="hold_box_${r.uid}" style="display:${isHeld ? 'block' : 'none'};margin-top:4px;background:rgba(245,158,11,0.12);padding:6px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);">
+                <div style="font-size:10px;font-weight:700;color:var(--warning);margin-bottom:3px;">⚠️ Hold Reason (Required) *</div>
+                <input type="text" class="form-control form-control-sm tx-hold-reason-input" data-uid="${r.uid}"
+                       placeholder="Reason for holding this transaction..." value="${esc(r.hold_reason || '')}"
+                       style="font-size:11px;padding:3px 6px;width:100%;box-sizing:border-box;margin-bottom:4px;border-color:var(--warning);">
+                <div style="display:flex;justify-content:flex-end;gap:4px;">
+                  <button type="button" class="btn btn-xs btn-secondary cancel-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 6px;">Cancel</button>
+                  <button type="button" class="btn btn-xs btn-warning confirm-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 8px;font-weight:700;">Save Hold</button>
+                </div>
               </div>
             </div>
           `;
@@ -2531,44 +2605,29 @@ async function loadSettingsSubTab() {
 
         return `
           <tr id="row_${r.uid}" style="${isValidated ? 'background:rgba(34,197,94,0.06);' : isHeld ? 'background:rgba(245,158,11,0.08);' : ''}">
-            <td style="text-align:center;color:var(--text3);font-size:11px;">${idx + 1}</td>
-            <td>
-              <div style="font-weight:700;color:var(--text1);display:flex;align-items:center;gap:6px;">
+            <td style="text-align:center;color:var(--text3);font-size:11px;padding:10px 6px;vertical-align:top;">${idx + 1}</td>
+            <td style="padding:10px 8px;vertical-align:top;white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+              <div style="font-weight:700;color:var(--text1);font-size:11.5px;margin-bottom:2px;">
                 <span>${r.txn_date}</span>
                 ${r.value_date && r.value_date !== r.txn_date ? `<span style="font-size:10px;color:var(--text3);font-weight:normal;">(Val: ${r.value_date})</span>` : ''}
               </div>
-              <div style="font-size:11px;color:var(--text2);margin-top:2px;max-width:280px;word-break:break-word;">
+              <div style="font-size:11px;color:var(--text2);line-height:1.4;word-break:break-word;overflow-wrap:break-word;">
                 ${esc(r.description)}
               </div>
-              ${r.branch_code ? `<div style="font-size:10px;color:var(--text3);">Branch: ${esc(r.branch_code)}</div>` : ''}
+              ${r.branch_code ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;">Branch: <strong>${esc(r.branch_code)}</strong></div>` : ''}
             </td>
-            <td>
-              <span style="font-size:11px;color:var(--text1);font-weight:600;">${esc(r.ref_no || '—')}</span>
-            </td>
-            <td style="text-align:right;">${debitHtml}</td>
-            <td style="text-align:right;">${creditHtml}</td>
-            <td style="text-align:right;color:var(--text2);font-weight:600;">${formatCurrency(r.balance || 0)}</td>
-            <td style="border-left:2px solid var(--border);">${systemHtml}</td>
-            <td>
-              <input type="text" class="form-control form-control-sm tx-desc-input" data-uid="${r.uid}"
-                     placeholder="CA Reference / Notes..." value="${esc(r.user_description || '')}"
-                     style="font-size:11px;padding:4px 8px;width:100%;box-sizing:border-box;">
-
-              <!-- Inline Hold Reason Input Box (hidden by default unless user clicks Hold) -->
-              <div class="inline-hold-box" id="hold_box_${r.uid}" style="display:${isHeld ? 'block' : 'none'};margin-top:6px;background:rgba(245,158,11,0.12);padding:6px 8px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);">
-                <div style="font-size:10px;font-weight:700;color:var(--warning);margin-bottom:3px;">
-                  ⚠️ Hold Reason (Required) *
-                </div>
-                <input type="text" class="form-control form-control-sm tx-hold-reason-input" data-uid="${r.uid}"
-                       placeholder="Enter why this transaction is held..." value="${esc(r.hold_reason || '')}"
-                       style="font-size:11px;padding:4px 6px;margin-bottom:4px;border-color:var(--warning);">
-                <div style="display:flex;justify-content:flex-end;gap:4px;">
-                  <button type="button" class="btn btn-xs btn-secondary cancel-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 6px;">Cancel</button>
-                  <button type="button" class="btn btn-xs btn-warning confirm-hold-inline-btn" data-uid="${r.uid}" style="font-size:10px;padding:2px 8px;font-weight:700;">Save Hold</button>
-                </div>
+            <td style="padding:10px 8px;vertical-align:top;white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+              <div style="font-size:11px;color:var(--text1);font-weight:600;font-family:monospace;line-height:1.35;word-break:break-word;overflow-wrap:break-word;">
+                ${esc(r.ref_no || '—')}
               </div>
             </td>
-            <td style="text-align:center;">${actionHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;text-align:right;white-space:nowrap;">${debitHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;text-align:right;white-space:nowrap;">${creditHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;text-align:right;white-space:nowrap;color:var(--text2);font-weight:600;">${formatCurrency(r.balance || 0)}</td>
+            <td style="padding:10px 8px;vertical-align:top;border-left:2px solid var(--border);background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">${systemPartyHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">${systemRefHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;">${systemDescHtml}</td>
+            <td style="padding:10px 8px;vertical-align:top;text-align:center;white-space:nowrap;">${actionHtml}</td>
           </tr>
         `;
       }).join("");
@@ -2835,7 +2894,7 @@ async function loadSettingsSubTab() {
       const status = modal.querySelector("#auditStatusFilter").value;
       const notice = modal.querySelector("#auditDateNotice");
 
-      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3);"><div class="spinner"></div> Loading transactions...</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text3);"><div class="spinner"></div> Loading transactions...</td></tr>`;
 
       try {
         let url = `${API_BASE}/accountant?action=statement-transactions-list&bank_account_id=${acc.id}&status=${status}`;
@@ -2855,10 +2914,10 @@ async function loadSettingsSubTab() {
           auditList = data.transactions || [];
           renderAuditTable();
         } else {
-          tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--danger);">${esc(data.error || "Failed to load transactions")}</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--danger);">${esc(data.error || "Failed to load transactions")}</td></tr>`;
         }
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--danger);">Error: ${esc(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--danger);">Error: ${esc(err.message)}</td></tr>`;
       }
     }
 
@@ -2867,7 +2926,7 @@ async function loadSettingsSubTab() {
       if (auditList.length === 0) {
         tbody.innerHTML = `
           <tr>
-            <td colspan="11" style="text-align:center;padding:45px 20px;color:var(--text3);">
+            <td colspan="12" style="text-align:center;padding:45px 20px;color:var(--text3);">
               <div style="font-size:32px;margin-bottom:8px;">📋</div>
               <div style="font-weight:600;font-size:13px;color:var(--text2);">No Transactions Found for Selected Range</div>
               <div style="font-size:11px;margin-top:4px;">No validated or held transactions recorded for this period. Try selecting "All Time" or upload and validate statements.</div>
@@ -2886,17 +2945,6 @@ async function loadSettingsSubTab() {
         const statusBadge = isValidated
           ? `<span class="badge" style="background:var(--success);color:#fff;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:10px;">✅ Validated</span>`
           : `<span class="badge" style="background:var(--warning);color:#fff;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:10px;">⏳ On Hold</span>`;
-
-        let partyModule = '—';
-        if (t.system_matched_party || t.system_matched_module) {
-          partyModule = `
-            <div>
-              <strong style="color:var(--text1);font-size:11.5px;">${esc(t.system_matched_party || 'Party')}</strong>
-              <div style="font-size:10.5px;color:var(--text2);">${esc(t.system_matched_module ? t.system_matched_module.toUpperCase() : '')} ${t.system_matched_ref ? '• ' + esc(t.system_matched_ref) : ''}</div>
-              ${t.system_matched_date ? `<div style="font-size:10px;color:var(--text3);">Sys Date: ${t.system_matched_date.split('T')[0]}</div>` : ''}
-            </div>
-          `;
-        }
 
         // Action column: For held items, enforce description before validating!
         let actionCol = '';
@@ -2923,42 +2971,51 @@ async function loadSettingsSubTab() {
 
         return `
           <tr id="audit_row_${t.id}" style="${isHeld ? 'background:rgba(245,158,11,0.06);' : ''}">
-            <td style="text-align:center;color:var(--text3);">${idx + 1}</td>
-            <td style="font-weight:600;color:var(--text1);">${t.txn_date ? t.txn_date.split('T')[0] : '—'}</td>
-            <td>
-              <div style="font-size:11.5px;color:var(--text1);font-weight:600;">${esc(t.description || '—')}</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:1px;">Format: ${esc(t.bank_format || 'Bank')}</div>
+            <td style="text-align:center;color:var(--text3);padding:10px 6px;vertical-align:top;">${idx + 1}</td>
+            <td style="font-weight:600;color:var(--text1);padding:10px 8px;vertical-align:top;white-space:nowrap;">${t.txn_date ? t.txn_date.split('T')[0] : '—'}</td>
+            <td style="padding:10px 8px;vertical-align:top;white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+              <div style="font-size:11.5px;color:var(--text1);font-weight:600;line-height:1.4;">${esc(t.description || '—')}</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:2px;">Format: ${esc(t.bank_format || 'Bank')}</div>
             </td>
-            <td><strong style="color:var(--text2);">${esc(t.ref_no || '—')}</strong></td>
-            <td style="text-align:right;">
+            <td style="padding:10px 8px;vertical-align:top;white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+              <strong style="color:var(--text2);font-family:monospace;font-size:11px;">${esc(t.ref_no || '—')}</strong>
+            </td>
+            <td style="text-align:right;padding:10px 8px;vertical-align:top;white-space:nowrap;">
               ${debitAmt > 0 ? `<strong style="color:var(--danger);">- ${formatCurrency(debitAmt)}</strong>` : '<span style="color:var(--text3);">—</span>'}
             </td>
-            <td style="text-align:right;">
+            <td style="text-align:right;padding:10px 8px;vertical-align:top;white-space:nowrap;">
               ${creditAmt > 0 ? `<strong style="color:var(--success);">+ ${formatCurrency(creditAmt)}</strong>` : '<span style="color:var(--text3);">—</span>'}
             </td>
-            <td>${partyModule}</td>
-            <td style="text-align:center;">${statusBadge}</td>
-            <td>
+            <td style="padding:10px 8px;vertical-align:top;border-left:2px solid var(--border);background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+              <strong style="color:var(--text1);font-size:11.5px;">${esc(t.system_matched_party || '—')}</strong>
+              ${t.system_matched_module ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(t.system_matched_module.toUpperCase())}</div>` : ''}
+            </td>
+            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;word-break:break-word;overflow-wrap:break-word;">
+              <strong style="color:var(--text1);font-family:monospace;font-size:11px;">${esc(t.system_matched_ref || '—')}</strong>
+            </td>
+            <td style="padding:10px 8px;vertical-align:top;background:rgba(99,102,241,0.02);white-space:normal;">
+              ${isHeld ? `
+                <div>
+                  <input type="text" class="form-control form-control-sm audit-held-desc-input" data-id="${t.id}"
+                         placeholder="Enter description to validate *" value="${esc(t.user_description || '')}"
+                         style="font-size:11px;padding:4px 6px;width:100%;box-sizing:border-box;border-color:var(--warning);border-radius:4px;">
+                  <div style="font-size:9.5px;color:var(--danger);margin-top:2px;font-weight:600;">* Description required to validate</div>
+                </div>
+              ` : `
+                <div style="font-size:11px;color:var(--text1);line-height:1.35;word-break:break-word;overflow-wrap:break-word;">${esc(t.user_description || '—')}</div>
+                ${t.system_matched_date ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;">📅 Sys Date: ${t.system_matched_date.split('T')[0]}</div>` : ''}
+                ${t.validated_by_name ? `<div style="font-size:9.5px;color:var(--text3);">By: ${esc(t.validated_by_name)}</div>` : ''}
+              `}
+            </td>
+            <td style="text-align:center;padding:10px 8px;vertical-align:top;white-space:nowrap;">${statusBadge}</td>
+            <td style="padding:10px 8px;vertical-align:top;white-space:normal;word-break:break-word;overflow-wrap:break-word;">
               ${isHeld ? `
                 <div style="color:var(--warning);font-size:11px;font-weight:600;background:rgba(245,158,11,0.1);padding:4px 6px;border-radius:4px;border-left:2px solid var(--warning);">
                   ${esc(t.hold_reason || 'Reason not specified')}
                 </div>
               ` : '<span style="color:var(--text3);">—</span>'}
             </td>
-            <td>
-              ${isHeld ? `
-                <div>
-                  <input type="text" class="form-control form-control-sm audit-held-desc-input" data-id="${t.id}"
-                         placeholder="Enter description to validate *" value="${esc(t.user_description || '')}"
-                         style="font-size:11px;padding:4px 6px;min-width:160px;border-color:var(--warning);">
-                  <div style="font-size:9.5px;color:var(--danger);margin-top:2px;font-weight:600;">* Description required to validate</div>
-                </div>
-              ` : `
-                <div style="font-size:11px;color:var(--text1);">${esc(t.user_description || '—')}</div>
-                ${t.validated_by_name ? `<div style="font-size:9.5px;color:var(--text3);">By: ${esc(t.validated_by_name)}</div>` : ''}
-              `}
-            </td>
-            <td style="text-align:center;">${actionCol}</td>
+            <td style="text-align:center;padding:10px 8px;vertical-align:top;white-space:nowrap;">${actionCol}</td>
           </tr>
         `;
       }).join("");

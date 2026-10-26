@@ -2663,6 +2663,54 @@ html, body {
   font-size: 11px;
 }
 
+/* ═══════════════ BANK STATEMENT RECONCILIATION MODAL & TABLES ═══════════════ */
+#bankStatementModal .modal-box {
+  max-width: 1520px;
+  width: 97vw;
+  height: 94vh;
+}
+
+#reconcileTable,
+#auditTable {
+  table-layout: fixed !important;
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+#reconcileTable th,
+#reconcileTable td,
+#auditTable th,
+#auditTable td {
+  padding: 8px 10px !important;
+  box-sizing: border-box !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+#reconcileTable td,
+#auditTable td {
+  white-space: normal !important;
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+#reconcileTable .tx-desc-input,
+#auditTable .audit-held-desc-input {
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text1);
+  box-sizing: border-box;
+}
+
+#reconcileTable .quick-chip {
+  font-size: 9.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 /* ═══════════════ GLOBAL PRINT STYLES ═══════════════ */
 @media print {
   @page {

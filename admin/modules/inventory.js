@@ -4139,9 +4139,31 @@ async function loadStockReceiptSubTab() {
             <td colspan="10" style="text-align:center;padding:12px;color:var(--text3);font-style:italic;">No sub-items found for this bill.</td>
           </tr>
         ` : items.map((it, idx) => {
-          const taxable = ((parseFloat(it.quantity) || 0) * (parseFloat(it.rate) || 0)) + (parseFloat(it.packaging_charges) || 0) + (parseFloat(it.transport_expenses) || 0);
-          const gstVal = taxable * ((parseFloat(it.gst_rate) || 0) / 100);
-          const lineTot = taxable + gstVal;
+          const qty = parseFloat(it.quantity) || 1;
+          const rate = parseFloat(it.rate) || 0;
+          const pkg = parseFloat(it.packaging_charges) || 0;
+          const trp = parseFloat(it.transport_expenses) || 0;
+          const taxable = (qty * rate) + pkg + trp;
+          const savedTot = parseFloat(it.total) || 0;
+
+          let itemGst = parseFloat(it.gst_rate);
+          if (taxable > 0 && savedTot > 0) {
+            const ratio = savedTot / taxable;
+            if (ratio > 0.99) {
+              const deduced = Math.round((ratio - 1) * 100 * 100) / 100;
+              if (Math.abs(deduced - 5) < 0.25) itemGst = 5;
+              else if (Math.abs(deduced - 12) < 0.25) itemGst = 12;
+              else if (Math.abs(deduced - 18) < 0.25) itemGst = 18;
+              else if (Math.abs(deduced - 28) < 0.25) itemGst = 28;
+              else if (Math.abs(deduced) < 0.25) itemGst = 0;
+              else if (!itemGst || itemGst <= 0) itemGst = deduced;
+            }
+          }
+          if (!itemGst || isNaN(itemGst)) itemGst = 18;
+          it.gst_rate = itemGst;
+
+          const gstVal = taxable * (itemGst / 100);
+          const lineTot = Math.round((taxable + gstVal) * 100) / 100;
           return `
             <tr style="border-bottom:1px solid var(--border);">
               <td style="text-align:center;color:var(--text3);font-size:11px;font-weight:600;padding:6px 4px;">${idx + 1}</td>
@@ -4152,7 +4174,7 @@ async function loadStockReceiptSubTab() {
               <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--text2);">${esc(it.serial_no || '—')}</td>
               <td style="text-align:center;padding:6px 8px;font-weight:700;color:var(--success);font-size:12px;">+${it.quantity}</td>
               <td style="text-align:right;padding:6px 8px;font-size:12px;">₹${parseFloat(it.rate || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-              <td style="text-align:center;padding:6px 8px;font-size:12px;">${it.gst_rate || 0}%</td>
+              <td style="text-align:center;padding:6px 8px;font-size:12px;">${itemGst}%</td>
               <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.packaging_charges || 0) > 0 ? '₹' + parseFloat(it.packaging_charges).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
               <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.transport_expenses || 0) > 0 ? '₹' + parseFloat(it.transport_expenses).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
               <td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--text1);font-size:12px;">₹${parseFloat(it.total || lineTot).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
@@ -4230,7 +4252,7 @@ async function loadStockReceiptSubTab() {
                   <table class="data-table" style="width:100%;font-size:12px;margin:0;border:1px solid var(--border);">
                     <thead>
                       <tr style="background:var(--bg-secondary,#f1f5f9);color:var(--text2);font-size:11px;">
-                        <th style="width:36px;text-align:center;">#</th>
+                        <th style="width:36px;text-align:center;">S.No.</th>
                         <th>Product Name & Model</th>
                         <th>Serial No.</th>
                         <th style="text-align:center;">Qty</th>
@@ -4917,7 +4939,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
       const pkg = parseFloat(packagingInp.value || 0);
       const t = parseFloat(transportInp.value || 0);
       const taxable = (q * r) + pkg + t;
-      const tot = taxable * (1 + g / 100);
+      const tot = Math.round((taxable * (1 + g / 100)) * 100) / 100;
       totalTd.textContent = `₹${tot.toFixed(2)}`;
       calcGrandTotal();
     }
@@ -4983,19 +5005,40 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
       const pkg = parseFloat(tr.querySelector(".mpPackaging")?.value || 0);
       const t = parseFloat(tr.querySelector(".mpTransport")?.value || 0);
       const taxable = (q * r) + pkg + t;
-      grand += taxable * (1 + g / 100);
+      const lineTot = Math.round((taxable * (1 + g / 100)) * 100) / 100;
+      grand += lineTot;
     });
+    grand = Math.round(grand * 100) / 100;
     overlay.querySelector("#mpGrandTotalText").textContent = `₹${grand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
   }
 
   // Populate initial rows: if in edit mode, populate existing purchase items
   if (isEdit && Array.isArray(editPurchase.items) && editPurchase.items.length > 0) {
     editPurchase.items.forEach(it => {
+      let itemGst = parseFloat(it.gst_rate);
+      const itQty = parseFloat(it.quantity) || 1;
+      const itRate = parseFloat(it.rate) || 0;
+      const itPkg = parseFloat(it.packaging_charges) || 0;
+      const itTrp = parseFloat(it.transport_expenses) || 0;
+      const itTaxable = (itQty * itRate) + itPkg + itTrp;
+      const itSavedTot = parseFloat(it.total) || 0;
+
+      // Ensure that if it.gst_rate was saved as 18 by mistake, but total matches 5%, we restore 5%
+      if (itTaxable > 0 && itSavedTot > 0) {
+        const ratio = itSavedTot / itTaxable;
+        if (Math.abs(ratio - 1.05) < 0.005) itemGst = 5;
+        else if (Math.abs(ratio - 1.12) < 0.005) itemGst = 12;
+        else if (Math.abs(ratio - 1.18) < 0.005) itemGst = 18;
+        else if (Math.abs(ratio - 1.28) < 0.005) itemGst = 28;
+        else if (Math.abs(ratio - 1.00) < 0.005) itemGst = 0;
+      }
+      if (!itemGst || isNaN(itemGst)) itemGst = 18;
+
       addRow(
         it.product_id,
         it.quantity,
         it.rate,
-        it.gst_rate,
+        itemGst,
         it.serial_no || '',
         it.model || '',
         it.packaging_charges || 0,

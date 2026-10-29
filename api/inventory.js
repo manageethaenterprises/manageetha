@@ -334,8 +334,42 @@ module.exports = async function handler(req, res) {
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS serial_no VARCHAR(255);`;
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS packaging_charges NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS transport_expenses NUMERIC(15,2) DEFAULT 0;`;
+      await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS gst_rate NUMERIC(15,2);`;
       try { await sql`ALTER TABLE products ALTER COLUMN selling_percentage TYPE NUMERIC(15,2);`; } catch(e){}
       try { await sql`ALTER TABLE products ALTER COLUMN gst_rate TYPE NUMERIC(15,2);`; } catch(e){}
+      try {
+        // Backfill gst_rate on purchase_items where missing from line total and taxable base
+        await sql`
+          UPDATE purchase_items
+          SET gst_rate = CASE 
+            WHEN ((quantity * rate) + COALESCE(packaging_charges, 0) + COALESCE(transport_expenses, 0)) > 0 
+                 AND total > ((quantity * rate) + COALESCE(packaging_charges, 0) + COALESCE(transport_expenses, 0))
+            THEN ROUND((((total / ((quantity * rate) + COALESCE(packaging_charges, 0) + COALESCE(transport_expenses, 0))) - 1.0) * 100)::numeric, 2)
+            ELSE 18
+          END
+          WHERE gst_rate IS NULL;
+        `;
+        // Specifically heal Bill 2026621665 Row 2 (set 5% GST & correct line total) and fix grand_total
+        await sql`
+          UPDATE purchase_items
+          SET gst_rate = 5.00, total = 102251.78
+          WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
+            AND rate > 97280 AND rate < 97285;
+        `;
+        await sql`
+          UPDATE purchases
+          SET total_amount = 1827918.02, grand_total = 1827918.02
+          WHERE purchase_invoice_no = '2026621665' AND (grand_total > 1830000 OR total_amount > 1830000);
+        `;
+        await sql`
+          UPDATE products
+          SET gst_rate = 5
+          WHERE id IN (
+            SELECT product_id FROM purchase_items 
+            WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
+          );
+        `;
+      } catch (e) {}
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS company_id INT REFERENCES companies(id) ON DELETE SET NULL;`;
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supply_state VARCHAR(100) DEFAULT 'Andhra Pradesh';`;
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS designation VARCHAR(100);`;
@@ -1733,9 +1767,10 @@ module.exports = async function handler(req, res) {
         const transport = parseFloat(i.transport_expenses || 0);
         const packaging = parseFloat(i.packaging_charges || i.packaging || 0);
         const taxable = (qty * rate) + transport + packaging;
-        const lineTotal = taxable * (1 + gstRate / 100);
+        const lineTotal = Math.round((taxable * (1 + gstRate / 100)) * 100) / 100;
         grandTotal += lineTotal;
       });
+      grandTotal = Math.round(grandTotal * 100) / 100;
 
       const paidAmt = Math.min(grandTotal, Math.max(0, parseFloat(paid_amount !== undefined ? paid_amount : grandTotal)));
       const pendingAmt = Math.max(0, grandTotal - paidAmt);
@@ -1767,7 +1802,7 @@ module.exports = async function handler(req, res) {
         const transport = parseFloat(item.transport_expenses || 0);
         const packaging = parseFloat(item.packaging_charges || item.packaging || 0);
         const taxable = (qty * rate) + transport + packaging;
-        const lineTotal = taxable * (1 + gstRate / 100);
+        const lineTotal = Math.round((taxable * (1 + gstRate / 100)) * 100) / 100;
         const itemSupId = safeInt(item.supplier_id) || supId;
 
         if (prodId) {
@@ -1790,6 +1825,7 @@ module.exports = async function handler(req, res) {
               purchase_rate_incl_tax = ${rates.purchase_rate_incl_tax},
               selling_rate = ${rates.selling_rate},
               mrp = ${rates.mrp},
+              gst_rate = COALESCE(${gstRate}, gst_rate),
               serial_no = COALESCE(${item.serial_no || item.product_serial_no || null}, serial_no),
               model = COALESCE(${item.model ? item.model.trim() : null}, model),
               supplier_id = COALESCE(${itemSupId}, supplier_id),
@@ -1798,8 +1834,8 @@ module.exports = async function handler(req, res) {
           `;
 
           await sql`
-            INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no, packaging_charges, transport_expenses)
-            VALUES (${purId}, ${prodId}, ${qty}, ${rate}, ${lineTotal}, ${item.serial_no || item.product_serial_no || null}, ${packaging}, ${transport})
+            INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no, packaging_charges, transport_expenses, gst_rate)
+            VALUES (${purId}, ${prodId}, ${qty}, ${rate}, ${lineTotal}, ${item.serial_no || item.product_serial_no || null}, ${packaging}, ${transport}, ${gstRate})
           `;
 
           await sql`
@@ -2011,7 +2047,8 @@ module.exports = async function handler(req, res) {
         const itemRows = await sql`
           SELECT pi.id, pi.purchase_id, pi.product_id, pi.quantity, pi.rate, pi.total,
                  pi.serial_no, pi.packaging_charges, pi.transport_expenses,
-                 COALESCE(pi.gst_rate, prod.gst_rate, 18) as gst_rate,
+                 pi.gst_rate,
+                 prod.gst_rate as prod_gst_rate,
                  prod.name as product_name, prod.sku, COALESCE(prod.model, '') as model, prod.brand, prod.unit_of_measure
           FROM purchase_items pi
           LEFT JOIN products prod ON pi.product_id = prod.id
@@ -2019,6 +2056,37 @@ module.exports = async function handler(req, res) {
           ORDER BY pi.id ASC
         `;
         itemRows.forEach(item => {
+          let itemGst = null;
+          if (item.gst_rate !== null && item.gst_rate !== undefined && item.gst_rate !== '') {
+            itemGst = parseFloat(item.gst_rate);
+          }
+
+          const qty = parseFloat(item.quantity) || 1;
+          const rate = parseFloat(item.rate) || 0;
+          const pkg = parseFloat(item.packaging_charges) || 0;
+          const trp = parseFloat(item.transport_expenses) || 0;
+          const taxable = (qty * rate) + pkg + trp;
+          const savedTot = parseFloat(item.total) || 0;
+
+          // If gst_rate is missing or was defaulted to 18, check if saved total mathematically matches a different GST slab (e.g. 5%)
+          if (taxable > 0 && savedTot > 0) {
+            const ratio = savedTot / taxable;
+            if (ratio > 0.99) {
+              const deduced = Math.round((ratio - 1) * 100 * 100) / 100;
+              if (Math.abs(deduced - 5) < 0.25) itemGst = 5;
+              else if (Math.abs(deduced - 12) < 0.25) itemGst = 12;
+              else if (Math.abs(deduced - 18) < 0.25) itemGst = 18;
+              else if (Math.abs(deduced - 28) < 0.25) itemGst = 28;
+              else if (Math.abs(deduced) < 0.25) itemGst = 0;
+              else if (itemGst === null || itemGst <= 0) itemGst = deduced;
+            }
+          }
+
+          if (itemGst === null || isNaN(itemGst)) {
+            itemGst = parseFloat(item.prod_gst_rate || 18);
+          }
+          item.gst_rate = itemGst;
+
           if (!itemsMap[item.purchase_id]) itemsMap[item.purchase_id] = [];
           itemsMap[item.purchase_id].push(item);
         });
@@ -2393,7 +2461,7 @@ module.exports = async function handler(req, res) {
         const transport = parseFloat(item.transport_expenses || 0);
         const packaging = parseFloat(item.packaging_charges || item.packaging || 0);
         const taxable = (qty * rate) + transport + packaging;
-        const lineTotal = taxable * (1 + gstRate / 100);
+        const lineTotal = Math.round((taxable * (1 + gstRate / 100)) * 100) / 100;
         grandTotal += lineTotal;
 
         if (prodId) {
@@ -2416,6 +2484,7 @@ module.exports = async function handler(req, res) {
               purchase_rate_incl_tax = ${rates.purchase_rate_incl_tax},
               selling_rate = ${rates.selling_rate},
               mrp = ${rates.mrp},
+              gst_rate = COALESCE(${gstRate}, gst_rate),
               serial_no = COALESCE(${item.serial_no || item.product_serial_no || null}, serial_no),
               model = COALESCE(${item.model ? item.model.trim() : null}, model),
               supplier_id = COALESCE(${supId}, supplier_id),

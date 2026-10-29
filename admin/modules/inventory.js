@@ -1192,9 +1192,7 @@ async function loadProductsSubTab() {
   on("exportProdBtn", "click", async (e) => {
     const btn = e?.currentTarget || document.getElementById("exportProdBtn");
     if (!btn || btn.disabled) return;
-    const origHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Exporting...`;
+    setButtonLoading(btn, true, "Exporting Excel / CSV...");
 
     try {
       await new Promise(r => setTimeout(r, 40));
@@ -1272,30 +1270,58 @@ async function loadProductsSubTab() {
     }
     } finally {
       if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
+        setTimeout(() => setButtonLoading(btn, false), 350);
       }
     }
   });
 
-  on("dlTemplateHeaderBtn", "click", () => {
-    window.downloadProductImportTemplate();
+  on("dlTemplateHeaderBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Preparing Template...");
+    try {
+      window.downloadProductImportTemplate();
+    } catch (err) {
+      showToast("Download error: " + err.message, "error");
+    } finally {
+      setTimeout(() => setButtonLoading(btn, false), 400);
+    }
   });
 
-  on("importExcelBtn", "click", () => {
-    openProductImportModal(() => fetchProducts());
+  on("importExcelBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Loading Importer...");
+    try {
+      openProductImportModal(() => fetchProducts());
+    } catch (err) {
+      showToast("Import error: " + err.message, "error");
+    } finally {
+      setTimeout(() => setButtonLoading(btn, false), 350);
+    }
   });
 
-  on("addProdBtn", "click", () => {
-    document.getElementById("prodForm").reset();
-    const mrpEl = document.getElementById("pMrp");
-    if (mrpEl) mrpEl.dataset.userOverridden = "false";
-    document.getElementById("pEditingId").value = "";
-    document.getElementById("prodModalTitle").textContent = "📦 Add Product to Inventory";
-    document.getElementById("prodModalSubmitBtn").textContent = "💾 Save Product";
-    populateSuppliersDropdown();
-    autoCalcFormRates();
-    document.getElementById("prodModal").style.display = "flex";
+  on("addProdBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Opening...");
+    setTimeout(() => {
+      try {
+        document.getElementById("prodForm").reset();
+        const mrpEl = document.getElementById("pMrp");
+        if (mrpEl) mrpEl.dataset.userOverridden = "false";
+        document.getElementById("pEditingId").value = "";
+        document.getElementById("prodModalTitle").textContent = "📦 Add Product to Inventory";
+        document.getElementById("prodModalSubmitBtn").textContent = "💾 Save Product";
+        populateSuppliersDropdown();
+        autoCalcFormRates();
+        document.getElementById("prodModal").style.display = "flex";
+      } catch (err) {
+        console.error("Add product error:", err);
+      } finally {
+        setTimeout(() => setButtonLoading(btn, false), 350);
+      }
+    }, 40);
   });
 
   on("quickAddSupInProdBtn", "click", () => {
@@ -1927,8 +1953,18 @@ async function loadSuppliersSubTab() {
 
   on("supSearchInp", "input", renderSuppliersTable);
   on("supCompanyFilter", "change", () => fetchSuppliers());
-  on("addSupMainBtn", "click", () => {
-    openSupplierModal(null, () => fetchSuppliers());
+  on("addSupMainBtn", "click", async function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Opening...");
+    try {
+      await openSupplierModal(null, () => fetchSuppliers());
+    } catch (err) {
+      console.error("Supplier modal error:", err);
+      showToast("Error opening supplier modal: " + err.message, "error");
+    } finally {
+      setTimeout(() => setButtonLoading(btn, false), 350);
+    }
   });
 
   fetchSuppliers();
@@ -2231,8 +2267,17 @@ async function loadBranchTransferSubTab() {
   on("transferStatusFilter", "change", () => fetchTransfers());
   on("transferBranchFilter", "change", () => fetchTransfers());
   on("transferSearchInp", "input", renderTransfersTable);
-  on("openDispatchModalBtn", "click", () => {
-    openDispatchTransferModal(() => fetchTransfers());
+  on("openDispatchModalBtn", "click", async function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Loading Transfer...");
+    try {
+      await openDispatchTransferModal(() => fetchTransfers());
+    } catch (err) {
+      showToast("Dispatch modal error: " + err.message, "error");
+    } finally {
+      setTimeout(() => setButtonLoading(btn, false), 400);
+    }
   });
 
   fetchTransfers();
@@ -2639,22 +2684,18 @@ async function openDispatchTransferModal(onSuccessCallback) {
     e.preventDefault();
     const submitBtn = e.target.querySelector("button[type='submit']");
     if (submitBtn && submitBtn.disabled) return;
-    const origHtml = submitBtn ? submitBtn.innerHTML : "Dispatch & Deduct Stock";
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Dispatching...`;
-    }
+    setButtonLoading(submitBtn, true, "Dispatching...");
 
     const fromComp = fromSel.value;
     const toComp = toSel.value;
     if (fromComp == toComp) {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = origHtml; }
+      setButtonLoading(submitBtn, false);
       return alert("Source branch and destination branch must be different!");
     }
 
     const prodId = prodSel.value;
     if (!prodId) {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = origHtml; }
+      setButtonLoading(submitBtn, false);
       return alert("Please select a product to transfer.");
     }
 
@@ -2687,10 +2728,7 @@ async function openDispatchTransferModal(onSuccessCallback) {
     } catch (err) {
       showToast("Dispatch error: " + err.message, "error");
     } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = origHtml;
-      }
+      setButtonLoading(submitBtn, false);
     }
   });
 }
@@ -2928,9 +2966,20 @@ async function loadReorderSubTab() {
     }).join("");
 
     tbody.querySelectorAll(".autoCreateSinglePOBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const single = lowStockProductsList.filter(x => x.id == btn.dataset.prodid);
-        openReorderPOGeneratorModal(single);
+      btn.addEventListener("click", function () {
+        const btnEl = this;
+        if (btnEl.disabled) return;
+        setButtonLoading(btnEl, true, "Preparing PO...");
+        setTimeout(() => {
+          try {
+            const single = lowStockProductsList.filter(x => x.id == btnEl.dataset.prodid);
+            openReorderPOGeneratorModal(single);
+          } catch (err) {
+            showToast("Reorder error: " + err.message, "error");
+          } finally {
+            setTimeout(() => setButtonLoading(btnEl, false), 400);
+          }
+        }, 40);
       });
     });
   }
@@ -3048,15 +3097,26 @@ async function loadReorderSubTab() {
   document.getElementById("lowStockSearchInp")?.addEventListener("input", (e) => renderReorderTable(e.target.value));
   document.getElementById("poSearchInp")?.addEventListener("input", (e) => renderPOTable(e.target.value));
 
-  on("openReorderPOWizardBtn", "click", () => {
-    const itemsNeedingPo = lowStockProductsList.filter(p => !p.active_po);
-    if (itemsNeedingPo.length === 0) {
-      if (lowStockProductsList.length > 0) {
-        return showToast("All low stock items already have active Purchase Orders generated!", "info");
+  on("openReorderPOWizardBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Analyzing Low Stock...");
+    setTimeout(() => {
+      try {
+        const itemsNeedingPo = lowStockProductsList.filter(p => !p.active_po);
+        if (itemsNeedingPo.length === 0) {
+          if (lowStockProductsList.length > 0) {
+            return showToast("All low stock items already have active Purchase Orders generated!", "info");
+          }
+          return showToast("No low stock products to reorder", "info");
+        }
+        openReorderPOGeneratorModal(itemsNeedingPo);
+      } catch (err) {
+        showToast("Reorder wizard error: " + err.message, "error");
+      } finally {
+        setTimeout(() => setButtonLoading(btn, false), 450);
       }
-      return showToast("No low stock products to reorder", "info");
-    }
-    openReorderPOGeneratorModal(itemsNeedingPo);
+    }, 40);
   });
 
   on("refreshPoListBtn", "click", () => {
@@ -4856,9 +4916,46 @@ async function loadStockReceiptSubTab() {
     }
   });
 
-  on("dlPurchaseTemplateBtn", "click", () => downloadPurchaseEntryTemplateCSV());
-  on("importPurchaseExcelBtn", "click", () => openPurchaseImportModal(() => fetchReceiptsLog()));
-  on("openMultiPurchaseBtn", "click", () => openMultiPurchaseEntryModal(() => fetchReceiptsLog()));
+  on("dlPurchaseTemplateBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Generating...");
+    try {
+      downloadPurchaseEntryTemplateCSV();
+    } catch (err) {
+      showToast("Download error: " + err.message, "error");
+    } finally {
+      setTimeout(() => setButtonLoading(btn, false), 400);
+    }
+  });
+
+  on("importPurchaseExcelBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Loading Importer...");
+    try {
+      openPurchaseImportModal(() => fetchReceiptsLog());
+    } catch (err) {
+      showToast("Import error: " + err.message, "error");
+    } finally {
+      setTimeout(() => setButtonLoading(btn, false), 350);
+    }
+  });
+
+  on("openMultiPurchaseBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Opening Entry...");
+    setTimeout(() => {
+      try {
+        openMultiPurchaseEntryModal(() => fetchReceiptsLog());
+      } catch (err) {
+        showToast("Multi-purchase error: " + err.message, "error");
+      } finally {
+        setTimeout(() => setButtonLoading(btn, false), 400);
+      }
+    }, 40);
+  });
 
   loadDropdowns();
   fetchReceiptsLog();
@@ -6192,36 +6289,66 @@ async function loadInventoryReportsSubTab() {
 
   const printBtn = document.getElementById("printInvReportBtn");
   if (printBtn) {
-    printBtn.addEventListener("click", () => {
-      const repObj = reportOptions.find(o => o.key === activeReportType);
-      let compLabel = "Consolidated Report";
-      if (compId !== 'all' && window.currentCompanies) {
-        const found = window.currentCompanies.find(c => String(c.id) === String(compId));
-        if (found) compLabel = found.name;
-      } else if (window.currentUser && window.currentUser.company_name) {
-        compLabel = window.currentUser.company_name;
-      }
-      if (headerTitle) headerTitle.textContent = `${repObj?.name || 'Inventory Report'} — ${compLabel}`;
-      if (headerSub) headerSub.textContent = `Generated on: ${new Date().toLocaleString('en-IN')} | Search Filter: "${searchInp?.value || 'None'}"`;
+    printBtn.addEventListener("click", function () {
+      const btn = this;
+      if (btn.disabled) return;
+      setButtonLoading(btn, true, "Preparing Report...");
+      setTimeout(() => {
+        try {
+          const repObj = reportOptions.find(o => o.key === activeReportType);
+          let compLabel = "Consolidated Report";
+          if (compId !== 'all' && window.currentCompanies) {
+            const found = window.currentCompanies.find(c => String(c.id) === String(compId));
+            if (found) compLabel = found.name;
+          } else if (window.currentUser && window.currentUser.company_name) {
+            compLabel = window.currentUser.company_name;
+          }
+          if (headerTitle) headerTitle.textContent = `${repObj?.name || 'Inventory Report'} — ${compLabel}`;
+          if (headerSub) headerSub.textContent = `Generated on: ${new Date().toLocaleString('en-IN')} | Search Filter: "${searchInp?.value || 'None'}"`;
 
-      const printArea = document.getElementById("invReportPrintArea");
-      if (!printArea) return;
-      const printContents = printArea.innerHTML;
-      const printWin = window.open('', '', 'height=700,width=900');
-      printWin.document.write('<html><head><title>Print Report</title>');
-      printWin.document.write('<style>body{font-family:sans-serif;padding:20px;color:#000;} table{width:100%;border-collapse:collapse;margin-top:10px;} th,td{border:1px solid #ddd;padding:8px;font-size:12px;text-align:left;} th{background:#f5f5f5;font-weight:bold;} .badge{padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block;}</style>');
-      printWin.document.write('</head><body>');
-      printWin.document.write(printContents);
-      printWin.document.write('</body></html>');
-      printWin.document.close();
-      printWin.focus();
-      setTimeout(() => { printWin.print(); printWin.close(); }, 500);
+          const printArea = document.getElementById("invReportPrintArea");
+          if (!printArea) return;
+          const printContents = printArea.innerHTML;
+          const printWin = window.open('', '', 'height=700,width=900');
+          if (!printWin) {
+            alert("Please allow popups to print report.");
+            return;
+          }
+          printWin.document.write('<html><head><title>Print Report</title>');
+          printWin.document.write('<style>body{font-family:sans-serif;padding:20px;color:#000;} table{width:100%;border-collapse:collapse;margin-top:10px;} th,td{border:1px solid #ddd;padding:8px;font-size:12px;text-align:left;} th{background:#f5f5f5;font-weight:bold;} .badge{padding:2px 6px;border-radius:4px;font-size:11px;font-weight:bold;display:inline-block;}</style>');
+          printWin.document.write('</head><body>');
+          printWin.document.write(printContents);
+          printWin.document.write('</body></html>');
+          printWin.document.close();
+          printWin.focus();
+          setTimeout(() => { printWin.print(); printWin.close(); }, 500);
+        } catch (err) {
+          console.error("Print error:", err);
+          showToast("Print error: " + err.message, "error");
+        } finally {
+          setTimeout(() => setButtonLoading(btn, false), 600);
+        }
+      }, 50);
     });
   }
 
   const exportBtn = document.getElementById("exportInvReportCsvBtn");
   if (exportBtn) {
-    exportBtn.addEventListener("click", () => exportReportToCsv());
+    exportBtn.addEventListener("click", function () {
+      const btn = this;
+      if (btn.disabled) return;
+      setButtonLoading(btn, true, "Exporting CSV...");
+      setTimeout(() => {
+        try {
+          exportReportToCsv();
+        } catch (err) {
+          console.error("Export error:", err);
+          showToast("Export error: " + err.message, "error");
+        } finally {
+          setTimeout(() => setButtonLoading(btn, false), 450);
+        }
+      }, 50);
+    });
   }
 
   async function fetchReportData() {
@@ -6917,7 +7044,20 @@ async function loadHsnMasterSubTab() {
     });
   }
 
-  document.getElementById("addHsnBtn").addEventListener("click", () => showHsnModal(null));
+  document.getElementById("addHsnBtn")?.addEventListener("click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Loading...");
+    setTimeout(() => {
+      try {
+        showHsnModal(null);
+      } catch (err) {
+        showToast("HSN modal error: " + err.message, "error");
+      } finally {
+        setTimeout(() => setButtonLoading(btn, false), 350);
+      }
+    }, 40);
+  });
   document.getElementById("hsnSearchInput").addEventListener("input", renderTable);
   document.getElementById("hsnRateFilter").addEventListener("change", renderTable);
 

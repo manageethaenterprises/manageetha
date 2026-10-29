@@ -519,50 +519,61 @@ async function loadGSTReportSubTab() {
   on("auditorSearchInput", "input", () => { currentPage = 1; renderTransactionsTable(); });
 
   // Export CSV
-  on("auditorExportCsvBtn", "click", () => {
-    if (!rawTransactions || rawTransactions.length === 0) {
-      showToast("No transactions available to export.", "warning");
-      return;
-    }
+  on("auditorExportCsvBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Exporting CSV...");
+    setTimeout(() => {
+      try {
+        if (!rawTransactions || rawTransactions.length === 0) {
+          showToast("No transactions available to export.", "warning");
+          return;
+        }
 
-    const headers = [
-      "Date", "Module", "Flow", "Ref No", "Party Name", "Party GSTIN",
-      "Company Name", "Company GSTIN", "Inward Amount", "Outward Amount",
-      "Taxable Value", "CGST", "SGST", "IGST", "Total GST", "Payment Mode", "Status", "Description"
-    ];
+        const headers = [
+          "Date", "Module", "Flow", "Ref No", "Party Name", "Party GSTIN",
+          "Company Name", "Company GSTIN", "Inward Amount", "Outward Amount",
+          "Taxable Value", "CGST", "SGST", "IGST", "Total GST", "Payment Mode", "Status", "Description"
+        ];
 
-    let csvContent = headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
+        let csvContent = headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
 
-    rawTransactions.forEach(r => {
-      const row = [
-        r.transaction_date || "",
-        r.module || "",
-        r.flow_type || "",
-        r.ref_no || "",
-        r.party_name || "",
-        r.party_gstin || "",
-        r.company_name || "",
-        r.company_gstin || "",
-        r.amount_in || 0,
-        r.amount_out || 0,
-        r.taxable_amount || 0,
-        r.cgst || 0,
-        r.sgst || 0,
-        r.igst || 0,
-        r.tax_amount || 0,
-        r.payment_mode || "",
-        r.payment_status || "",
-        r.description || ""
-      ];
-      csvContent += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",") + "\n";
-    });
+        rawTransactions.forEach(r => {
+          const row = [
+            r.transaction_date || "",
+            r.module || "",
+            r.flow_type || "",
+            r.ref_no || "",
+            r.party_name || "",
+            r.party_gstin || "",
+            r.company_name || "",
+            r.company_gstin || "",
+            r.amount_in || 0,
+            r.amount_out || 0,
+            r.taxable_amount || 0,
+            r.cgst || 0,
+            r.sgst || 0,
+            r.igst || 0,
+            r.tax_amount || 0,
+            r.payment_mode || "",
+            r.payment_status || "",
+            r.description || ""
+          ];
+          csvContent += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",") + "\n";
+        });
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `Auditor_Financial_Transactions_${startInp.value}_to_${endInp.value}.csv`;
-    link.click();
-    showToast("Auditor transactions exported to CSV!", "success");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Auditor_Financial_Transactions_${startInp.value}_to_${endInp.value}.csv`;
+        link.click();
+        showToast("Auditor transactions exported to CSV!", "success");
+      } catch (err) {
+        showToast("Export error: " + err.message, "error");
+      } finally {
+        setTimeout(() => setButtonLoading(btn, false), 450);
+      }
+    }, 40);
   });
 
   // Dedicated Auditor Statement Print Handler
@@ -752,7 +763,20 @@ async function loadGSTReportSubTab() {
   }
 
   // Print Handler
-  on("auditorPrintBtn", "click", printAuditorStatement);
+  on("auditorPrintBtn", "click", function () {
+    const btn = this;
+    if (btn.disabled) return;
+    setButtonLoading(btn, true, "Preparing Report...");
+    setTimeout(() => {
+      try {
+        printAuditorStatement();
+      } catch (err) {
+        showToast("Print error: " + err.message, "error");
+      } finally {
+        setTimeout(() => setButtonLoading(btn, false), 600);
+      }
+    }, 40);
+  });
 
   // Initial load
   fetchTransactions();

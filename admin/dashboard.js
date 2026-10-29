@@ -20,6 +20,123 @@ function getEffectiveCompanyId() {
 }
 window.getEffectiveCompanyId = getEffectiveCompanyId;
 
+// ═══════════════ UNIVERSAL BUTTON LOADING & DOUBLE-CLICK GUARD ═══════════════
+
+if (typeof window.setButtonLoading !== "function") {
+  window.setButtonLoading = function (btn, isLoading, loadingText = "Please wait...", originalHtml = null) {
+    if (!btn) return;
+    if (!document.getElementById("btnSpinStyle")) {
+      const styleEl = document.createElement("style");
+      styleEl.id = "btnSpinStyle";
+      styleEl.textContent = `
+        @keyframes btnSpin { to { transform: rotate(360deg); } }
+        .btn-spinner-inline {
+          display: inline-block;
+          width: 13px;
+          height: 13px;
+          border: 2px solid currentColor;
+          border-top-color: transparent !important;
+          border-radius: 50%;
+          animation: btnSpin 0.6s linear infinite;
+          margin-right: 6px;
+          vertical-align: middle;
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+
+    if (isLoading) {
+      if (btn.dataset.btnLoading === "true") return;
+      if (!btn.dataset.origHtml) {
+        btn.dataset.origHtml = originalHtml || btn.innerHTML;
+      }
+      const rect = btn.getBoundingClientRect();
+      if (rect.width > 0 && !btn.style.minWidth) {
+        btn.style.minWidth = Math.ceil(rect.width) + "px";
+        btn.dataset.hadAutoMinWidth = "true";
+      }
+      btn.disabled = true;
+      btn.style.pointerEvents = "none";
+      btn.style.opacity = "0.78";
+      btn.dataset.btnLoading = "true";
+      btn.innerHTML = `<span class="btn-spinner-inline"></span>${loadingText}`;
+
+      // Watchdog timeout to prevent buttons from remaining permanently stuck
+      if (btn._loadingWatchdog) clearTimeout(btn._loadingWatchdog);
+      btn._loadingWatchdog = setTimeout(() => {
+        window.setButtonLoading(btn, false);
+      }, 15000);
+    } else {
+      if (btn._loadingWatchdog) {
+        clearTimeout(btn._loadingWatchdog);
+        delete btn._loadingWatchdog;
+      }
+      btn.disabled = false;
+      btn.style.pointerEvents = "";
+      btn.style.opacity = "";
+      if (btn.dataset.hadAutoMinWidth === "true") {
+        btn.style.minWidth = "";
+        delete btn.dataset.hadAutoMinWidth;
+      }
+      if (btn.dataset.origHtml) {
+        btn.innerHTML = btn.dataset.origHtml;
+        delete btn.dataset.origHtml;
+      }
+      delete btn.dataset.btnLoading;
+    }
+  };
+}
+window.setButtonLoading = window.setButtonLoading;
+
+window.withButtonLoading = async function(btn, asyncFn, loadingText = "Loading...") {
+  if (!btn || btn.disabled) return;
+  window.setButtonLoading(btn, true, loadingText);
+  try {
+    return await asyncFn();
+  } catch (err) {
+    console.error("Button action error:", err);
+    throw err;
+  } finally {
+    setTimeout(() => window.setButtonLoading(btn, false), 350);
+  }
+};
+
+// Universal delegated button loading animation for all modules
+document.addEventListener("click", function (e) {
+  const btn = e.target.closest("button.btn, button.btn-primary, button.btn-secondary, button.btn-outline, button.btn-success, button.btn-danger, button.btn-warning, button.btn-info, button.btn-dark");
+  if (!btn) return;
+
+  // Skip if button is already handled, disabled, or loading
+  if (btn.disabled || btn.dataset.btnLoading === "true" || btn.dataset.noAutoLoading === "true") return;
+
+  // Skip tab switcher pills, navigation links, and subtabs
+  if (btn.classList.contains("tab-btn") || btn.classList.contains("subtab-btn") || btn.classList.contains("nav-item") || btn.classList.contains("inv-report-pill") || btn.classList.contains("reports-preset-btn") || btn.classList.contains("date-preset-btn") || btn.hasAttribute("data-tab") || btn.hasAttribute("data-subtab") || btn.hasAttribute("data-repkey") || btn.hasAttribute("data-preset")) return;
+
+  // Skip pagination, sorting, row expanders, or dismiss buttons
+  if (btn.hasAttribute("data-page") || btn.hasAttribute("data-sort-key") || btn.classList.contains("modal-close") || btn.classList.contains("close") || btn.classList.contains("closeModalBtn") || btn.classList.contains("closeSupModal") || btn.classList.contains("closeDispModal") || btn.classList.contains("closeImpModal") || btn.classList.contains("closeRecModal") || btn.classList.contains("closeQpModal") || btn.textContent.trim() === "×" || btn.textContent.trim().toLowerCase() === "cancel") return;
+
+  // Provide tactile loading feedback for action buttons that don't have explicit handlers
+  setTimeout(() => {
+    // If the button's own click handler already took control, don't interfere
+    if (btn.dataset.btnLoading === "true" || !document.body.contains(btn)) return;
+
+    // Detect contextual label
+    const rawText = (btn.textContent || "").trim();
+    let label = "Loading...";
+    if (/export|download/i.test(rawText)) label = "Exporting...";
+    else if (/print/i.test(rawText)) label = "Preparing...";
+    else if (/save|record|submit/i.test(rawText)) label = "Saving...";
+    else if (/update/i.test(rawText)) label = "Updating...";
+    else if (/delete|remove/i.test(rawText)) label = "Deleting...";
+    else if (/add|create|new|register|dispatch|reorder/i.test(rawText)) label = "Please wait...";
+
+    window.setButtonLoading(btn, true, label);
+    setTimeout(() => {
+      window.setButtonLoading(btn, false);
+    }, 450);
+  }, 10);
+}, true);
+
 // ═══════════════ HELPERS ═══════════════
 
 function getToken() { return localStorage.getItem("erp_token"); }

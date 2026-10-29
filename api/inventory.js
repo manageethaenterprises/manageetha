@@ -245,8 +245,8 @@ async function upsertProduct(sql, compId, itemData, options = {}) {
   }
 
   const uploadedQty = (itemData.current_stock !== undefined) ? parseInt(itemData.current_stock, 10) :
-                      (itemData.quantity !== undefined ? parseInt(itemData.quantity, 10) :
-                      (itemData.initial_stock !== undefined ? parseInt(itemData.initial_stock, 10) : 0));
+    (itemData.quantity !== undefined ? parseInt(itemData.quantity, 10) :
+      (itemData.initial_stock !== undefined ? parseInt(itemData.initial_stock, 10) : 0));
 
   const weightClean = parseFloat(itemData.weight || itemData.weight_kg || 0);
   const serialNoClean = (itemData.serial_no || itemData.serial_number || itemData.serial || itemData.product_serial_no || '').toString().trim() || null;
@@ -320,7 +320,7 @@ module.exports = async function handler(req, res) {
   const sql = getSQL();
   let body = req.body || {};
   if (typeof body === 'string') {
-    try { body = JSON.parse(body); } catch(e){}
+    try { body = JSON.parse(body); } catch (e) { }
   }
   const action = req.query.action || body.action || "products";
 
@@ -335,8 +335,8 @@ module.exports = async function handler(req, res) {
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS packaging_charges NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS transport_expenses NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE purchase_items ADD COLUMN IF NOT EXISTS gst_rate NUMERIC(15,2);`;
-      try { await sql`ALTER TABLE products ALTER COLUMN selling_percentage TYPE NUMERIC(15,2);`; } catch(e){}
-      try { await sql`ALTER TABLE products ALTER COLUMN gst_rate TYPE NUMERIC(15,2);`; } catch(e){}
+      try { await sql`ALTER TABLE products ALTER COLUMN selling_percentage TYPE NUMERIC(15,2);`; } catch (e) { }
+      try { await sql`ALTER TABLE products ALTER COLUMN gst_rate TYPE NUMERIC(15,2);`; } catch (e) { }
       try {
         // Backfill gst_rate on purchase_items where missing from line total and taxable base
         await sql`
@@ -369,7 +369,7 @@ module.exports = async function handler(req, res) {
             WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
           );
         `;
-      } catch (e) {}
+      } catch (e) { }
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS company_id INT REFERENCES companies(id) ON DELETE SET NULL;`;
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supply_state VARCHAR(100) DEFAULT 'Andhra Pradesh';`;
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS designation VARCHAR(100);`;
@@ -399,7 +399,7 @@ module.exports = async function handler(req, res) {
           FROM products pr
           WHERE s.company_id IS NULL AND pr.supplier_id = s.id AND pr.company_id IS NOT NULL;
         `;
-      } catch (e) {}
+      } catch (e) { }
       await sql`
         CREATE TABLE IF NOT EXISTS inter_branch_transfers (
           id SERIAL PRIMARY KEY,
@@ -430,7 +430,7 @@ module.exports = async function handler(req, res) {
           created_at TIMESTAMP DEFAULT NOW()
         )
       `;
-    } catch (e) {}
+    } catch (e) { }
 
     const isSuperAdmin = (user && user.role === "superadmin");
     const compQuery = isSuperAdmin ? (req.query.company_id || "all") : user.company_id;
@@ -2335,7 +2335,7 @@ module.exports = async function handler(req, res) {
       const expReceiptNum = 'EXP-PUR-' + recId;
       try {
         await sql`DELETE FROM expenses WHERE receipt_number = ${expReceiptNum} OR description LIKE ${'%EXP-PUR-' + recId + '%'}`;
-      } catch (e) {}
+      } catch (e) { }
 
       await sql`DELETE FROM purchase_items WHERE purchase_id = ${recId}`;
       await sql`DELETE FROM purchases WHERE id = ${recId}`;
@@ -2374,7 +2374,7 @@ module.exports = async function handler(req, res) {
         const expReceiptNum = 'EXP-PUR-' + purId;
         try {
           await sql`DELETE FROM expenses WHERE receipt_number = ${expReceiptNum} OR description LIKE ${'%EXP-PUR-' + purId + '%'}`;
-        } catch (e) {}
+        } catch (e) { }
         await sql`DELETE FROM purchases WHERE id = ${purId}`;
         return res.status(200).json({ success: true, message: "Sub-item deleted. Since it was the last item, the entire purchase entry was removed.", deleted_bill: true });
       }
@@ -2405,7 +2405,7 @@ module.exports = async function handler(req, res) {
       try {
         const expReceiptNum = 'EXP-PUR-' + purId;
         await sql`UPDATE expenses SET amount = ${newPaidAmt} WHERE receipt_number = ${expReceiptNum} OR description LIKE ${'%EXP-PUR-' + purId + '%'}`;
-      } catch (e) {}
+      } catch (e) { }
 
       return res.status(200).json({
         success: true,

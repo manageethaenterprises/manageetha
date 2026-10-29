@@ -3921,7 +3921,7 @@ async function loadStockReceiptSubTab() {
               <tr>
                 <th style="width:36px;text-align:center;"></th>
                 <th data-sort-key="purchase_date">Date</th>
-                <th data-sort-key="purchase_invoice_no">Bill #</th>
+                <th data-sort-key="purchase_invoice_no">Bill</th>
                 <th data-sort-key="supplier_name">Supplier</th>
                 <th>Items Summary</th>
                 <th data-sort-key="grand_total">Billed Amount</th>
@@ -4134,6 +4134,13 @@ async function loadStockReceiptSubTab() {
         const totalQty = r.total_qty !== undefined ? r.total_qty : items.reduce((s, it) => s + (parseFloat(it.quantity) || 0), 0);
         const isExpanded = expandedBillIds.has(r.id);
 
+        let subTotQty = 0;
+        let subTotBase = 0;
+        let subTotPkg = 0;
+        let subTotTrp = 0;
+        let subTotGst = 0;
+        let subTotGrand = 0;
+
         const subItemsRowsHtml = items.length === 0 ? `
           <tr>
             <td colspan="10" style="text-align:center;padding:12px;color:var(--text3);font-style:italic;">No sub-items found for this bill.</td>
@@ -4162,8 +4169,17 @@ async function loadStockReceiptSubTab() {
           if (!itemGst || isNaN(itemGst)) itemGst = 18;
           it.gst_rate = itemGst;
 
-          const gstVal = taxable * (itemGst / 100);
+          const gstVal = Math.round((taxable * (itemGst / 100)) * 100) / 100;
           const lineTot = Math.round((taxable + gstVal) * 100) / 100;
+          const rowTot = parseFloat(it.total || lineTot);
+
+          subTotQty += qty;
+          subTotBase += (qty * rate);
+          subTotPkg += pkg;
+          subTotTrp += trp;
+          subTotGst += gstVal;
+          subTotGrand += rowTot;
+
           return `
             <tr style="border-bottom:1px solid var(--border);">
               <td style="text-align:center;color:var(--text3);font-size:11px;font-weight:600;padding:6px 4px;">${idx + 1}</td>
@@ -4193,6 +4209,41 @@ async function loadStockReceiptSubTab() {
             </tr>
           `;
         }).join("");
+
+        const subTaxInfo = determineGstTaxType({
+          supply_state: r.supplier_state,
+          state: r.supplier_state,
+          gstin: r.supplier_gstin
+        }, r.company_id);
+
+        const subGstCellHtml = subTaxInfo.isIgst ? `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <span class="badge" style="background:#2563eb;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;" title="${esc(subTaxInfo.reason)}">⚡ IGST</span>
+            <span style="font-weight:800;color:#1d4ed8;font-size:11.5px;">₹${subTotGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            <span style="font-size:9px;color:var(--text3);">(Inter-State)</span>
+          </div>
+        ` : `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <span class="badge" style="background:#16a34a;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;" title="${esc(subTaxInfo.reason)}">🌿 CGST+SGST</span>
+            <span style="font-weight:800;color:#15803d;font-size:11.5px;">₹${subTotGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            <span style="font-size:9px;color:var(--text3);font-weight:600;white-space:nowrap;">(CGST: ₹${(subTotGst/2).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} | SGST: ₹${(subTotGst/2).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})})</span>
+          </div>
+        `;
+
+        const subItemsFootHtml = items.length > 0 ? `
+          <tfoot style="background:var(--bg-secondary,#f8fafc);border-top:2px solid var(--border);font-size:11.5px;font-weight:700;">
+            <tr>
+              <td colspan="3" style="text-align:right;padding:8px 10px;font-weight:800;color:var(--text1);letter-spacing:0.5px;">TOTALS:</td>
+              <td style="text-align:center;padding:8px 6px;font-weight:800;color:var(--text1);font-size:12px;">+${subTotQty} NOS</td>
+              <td style="text-align:right;padding:8px 8px;font-weight:800;color:var(--text1);">₹${subTotBase.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td style="text-align:center;padding:6px 4px;">${subGstCellHtml}</td>
+              <td style="text-align:right;padding:8px 8px;font-weight:600;color:var(--text2);">${subTotPkg > 0 ? '₹' + subTotPkg.toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+              <td style="text-align:right;padding:8px 8px;font-weight:600;color:var(--text2);">${subTotTrp > 0 ? '₹' + subTotTrp.toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+              <td style="text-align:right;padding:8px 8px;font-weight:800;color:var(--primary);font-size:12.5px;">₹${subTotGrand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        ` : '';
 
         return `
           <tr class="bill-main-row" data-bill-id="${r.id}" style="cursor:pointer;transition:background 0.15s ease;">
@@ -4239,7 +4290,7 @@ async function loadStockReceiptSubTab() {
               <div style="background:var(--bg-primary,#ffffff);border:1px solid var(--border);border-radius:8px;padding:12px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.02);">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);">
                   <div style="font-weight:700;font-size:12.5px;color:var(--text1);display:flex;align-items:center;gap:6px;">
-                    <span>📋 Sub-items Breakdown for Bill #<strong>${esc(r.purchase_invoice_no || 'N/A')}</strong></span>
+                    <span>📋 Sub-items Breakdown for Bill<strong>${esc(r.purchase_invoice_no || 'N/A')}</strong></span>
                     <span style="font-size:11.5px;font-weight:normal;color:var(--text3);">(${items.length} items recorded)</span>
                   </div>
                   ${canEdit ? `
@@ -4267,6 +4318,7 @@ async function loadStockReceiptSubTab() {
                     <tbody>
                       ${subItemsRowsHtml}
                     </tbody>
+                    ${subItemsFootHtml}
                   </table>
                 </div>
               </div>
@@ -4324,7 +4376,7 @@ async function loadStockReceiptSubTab() {
           const billId = btn.dataset.billId;
           const billNo = btn.dataset.billNo;
 
-          if (!confirm(`Are you sure you want to delete sub-item "${itemName}" (${itemQty} NOS) from Bill #${billNo}?\n\n⚠️ Only this sub-item will be removed, ${itemQty} NOS will be deducted from product stock, and the invoice total will be recalculated.\n\nThe rest of the bill will remain intact.`)) {
+          if (!confirm(`Are you sure you want to delete sub-item "${itemName}" (${itemQty} NOS) from Bill${billNo}?\n\n⚠️ Only this sub-item will be removed, ${itemQty} NOS will be deducted from product stock, and the invoice total will be recalculated.\n\nThe rest of the bill will remain intact.`)) {
             return;
           }
 
@@ -4378,7 +4430,7 @@ async function loadStockReceiptSubTab() {
           const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
           const billNo = r?.purchase_invoice_no || 'N/A';
           const itemsCount = r?.items_count || (r?.items?.length || 1);
-          if (!confirm(`Are you sure you want to delete the ENTIRE purchase entry Bill #${billNo}?\n\n⚠️ This will delete ALL ${itemsCount} sub-items in this bill and adjust product stocks accordingly.`)) {
+          if (!confirm(`Are you sure you want to delete the ENTIRE purchase entry Bill ${billNo}?\n\n⚠️ This will delete ALL ${itemsCount} sub-items in this bill and adjust product stocks accordingly.`)) {
             return;
           }
           if (btn.disabled) return;
@@ -4664,6 +4716,48 @@ async function getSuppliersList(cId) {
 }
 
 // ═══════════════════════════════════════════════════
+// GST TAX TYPE HELPER (IGST vs CGST + SGST)
+// ═══════════════════════════════════════════════════
+function determineGstTaxType(supplierObj, compId = 1) {
+  const compList = window.currentCompanies || (typeof currentCompanies !== 'undefined' ? currentCompanies : []) || [];
+  const comp = compList.find(c => String(c.id) === String(compId)) || (compList[0] || {});
+  const compState = (comp.state || (window.currentUser?.company_state) || "Andhra Pradesh").trim();
+  const compGstin = (comp.gstin || (window.currentUser?.company_gstin) || "").trim().toUpperCase();
+
+  if (!supplierObj) {
+    return { isIgst: false, reason: "Intra-State default (Same State)", state: compState };
+  }
+
+  const supState = (supplierObj.supply_state || supplierObj.state || "").trim();
+  const supGstin = (supplierObj.gstin || "").trim().toUpperCase();
+
+  // 1. Compare 2-digit GSTIN state codes if available
+  if (compGstin.length >= 2 && supGstin.length >= 2) {
+    const compCode = compGstin.substring(0, 2);
+    const supCode = supGstin.substring(0, 2);
+    if (/^\d{2}$/.test(compCode) && /^\d{2}$/.test(supCode)) {
+      if (compCode !== supCode) {
+        return { isIgst: true, reason: `Inter-State: Supplier State Code ${supCode} ≠ Company State Code ${compCode}`, state: supState || `State ${supCode}` };
+      } else {
+        return { isIgst: false, reason: `Intra-State: Matching State Code (${compCode})`, state: supState || compState };
+      }
+    }
+  }
+
+  // 2. Compare State names
+  if (supState) {
+    const sLower = supState.toLowerCase();
+    const cLower = compState.toLowerCase();
+    if (sLower === cLower || sLower === "same state" || sLower.includes("intra") || (cLower.includes("andhra") && sLower.includes("andhra"))) {
+      return { isIgst: false, reason: `Intra-State: Same State (${supState})`, state: supState };
+    }
+    return { isIgst: true, reason: `Inter-State: Supplier (${supState}) differs from Company (${compState})`, state: supState };
+  }
+
+  return { isIgst: false, reason: "Intra-State default", state: compState };
+}
+
+// ═══════════════════════════════════════════════════
 // MULTI-PRODUCT PURCHASE ENTRY MODAL
 // ═══════════════════════════════════════════════════
 async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = null) {
@@ -4760,6 +4854,11 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
               padding: 6px 8px !important;
               vertical-align: middle !important;
             }
+            .mp-entry-table tfoot td {
+              border-top: 2px solid var(--border) !important;
+              background: var(--bg-secondary,#f1f5f9) !important;
+              vertical-align: middle !important;
+            }
             .mp-entry-table input[type=number]::-webkit-inner-spin-button,
             .mp-entry-table input[type=number]::-webkit-outer-spin-button {
               -webkit-appearance: none !important;
@@ -4785,22 +4884,35 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
                   <th style="min-width:140px;">Serial No.</th>
                   <th style="min-width:85px;text-align:center;">Qty</th>
                   <th style="min-width:135px;text-align:right;">Pur Rate (Excl ₹)</th>
-                  <th style="min-width:90px;text-align:center;">GST %</th>
-                  <th style="min-width:120px;text-align:right;" title="Packaging Charges (₹)">Packaging (₹)</th>
-                  <th style="min-width:120px;text-align:right;" title="Transport Expenses (₹)">Transport (₹)</th>
+                  <th style="min-width:145px;text-align:center;">GST %</th>
+                  <th style="min-width:115px;text-align:right;" title="Packaging Charges (₹)">Packaging (₹)</th>
+                  <th style="min-width:115px;text-align:right;" title="Transport Expenses (₹)">Transport (₹)</th>
                   <th style="min-width:135px;text-align:right;">Line Total (₹)</th>
                   <th style="width:48px;min-width:48px;text-align:center;">Action</th>
                 </tr>
               </thead>
               <tbody id="mpItemsTableBody">
               </tbody>
+              <tfoot id="mpItemsTableFoot" style="position:sticky;bottom:0;background:var(--bg-secondary,#f8fafc);border-top:2px solid var(--border);box-shadow:0 -2px 6px rgba(0,0,0,0.06);font-size:12px;z-index:2;">
+                <tr style="background:var(--bg-secondary,#f8fafc);">
+                  <td colspan="3" style="text-align:right;padding:9px 12px;font-weight:800;color:var(--text1);letter-spacing:0.5px;">TOTALS:</td>
+                  <td id="mpFootTotalQty" style="text-align:center;padding:9px 6px;font-weight:800;color:var(--text1);font-size:13px;white-space:nowrap;">0</td>
+                  <td id="mpFootTotalRate" style="text-align:right;padding:9px 8px;font-weight:800;color:var(--text1);font-size:12.5px;white-space:nowrap;">₹0.00</td>
+                  <td id="mpFootTotalGst" style="text-align:center;padding:7px 6px;">—</td>
+                  <td id="mpFootTotalPkg" style="text-align:right;padding:9px 8px;font-weight:700;color:var(--text2);font-size:12px;white-space:nowrap;">₹0.00</td>
+                  <td id="mpFootTotalTrp" style="text-align:right;padding:9px 8px;font-weight:700;color:var(--text2);font-size:12px;white-space:nowrap;">₹0.00</td>
+                  <td id="mpFootGrandTotal" style="text-align:right;padding:9px 8px;font-weight:800;color:var(--primary);font-size:14px;white-space:nowrap;">₹0.00</td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
             <button type="button" class="btn btn-secondary btn-sm" id="mpAddRowBtn">+ Add Item Row</button>
-            <div style="font-size:13px;font-weight:700;color:var(--text1);background:var(--bg-secondary);padding:8px 14px;border-radius:6px;border:1px solid var(--border);">
-              Grand Total Billed: <span id="mpGrandTotalText" style="color:var(--primary);font-size:15px;margin-left:6px;">₹0.00</span>
+            <div style="font-size:13px;font-weight:700;color:var(--text1);background:var(--bg-secondary);padding:8px 14px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <span>Grand Total Billed: <span id="mpGrandTotalText" style="color:var(--primary);font-size:15px;margin-left:6px;">₹0.00</span></span>
+              <span id="mpGstTypeIndicator" style="font-size:11.5px;"></span>
             </div>
           </div>
         </div>
@@ -4818,6 +4930,10 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
   document.body.appendChild(overlay);
   overlay.querySelectorAll(".closeMpModal").forEach(b => b.addEventListener("click", () => overlay.remove()));
 
+  overlay.querySelector("#mpSupplierId")?.addEventListener("change", () => {
+    calcGrandTotal();
+  });
+
   overlay.querySelector("#mpQuickSupBtn").addEventListener("click", () => {
     openSupplierModal(null, (newSup) => {
       if (newSup) {
@@ -4826,6 +4942,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         sel.innerHTML = `<option value="">-- Select Supplier --</option>` +
           suppliers.map(s => `<option value="${s.id}">${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("");
         sel.value = newSup.id;
+        calcGrandTotal();
       }
     }, targetCompId);
   });
@@ -4998,18 +5115,92 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
   function calcGrandTotal() {
     let grand = 0;
+    let totalQty = 0;
+    let totalBase = 0;
+    let totalPackaging = 0;
+    let totalTransport = 0;
+    let totalGstAmount = 0;
+
     tbody.querySelectorAll("tr").forEach(tr => {
       const q = parseFloat(tr.querySelector(".mpQty")?.value || 0);
       const r = parseFloat(tr.querySelector(".mpRate")?.value || 0);
       const g = parseFloat(tr.querySelector(".mpGst")?.value || 0);
       const pkg = parseFloat(tr.querySelector(".mpPackaging")?.value || 0);
       const t = parseFloat(tr.querySelector(".mpTransport")?.value || 0);
-      const taxable = (q * r) + pkg + t;
-      const lineTot = Math.round((taxable * (1 + g / 100)) * 100) / 100;
+      const rowTaxable = (q * r) + pkg + t;
+      const lineTot = Math.round((rowTaxable * (1 + g / 100)) * 100) / 100;
+      const rowGst = Math.round((lineTot - rowTaxable) * 100) / 100;
+
+      totalQty += q;
+      totalBase += (q * r);
+      totalPackaging += pkg;
+      totalTransport += t;
+      totalGstAmount += rowGst;
       grand += lineTot;
     });
+
     grand = Math.round(grand * 100) / 100;
+    totalBase = Math.round(totalBase * 100) / 100;
+    totalPackaging = Math.round(totalPackaging * 100) / 100;
+    totalTransport = Math.round(totalTransport * 100) / 100;
+    totalGstAmount = Math.round(totalGstAmount * 100) / 100;
+
+    // Determine supplier state and IGST vs CGST+SGST
+    const selSupId = overlay.querySelector("#mpSupplierId")?.value;
+    const selectedSupplier = suppliers.find(s => String(s.id) === String(selSupId));
+    const taxInfo = determineGstTaxType(selectedSupplier, targetCompId);
+
+    // Update Footer Totals
+    const footQty = overlay.querySelector("#mpFootTotalQty");
+    const footRate = overlay.querySelector("#mpFootTotalRate");
+    const footPkg = overlay.querySelector("#mpFootTotalPkg");
+    const footTrp = overlay.querySelector("#mpFootTotalTrp");
+    const footGst = overlay.querySelector("#mpFootTotalGst");
+    const footGrand = overlay.querySelector("#mpFootGrandTotal");
+
+    if (footQty) footQty.innerHTML = `<span>${totalQty}</span> <span style="font-size:10px;font-weight:normal;color:var(--text3);">NOS</span>`;
+    if (footRate) footRate.textContent = `₹${totalBase.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    if (footPkg) footPkg.textContent = totalPackaging > 0 ? `₹${totalPackaging.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `₹0.00`;
+    if (footTrp) footTrp.textContent = totalTransport > 0 ? `₹${totalTransport.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `₹0.00`;
+    if (footGrand) footGrand.textContent = `₹${grand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+    if (footGst) {
+      if (taxInfo.isIgst) {
+        footGst.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <span class="badge" style="background:#2563eb;color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.3px;" title="${esc(taxInfo.reason)}">
+              ⚡ IGST
+            </span>
+            <span style="font-weight:800;font-size:12.5px;color:#1d4ed8;">₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            <span style="font-size:9.5px;color:var(--text3);font-weight:500;">(Inter-State: ${esc(taxInfo.state || 'Other State')})</span>
+          </div>
+        `;
+      } else {
+        const halfGst = totalGstAmount / 2;
+        footGst.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <span class="badge" style="background:#16a34a;color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.3px;" title="${esc(taxInfo.reason)}">
+              🌿 CGST + SGST
+            </span>
+            <span style="font-weight:800;font-size:12.5px;color:#15803d;">₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+            <span style="font-size:9.5px;color:var(--text3);font-weight:600;white-space:nowrap;">
+              CGST: ₹${halfGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} | SGST: ₹${halfGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}
+            </span>
+          </div>
+        `;
+      }
+    }
+
     overlay.querySelector("#mpGrandTotalText").textContent = `₹${grand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+
+    const taxInd = overlay.querySelector("#mpGstTypeIndicator");
+    if (taxInd) {
+      if (taxInfo.isIgst) {
+        taxInd.innerHTML = `<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:3px 8px;border-radius:4px;font-weight:700;" title="${esc(taxInfo.reason)}">⚡ IGST Collected: ₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
+      } else {
+        taxInd.innerHTML = `<span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:4px;font-weight:700;" title="${esc(taxInfo.reason)}">🌿 CGST + SGST Collected: ₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
+      }
+    }
   }
 
   // Populate initial rows: if in edit mode, populate existing purchase items
@@ -6472,7 +6663,7 @@ async function loadPayablesSubTab() {
 
     <!-- FILTERS -->
     <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;background:var(--bg-card);padding:12px 16px;border-radius:8px;border:1px solid var(--border);">
-      <input type="text" id="payablesSearchInput" class="form-input" placeholder="🔍 Search Supplier, Bill #..." style="max-width:260px;font-size:13px;">
+      <input type="text" id="payablesSearchInput" class="form-input" placeholder="🔍 Search Supplier, Bill..." style="max-width:260px;font-size:13px;">
       <select id="payablesStatusFilter" class="form-select" style="max-width:180px;font-size:13px;">
         <option value="all">All Statuses</option>
         <option value="unpaid" selected>Pending / Unpaid / Partial</option>
@@ -6485,7 +6676,7 @@ async function loadPayablesSubTab() {
       <table class="data-table">
         <thead>
           <tr>
-            <th>Date / Bill #</th>
+            <th>Date / Bill</th>
             <th>Supplier Name</th>
             <th>Grand Total</th>
             <th>Paid</th>
@@ -6581,7 +6772,7 @@ async function loadPayablesSubTab() {
       return `
         <tr>
           <td>
-            <div style="font-weight:700;color:var(--text1);">${esc(p.purchase_invoice_no || 'Bill #' + p.id)}</div>
+            <div style="font-weight:700;color:var(--text1);">${esc(p.purchase_invoice_no || 'Bill' + p.id)}</div>
             <div style="font-size:11px;color:var(--text3);">${pDate}</div>
           </td>
           <td>
@@ -6649,7 +6840,7 @@ function openRecordPaymentModal(purchase, onSuccess) {
 
       <div style="background:var(--bg-card,#f8fafc);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;font-size:12.5px;">
         <div>Supplier: <strong>${esc(purchase.supplier_legal_name || 'Direct Supplier')}</strong></div>
-        <div>Bill No: <strong>${esc(purchase.purchase_invoice_no || 'Bill #' + purchase.id)}</strong></div>
+        <div>Bill No: <strong>${esc(purchase.purchase_invoice_no || 'Bill' + purchase.id)}</strong></div>
         <div style="display:flex;justify-content:space-between;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);">
           <span>Pending Principal: <strong>₹${pending.toFixed(2)}</strong></span>
           <span>Accrued Interest: <strong style="color:#f59e0b;">₹${interest.toFixed(2)}</strong></span>
@@ -6758,7 +6949,7 @@ function openInterestConfigModal(purchase, onSuccess) {
       </div>
 
       <div style="background:var(--bg-card,#f8fafc);padding:10px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;font-size:12px;color:var(--text2);">
-        Bill #: <strong>${esc(purchase.purchase_invoice_no || 'Bill #' + purchase.id)}</strong> | Supplier: <strong>${esc(purchase.supplier_legal_name || 'Direct Supplier')}</strong>
+        Bill: <strong>${esc(purchase.purchase_invoice_no || 'Bill' + purchase.id)}</strong> | Supplier: <strong>${esc(purchase.supplier_legal_name || 'Direct Supplier')}</strong>
       </div>
 
       <form id="interestConfigForm">

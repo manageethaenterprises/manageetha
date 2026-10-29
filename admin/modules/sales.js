@@ -2187,10 +2187,19 @@ function openCustomInvoiceModal(onSuccess) {
   modal = document.createElement("div");
   modal.id = "customInvoiceModal";
   modal.className = "modal active";
-  modal.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;overflow-y:auto;backdrop-filter:blur(4px);";
+  modal.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;overflow-y:auto;backdrop-filter:blur(4px);animation:customModalFadeIn 0.2s ease-out;";
   modal.innerHTML = `
     <style>
+      @keyframes customModalFadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes customModalScaleIn {
+        from { opacity: 0; transform: scale(0.97) translateY(-6px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+      }
       .custom-inv-modal-content {
+        animation: customModalScaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
         width: 96vw !important;
         max-width: min(1600px, 97vw) !important;
         max-height: 94vh !important;
@@ -6116,7 +6125,7 @@ async function loadInvoicesSubTab() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
       <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">🧾 Raised Tax Invoices & Custom Invoices</h3>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <button class="btn btn-primary" id="btnCreateCustomInvoice" style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;font-weight:600;padding:8px 16px;border-radius:6px;box-shadow:0 2px 4px rgba(79,70,229,0.25);">➕ Create Custom Invoice</button>
+        <button class="btn btn-primary" id="btnCreateCustomInvoice" style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;font-weight:600;padding:8px 16px;border-radius:6px;box-shadow:0 2px 4px rgba(79,70,229,0.25);transition:all 0.15s ease;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">➕ Create Custom Invoice</button>
         <input type="text" id="invSearchInp" class="form-input" placeholder="🔍 Search Invoice #, Customer, Phone, Company..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:280px;max-width:100%;">
       </div>
     </div>
@@ -6432,8 +6441,20 @@ async function loadInvoicesSubTab() {
 
     renderInvoicesTable();
     document.getElementById("invSearchInp")?.addEventListener("input", (e) => renderInvoicesTable(e.target.value));
-    document.getElementById("btnCreateCustomInvoice")?.addEventListener("click", () => {
-      openCustomInvoiceModal(() => loadInvoicesSubTab());
+    document.getElementById("btnCreateCustomInvoice")?.addEventListener("click", function () {
+      const btn = this;
+      if (btn.disabled) return;
+      setButtonLoading(btn, true, "Loading...");
+      setTimeout(() => {
+        try {
+          openCustomInvoiceModal(() => loadInvoicesSubTab());
+        } catch (err) {
+          console.error("Custom invoice modal error:", err);
+          showToast("Failed to open modal: " + err.message, "error");
+        } finally {
+          setTimeout(() => setButtonLoading(btn, false), 350);
+        }
+      }, 50);
     });
 
   } catch (err) {

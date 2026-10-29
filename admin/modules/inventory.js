@@ -3919,17 +3919,18 @@ async function loadStockReceiptSubTab() {
           <table class="data-table">
             <thead>
               <tr>
+                <th style="width:36px;text-align:center;"></th>
                 <th data-sort-key="purchase_date">Date</th>
                 <th data-sort-key="purchase_invoice_no">Bill #</th>
                 <th data-sort-key="supplier_name">Supplier</th>
-                <th data-sort-key="product_name">Product & Qty</th>
+                <th>Items Summary</th>
                 <th data-sort-key="grand_total">Billed Amount</th>
                 <th>Bill Doc</th>
                 <th style="min-width:130px;text-align:center;">Actions</th>
               </tr>
             </thead>
             <tbody id="receiptsLogTableBody">
-              <tr><td colspan="7" style="text-align:center;padding:20px;"><div class="spinner"></div> Loading purchase log...</td></tr>
+              <tr><td colspan="8" style="text-align:center;padding:20px;"><div class="spinner"></div> Loading purchase log...</td></tr>
             </tbody>
           </table>
         </div>
@@ -4084,17 +4085,27 @@ async function loadStockReceiptSubTab() {
     }
   }
 
+  const expandedBillIds = new Set();
+
   function renderReceiptsLogTable() {
     const tbody = document.getElementById("receiptsLogTableBody");
     const pagEl = document.getElementById("receiptPagination");
     const infoEl = document.getElementById("receiptInfo");
     if (!tbody) return;
 
+    // Check user role: only superadmin and storeadmin can edit purchase entries
+    const userObj = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+    const userRole = (userObj?.role || localStorage.getItem('role') || '').toLowerCase().replace(/[^a-z]/g, '');
+    const isSuper = userRole === 'superadmin' || userRole === 'super_admin' || userObj?.username === 'superadmin';
+    const isStoreAdmin = userRole === 'storeadmin' || userRole === 'store_admin';
+    const canEdit = isSuper || isStoreAdmin;
+
     const searchTerm = (document.getElementById("receiptSearchInp")?.value || "").toLowerCase().trim();
 
     let filtered = currentReceiptsList.filter(r => {
       if (!searchTerm) return true;
-      const compStr = [r.purchase_invoice_no, r.supplier_name, r.product_name, r.purchase_date].map(v => (v || "").toLowerCase()).join(" ");
+      const subItemsText = (r.items || []).map(it => `${it.product_name || ''} ${it.model || ''} ${it.serial_no || ''}`).join(" ");
+      const compStr = [r.purchase_invoice_no, r.supplier_name, r.purchase_date, subItemsText].map(v => (v || "").toLowerCase()).join(" ");
       return compStr.includes(searchTerm);
     });
 
@@ -4114,69 +4125,268 @@ async function loadStockReceiptSubTab() {
           if (Array.isArray(docs) && docs.length > 0 && docs[0]) {
             const token = encodeURIComponent(getToken() || localStorage.getItem("erp_token") || "");
             const viewUrl = `${API_BASE}/inventory?action=view-doc&id=${r.id}&token=${token}`;
-            docBtn = `<a href="${viewUrl}" target="_blank" class="btn btn-xs btn-outline">📎 View Bill</a>`;
+            docBtn = `<a href="${viewUrl}" target="_blank" class="btn btn-xs btn-outline" style="text-decoration:none;">📎 View Bill</a>`;
           }
         } catch (e) {}
 
-        return `
+        const items = Array.isArray(r.items) ? r.items : [];
+        const itemsCount = r.items_count !== undefined ? r.items_count : items.length;
+        const totalQty = r.total_qty !== undefined ? r.total_qty : items.reduce((s, it) => s + (parseFloat(it.quantity) || 0), 0);
+        const isExpanded = expandedBillIds.has(r.id);
+
+        const subItemsRowsHtml = items.length === 0 ? `
           <tr>
-            <td>${formatDate(r.purchase_date || r.created_at)}</td>
-            <td><span class="badge badge-purple">${esc(r.purchase_invoice_no || 'N/A')}</span></td>
-            <td style="font-weight:600;color:var(--text1);">${esc(r.supplier_name || 'Direct')}</td>
-            <td>
-              <div style="font-weight:600;">${esc(r.product_name || 'Product')}${r.model ? ` <span style="font-size:11px;color:var(--text2);font-weight:600;">[${esc(r.model)}]</span>` : ''}</div>
-              <div style="font-size:11px;color:var(--success);font-weight:700;">+${r.quantity || 0} NOS</div>
+            <td colspan="10" style="text-align:center;padding:12px;color:var(--text3);font-style:italic;">No sub-items found for this bill.</td>
+          </tr>
+        ` : items.map((it, idx) => {
+          const taxable = ((parseFloat(it.quantity) || 0) * (parseFloat(it.rate) || 0)) + (parseFloat(it.packaging_charges) || 0) + (parseFloat(it.transport_expenses) || 0);
+          const gstVal = taxable * ((parseFloat(it.gst_rate) || 0) / 100);
+          const lineTot = taxable + gstVal;
+          return `
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="text-align:center;color:var(--text3);font-size:11px;font-weight:600;padding:6px 4px;">${idx + 1}</td>
+              <td style="padding:6px 8px;">
+                <div style="font-weight:600;color:var(--text1);font-size:12px;">${esc(it.product_name || 'Product')}</div>
+                ${it.model ? `<div style="font-size:11px;color:var(--text3);">Model: <span style="font-weight:600;color:var(--text2);">${esc(it.model)}</span></div>` : ''}
+              </td>
+              <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--text2);">${esc(it.serial_no || '—')}</td>
+              <td style="text-align:center;padding:6px 8px;font-weight:700;color:var(--success);font-size:12px;">+${it.quantity}</td>
+              <td style="text-align:right;padding:6px 8px;font-size:12px;">₹${parseFloat(it.rate || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td style="text-align:center;padding:6px 8px;font-size:12px;">${it.gst_rate || 0}%</td>
+              <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.packaging_charges || 0) > 0 ? '₹' + parseFloat(it.packaging_charges).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+              <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.transport_expenses || 0) > 0 ? '₹' + parseFloat(it.transport_expenses).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+              <td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--text1);font-size:12px;">₹${parseFloat(it.total || lineTot).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td style="text-align:center;padding:6px 4px;">
+                <button type="button" class="btn btn-xs btn-danger deleteSubItemBtn" 
+                  data-item-id="${it.id}" 
+                  data-item-name="${esc(it.product_name || 'Sub-item')}" 
+                  data-item-qty="${it.quantity}" 
+                  data-bill-id="${r.id}"
+                  data-bill-no="${esc(r.purchase_invoice_no || 'N/A')}"
+                  style="padding:2px 6px;font-size:11px;" 
+                  title="Delete only this sub-item and deduct its stock">
+                  🗑️
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        return `
+          <tr class="bill-main-row" data-bill-id="${r.id}" style="cursor:pointer;transition:background 0.15s ease;">
+            <td style="text-align:center;vertical-align:middle;padding:8px 4px;">
+              <button type="button" class="btn btn-xs toggleBillAccordionBtn" data-bill-id="${r.id}" style="border:none;background:transparent;font-size:13px;cursor:pointer;padding:2px 6px;color:var(--text2);" title="Expand/Collapse Sub-items">
+                <i class="fas fa-chevron-${isExpanded ? 'down' : 'right'} chevron-icon-${r.id}" style="transition:transform 0.2s ease;"></i>
+              </button>
             </td>
-            <td style="font-weight:700;color:var(--text1);">${formatCurrency(r.grand_total || r.total_amount)}</td>
-            <td>${docBtn}</td>
-            <td style="white-space:nowrap;min-width:130px;text-align:center;">
+            <td style="vertical-align:middle;font-size:12px;">${formatDate(r.purchase_date || r.created_at)}</td>
+            <td style="vertical-align:middle;">
+              <span class="badge badge-purple" style="font-size:11.5px;font-weight:700;">${esc(r.purchase_invoice_no || 'N/A')}</span>
+            </td>
+            <td style="font-weight:600;color:var(--text1);vertical-align:middle;font-size:12.5px;">${esc(r.supplier_name || 'Direct')}</td>
+            <td style="vertical-align:middle;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="badge badge-info" style="font-size:11px;padding:2px 6px;font-weight:600;">
+                  📦 ${itemsCount} ${itemsCount === 1 ? 'Product' : 'Products'}
+                </span>
+                <span class="badge badge-success" style="font-size:11px;padding:2px 6px;font-weight:700;">
+                  +${totalQty} NOS
+                </span>
+              </div>
+              <div style="font-size:10.5px;color:var(--primary);margin-top:2px;font-weight:500;">
+                ${isExpanded ? '▲ Click to collapse' : '▼ Click to view sub-items'}
+              </div>
+            </td>
+            <td style="font-weight:700;color:var(--text1);vertical-align:middle;font-size:13px;">${formatCurrency(r.grand_total || r.total_amount)}</td>
+            <td style="vertical-align:middle;">${docBtn}</td>
+            <td style="white-space:nowrap;min-width:130px;text-align:center;vertical-align:middle;" onclick="event.stopPropagation();">
               <div style="display:inline-flex;gap:4px;justify-content:center;">
-                <button class="btn btn-xs btn-outline editReceiptBtn" data-id="${r.id}" style="padding:4px 8px;font-size:12px;">✏️ Edit</button>
-                <button class="btn btn-xs btn-danger deleteReceiptBtn" data-id="${r.id}" style="padding:4px 8px;font-size:12px;">🗑️ Delete</button>
+                ${canEdit ? `
+                  <button type="button" class="btn btn-xs btn-outline editReceiptBtn" data-id="${r.id}" style="padding:4px 8px;font-size:12px;" title="Edit Purchase Bill & Sub-items (Superadmin & Storeadmin)">
+                    ✏️ Edit
+                  </button>
+                ` : ''}
+                <button type="button" class="btn btn-xs btn-danger deleteReceiptBtn" data-id="${r.id}" style="padding:4px 8px;font-size:12px;" title="Delete entire purchase entry">
+                  🗑️ Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr id="subItemsRow_${r.id}" class="bill-accordion-row" style="display:${isExpanded ? 'table-row' : 'none'};background:var(--bg-secondary,#f8fafc);">
+            <td colspan="8" style="padding:10px 14px 14px 14px;border-top:1px dashed var(--border);border-bottom:2px solid var(--border);">
+              <div style="background:var(--bg-primary,#ffffff);border:1px solid var(--border);border-radius:8px;padding:12px;box-shadow:inset 0 1px 3px rgba(0,0,0,0.02);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);">
+                  <div style="font-weight:700;font-size:12.5px;color:var(--text1);display:flex;align-items:center;gap:6px;">
+                    <span>📋 Sub-items Breakdown for Bill #<strong>${esc(r.purchase_invoice_no || 'N/A')}</strong></span>
+                    <span style="font-size:11.5px;font-weight:normal;color:var(--text3);">(${items.length} items recorded)</span>
+                  </div>
+                  ${canEdit ? `
+                    <button type="button" class="btn btn-xs btn-outline editReceiptBtn" data-id="${r.id}" style="font-size:11.5px;padding:2px 8px;">
+                      ✏️ Edit Full Bill in Modal
+                    </button>
+                  ` : ''}
+                </div>
+                <div style="overflow-x:auto;">
+                  <table class="data-table" style="width:100%;font-size:12px;margin:0;border:1px solid var(--border);">
+                    <thead>
+                      <tr style="background:var(--bg-secondary,#f1f5f9);color:var(--text2);font-size:11px;">
+                        <th style="width:36px;text-align:center;">#</th>
+                        <th>Product Name & Model</th>
+                        <th>Serial No.</th>
+                        <th style="text-align:center;">Qty</th>
+                        <th style="text-align:right;">Pur Rate (Excl ₹)</th>
+                        <th style="text-align:center;">GST %</th>
+                        <th style="text-align:right;">Packaging (₹)</th>
+                        <th style="text-align:right;">Transport (₹)</th>
+                        <th style="text-align:right;">Line Total (₹)</th>
+                        <th style="width:55px;text-align:center;">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${subItemsRowsHtml}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </td>
           </tr>
         `;
+      },
+      onRender: () => {
+        attachReceiptsLogEvents();
       }
     });
 
-    tbody.querySelectorAll(".editReceiptBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
-        if (r) openEditReceiptModal(r, () => fetchReceiptsLog());
-      });
-    });
+    attachReceiptsLogEvents();
 
-    tbody.querySelectorAll(".deleteReceiptBtn").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
-        if (!confirm(`Are you sure you want to delete purchase entry Bill #${r?.purchase_invoice_no || 'N/A'}? This will also adjust inventory stock.`)) return;
-        if (btn.disabled) return;
-        const origHtml = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-        try {
-          const res = await fetch(`${API_BASE}/inventory?action=stock-receipt-delete&id=${btn.dataset.id}`, {
-            method: "POST",
-            headers: authHeaders()
-          });
-          const d = await res.json();
-          if (d.success) {
-            showToast(d.message || "Entry deleted", "success");
-            fetchReceiptsLog();
-            loadDropdowns();
-          } else {
-            showToast(d.error || "Failed to delete entry", "error");
+    function attachReceiptsLogEvents() {
+      // Toggle Accordion Rows
+      tbody.querySelectorAll(".toggleBillAccordionBtn, .bill-main-row").forEach(el => {
+        el.onclick = (e) => {
+          if (e.target.closest("button") && !e.target.closest(".toggleBillAccordionBtn")) return;
+          if (e.target.closest("a")) return;
+
+          const row = el.closest(".bill-main-row") || el;
+          const billId = parseInt(row.dataset.billId);
+          if (!billId) return;
+
+          const subRow = document.getElementById(`subItemsRow_${billId}`);
+          const chevron = tbody.querySelector(`.chevron-icon-${billId}`);
+          if (subRow) {
+            if (subRow.style.display === "none") {
+              subRow.style.display = "table-row";
+              expandedBillIds.add(billId);
+              if (chevron) {
+                chevron.classList.remove("fa-chevron-right");
+                chevron.classList.add("fa-chevron-down");
+              }
+            } else {
+              subRow.style.display = "none";
+              expandedBillIds.delete(billId);
+              if (chevron) {
+                chevron.classList.remove("fa-chevron-down");
+                chevron.classList.add("fa-chevron-right");
+              }
+            }
+          }
+        };
+      });
+
+      // Delete ONLY Sub-item
+      tbody.querySelectorAll(".deleteSubItemBtn").forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const itemId = btn.dataset.itemId;
+          const itemName = btn.dataset.itemName;
+          const itemQty = btn.dataset.itemQty;
+          const billId = btn.dataset.billId;
+          const billNo = btn.dataset.billNo;
+
+          if (!confirm(`Are you sure you want to delete sub-item "${itemName}" (${itemQty} NOS) from Bill #${billNo}?\n\n⚠️ Only this sub-item will be removed, ${itemQty} NOS will be deducted from product stock, and the invoice total will be recalculated.\n\nThe rest of the bill will remain intact.`)) {
+            return;
+          }
+
+          if (btn.disabled) return;
+          const origHtml = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+
+          try {
+            const res = await fetch(`${API_BASE}/inventory?action=stock-receipt-item-delete&item_id=${itemId}&purchase_id=${billId}`, {
+              method: "POST",
+              headers: authHeaders()
+            });
+            const d = await res.json();
+            if (d.success) {
+              showToast(d.message || "Sub-item deleted and bill updated successfully!", "success");
+              fetchReceiptsLog();
+              if (typeof loadDropdowns === "function") loadDropdowns();
+            } else {
+              showToast(d.error || "Failed to delete sub-item", "error");
+              btn.disabled = false;
+              btn.innerHTML = origHtml;
+            }
+          } catch (err) {
+            showToast("Delete sub-item error: " + err.message, "error");
             btn.disabled = false;
             btn.innerHTML = origHtml;
           }
-        } catch (err) {
-          showToast("Delete entry error: " + err.message, "error");
-          btn.disabled = false;
-          btn.innerHTML = origHtml;
-        }
+        };
       });
-    });
+
+      // Edit Receipt (Full modal in edit mode)
+      tbody.querySelectorAll(".editReceiptBtn").forEach(btn => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          if (!canEdit) {
+            showToast("Access restricted: Only Superadmin and Storeadmin can edit purchase entries.", "error");
+            return;
+          }
+          const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
+          if (r) {
+            openMultiPurchaseEntryModal(() => fetchReceiptsLog(), r);
+          }
+        };
+      });
+
+      // Delete Entire Receipt
+      tbody.querySelectorAll(".deleteReceiptBtn").forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
+          const billNo = r?.purchase_invoice_no || 'N/A';
+          const itemsCount = r?.items_count || (r?.items?.length || 1);
+          if (!confirm(`Are you sure you want to delete the ENTIRE purchase entry Bill #${billNo}?\n\n⚠️ This will delete ALL ${itemsCount} sub-items in this bill and adjust product stocks accordingly.`)) {
+            return;
+          }
+          if (btn.disabled) return;
+          const origHtml = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+          try {
+            const res = await fetch(`${API_BASE}/inventory?action=stock-receipt-delete&id=${btn.dataset.id}`, {
+              method: "POST",
+              headers: authHeaders()
+            });
+            const d = await res.json();
+            if (d.success) {
+              showToast(d.message || "Entire purchase entry deleted", "success");
+              expandedBillIds.delete(parseInt(btn.dataset.id));
+              fetchReceiptsLog();
+              if (typeof loadDropdowns === "function") loadDropdowns();
+            } else {
+              showToast(d.error || "Failed to delete entry", "error");
+              btn.disabled = false;
+              btn.innerHTML = origHtml;
+            }
+          } catch (err) {
+            showToast("Delete entry error: " + err.message, "error");
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+          }
+        };
+      });
+    }
   }
 
   const tableHeader = document.querySelector("#receiptsLogTableBody")?.closest("table");
@@ -4190,97 +4400,8 @@ async function loadStockReceiptSubTab() {
 
   on("receiptSearchInp", "input", renderReceiptsLogTable);
 
-  async function openEditReceiptModal(r, onSuccess) {
-    try {
-      const recCompId = r.company_id || getActiveCompId();
-      const compParam = (recCompId && recCompId !== 'all') ? `&company_id=${recCompId}` : '';
-      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
-      const sData = await sRes.json();
-      const suppliersList = sData.suppliers || [];
-
-      const overlay = document.createElement("div");
-      overlay.className = "modal-overlay";
-      overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
-
-      const optionsHtml = `<option value="">-- Select Supplier --</option>` +
-        suppliersList.map(s => `<option value="${s.id}" ${r.supplier_id == s.id ? 'selected' : ''}>${esc(s.legal_name)}</option>`).join("");
-
-      overlay.innerHTML = `
-        <div class="modal-box" style="max-width:500px;width:100%;background:var(--bg-primary);border-radius:12px;padding:24px;border:1px solid var(--border);">
-          <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:16px;">
-            <h3 style="font-size:16px;font-weight:700;color:var(--text1);margin:0;">✏️ Edit Purchase Receipt Entry</h3>
-            <button class="btn btn-sm btn-outline closeEditRecModal">&times;</button>
-          </div>
-
-          <form id="editRecForm">
-            <div class="form-group" style="margin-bottom:12px;">
-              <label class="form-label">Supplier Bill / Invoice Number</label>
-              <input type="text" id="editRecBillNo" class="form-input" value="${esc(r.purchase_invoice_no || '')}">
-            </div>
-
-            <div class="form-group" style="margin-bottom:12px;">
-              <label class="form-label">Supplier / dealer</label>
-              <select id="editRecSupplierId" class="form-select">${optionsHtml}</select>
-            </div>
-
-            <div class="form-group" style="margin-bottom:16px;">
-              <label class="form-label">Total Billed Amount (₹)</label>
-              <input type="number" step="0.01" id="editRecTotalAmount" class="form-input" value="${r.grand_total || r.total_amount || 0}">
-            </div>
-
-            <div style="display:flex;justify-content:flex-end;gap:10px;">
-              <button type="button" class="btn btn-secondary closeEditRecModal">Cancel</button>
-              <button type="submit" class="btn btn-primary">💾 Update Entry</button>
-            </div>
-          </form>
-        </div>
-      `;
-
-      document.body.appendChild(overlay);
-      overlay.querySelectorAll(".closeEditRecModal").forEach(b => b.addEventListener("click", () => overlay.remove()));
-
-      overlay.querySelector("#editRecForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const submitBtn = e.target.querySelector("button[type='submit']");
-        if (submitBtn && submitBtn.disabled) return;
-        const origHtml = submitBtn ? submitBtn.innerHTML : "💾 Update Entry";
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Updating...`;
-        }
-
-        const payload = {
-          id: r.id,
-          purchase_invoice_no: overlay.querySelector("#editRecBillNo").value.trim(),
-          supplier_id: overlay.querySelector("#editRecSupplierId").value || null,
-          grand_total: overlay.querySelector("#editRecTotalAmount").value
-        };
-
-        try {
-          const res = await fetch(`${API_BASE}/inventory?action=stock-receipt-update`, {
-            method: "POST",
-            headers: authHeaders(),
-            body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          if (data.success) {
-            showToast(data.message || "Entry updated!", "success");
-            overlay.remove();
-            if (onSuccess) onSuccess();
-          } else showToast(data.error || "Failed to update entry", "error");
-        } catch (err) {
-          showToast("Error updating entry: " + err.message, "error");
-        } finally {
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = origHtml;
-          }
-        }
-      });
-
-    } catch (err) {
-      showToast("Error opening edit modal: " + err.message, "error");
-    }
+  function openEditReceiptModal(r, onSuccess) {
+    openMultiPurchaseEntryModal(onSuccess, r);
   }
 
   on("quickAddSupInReceiptBtn", "click", () => {
@@ -4523,11 +4644,12 @@ async function getSuppliersList(cId) {
 // ═══════════════════════════════════════════════════
 // MULTI-PRODUCT PURCHASE ENTRY MODAL
 // ═══════════════════════════════════════════════════
-async function openMultiPurchaseEntryModal(onSuccessCallback) {
+async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = null) {
+  const isEdit = !!(editPurchase && editPurchase.id);
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
 
-  const compId = getActiveCompId();
+  const compId = isEdit ? (editPurchase.company_id || getActiveCompId()) : getActiveCompId();
   const targetCompId = (compId && compId !== 'all') ? compId : 1;
   const suppliers = await getSuppliersList(targetCompId);
   let loadedProducts = [];
@@ -4541,7 +4663,12 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
   overlay.innerHTML = `
     <div class="modal-box" style="max-width:1380px;width:96vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
       <div class="modal-header">
-        <h3 style="font-size:17px;font-weight:700;color:var(--text1);margin:0;">📝 Multi-Product Purchase Entry & Stock Receipt</h3>
+        <div>
+          <h3 style="font-size:17px;font-weight:700;color:var(--text1);margin:0;">
+            ${isEdit ? `✏️ Edit Purchase Entry & Stock Receipt (Bill #${esc(editPurchase.purchase_invoice_no || editPurchase.bill_number || '')})` : `📝 Multi-Product Purchase Entry & Stock Receipt`}
+          </h3>
+          ${isEdit ? `<div style="font-size:12px;color:var(--warning);margin-top:3px;font-weight:500;">⚠️ In edit mode: Updating will adjust inventory stock levels and recalculate bill totals.</div>` : ''}
+        </div>
         <button class="modal-close closeMpModal">&times;</button>
       </div>
 
@@ -4555,24 +4682,25 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
               </div>
               <select id="mpSupplierId" class="form-select" style="padding:6px 10px;font-size:13px;" required>
                 <option value="">-- Select Supplier --</option>
-                ${suppliers.map(s => `<option value="${s.id}">${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("")}
+                ${suppliers.map(s => `<option value="${s.id}" ${(isEdit && editPurchase.supplier_id == s.id) ? 'selected' : ''}>${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("")}
               </select>
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:4px;">Supplier Invoice / Bill No.</label>
-              <input type="text" id="mpBillNo" class="form-input" placeholder="e.g. INV-2026-881" style="padding:6px 10px;font-size:13px;">
+              <input type="text" id="mpBillNo" class="form-input" placeholder="e.g. INV-2026-881" style="padding:6px 10px;font-size:13px;" value="${isEdit ? esc(editPurchase.purchase_invoice_no || editPurchase.bill_number || '') : ''}">
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:4px;">Invoice Date</label>
-              <input type="date" id="mpDate" class="form-input" style="padding:6px 10px;font-size:13px;" value="${new Date().toISOString().split('T')[0]}">
+              <input type="date" id="mpDate" class="form-input" style="padding:6px 10px;font-size:13px;" value="${isEdit ? (editPurchase.purchase_date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0]}">
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:4px;">Attach Supplier Invoice PDF/Image</label>
               <input type="file" id="mpFileInp" class="form-input" style="padding:4px 8px;font-size:12px;" accept="image/*,.pdf">
               <input type="hidden" id="mpFileBase64" value="">
+              ${isEdit && editPurchase.attachments_json ? `<div style="font-size:11px;color:var(--text2);margin-top:2px;">📎 Existing document attached. Choose file only to replace it.</div>` : ''}
             </div>
           </div>
 
@@ -4580,23 +4708,23 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
           <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:12px 16px;margin-bottom:14px;background:var(--bg-card, #f8fafc);padding:12px 18px;border-radius:8px;border:1px solid var(--border);">
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11.5px;font-weight:600;margin-bottom:3px;">Paid Amount (₹)</label>
-              <input type="number" step="0.01" id="mpPaidAmt" class="form-input" placeholder="Leave blank if fully paid" style="padding:5px 8px;font-size:12.5px;">
+              <input type="number" step="0.01" id="mpPaidAmt" class="form-input" placeholder="Leave blank if fully paid" style="padding:5px 8px;font-size:12.5px;" value="${isEdit && editPurchase.paid_amount !== null && editPurchase.paid_amount !== undefined ? editPurchase.paid_amount : ''}">
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11.5px;font-weight:600;margin-bottom:3px;">Interest Rate (%)</label>
-              <input type="number" step="0.01" id="mpInterestRate" class="form-input" placeholder="e.g. 1.5" style="padding:5px 8px;font-size:12.5px;">
+              <input type="number" step="0.01" id="mpInterestRate" class="form-input" placeholder="e.g. 1.5" style="padding:5px 8px;font-size:12.5px;" value="${isEdit && editPurchase.interest_rate !== null && editPurchase.interest_rate !== undefined ? editPurchase.interest_rate : ''}">
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11.5px;font-weight:600;margin-bottom:3px;">Interest Frequency</label>
               <select id="mpInterestFreq" class="form-select" style="padding:5px 8px;font-size:12.5px;">
-                <option value="monthly">Monthly</option>
-                <option value="daily">Daily</option>
-                <option value="yearly">Yearly</option>
+                <option value="monthly" ${isEdit && editPurchase.interest_frequency === 'monthly' ? 'selected' : ''}>Monthly</option>
+                <option value="daily" ${isEdit && editPurchase.interest_frequency === 'daily' ? 'selected' : ''}>Daily</option>
+                <option value="yearly" ${isEdit && editPurchase.interest_frequency === 'yearly' ? 'selected' : ''}>Yearly</option>
               </select>
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:11.5px;font-weight:600;margin-bottom:3px;">Payment Due Date</label>
-              <input type="date" id="mpDueDate" class="form-input" style="padding:5px 8px;font-size:12.5px;">
+              <input type="date" id="mpDueDate" class="form-input" style="padding:5px 8px;font-size:12.5px;" value="${isEdit && editPurchase.due_date ? editPurchase.due_date : ''}">
             </div>
           </div>
 
@@ -4657,7 +4785,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary closeMpModal" style="padding:8px 18px;">Cancel</button>
-          <button type="submit" class="btn btn-primary" style="padding:8px 22px;font-weight:600;">📥 Save Purchase Entry & Increment Stock</button>
+          <button type="submit" class="btn btn-primary" style="padding:8px 22px;font-weight:600;">
+            ${isEdit ? `💾 Update Purchase Entry & Adjust Stock` : `📥 Save Purchase Entry & Increment Stock`}
+          </button>
         </div>
       </form>
     </div>
@@ -4693,12 +4823,21 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
   let itemRowIndex = 0;
 
   function renderProductOptionsHtml(selectedProdId = null) {
-    return `<option value="">-- Select Product --</option>` +
-      loadedProducts.map(p => {
-        const modelStr = p.model ? ` [${p.model}]` : '';
-        const brandStr = p.brand ? ` (${p.brand})` : '';
-        return `<option value="${p.id}" data-rate="${p.purchase_rate || 0}" data-gst="${p.gst_rate || 18}" data-pkg="${p.packaging_charges || 0}" data-transport="${p.transport_expenses || 0}" data-model="${esc(p.model || '')}" data-serial="${esc(p.serial_no || '')}" ${p.id == selectedProdId ? 'selected' : ''}>${esc(p.name)}${esc(modelStr)}${esc(brandStr)}</option>`;
-      }).join("");
+    let opts = `<option value="">-- Select Product --</option>`;
+    let found = false;
+    loadedProducts.forEach(p => {
+      const modelStr = p.model ? ` [${p.model}]` : '';
+      const brandStr = p.brand ? ` (${p.brand})` : '';
+      if (p.id == selectedProdId) found = true;
+      opts += `<option value="${p.id}" data-rate="${p.purchase_rate || 0}" data-gst="${p.gst_rate || 18}" data-pkg="${p.packaging_charges || 0}" data-transport="${p.transport_expenses || 0}" data-model="${esc(p.model || '')}" data-serial="${esc(p.serial_no || '')}" ${p.id == selectedProdId ? 'selected' : ''}>${esc(p.name)}${esc(modelStr)}${esc(brandStr)}</option>`;
+    });
+    if (selectedProdId && !found && isEdit && Array.isArray(editPurchase.items)) {
+      const editIt = editPurchase.items.find(x => x.product_id == selectedProdId);
+      if (editIt) {
+        opts += `<option value="${editIt.product_id}" selected>${esc(editIt.product_name || 'Product #' + editIt.product_id)}</option>`;
+      }
+    }
+    return opts;
   }
 
   function adjustInputToValue(inp) {
@@ -4726,8 +4865,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     tr.id = `mpRow_${itemRowIndex}`;
     const initProd = initialProdId ? loadedProducts.find(p => p.id == initialProdId) : null;
     const effectiveModel = initialModel || (initProd && initProd.model) || '';
-    const effectivePkg = initialPkg || (initProd && initProd.packaging_charges) || 0;
-    const effectiveTransport = initialTransport || (initProd && initProd.transport_expenses) || 0;
+    const effectivePkg = initialPkg !== undefined && initialPkg !== null ? initialPkg : ((initProd && initProd.packaging_charges) || 0);
+    const effectiveTransport = initialTransport !== undefined && initialTransport !== null ? initialTransport : ((initProd && initProd.transport_expenses) || 0);
     tr.innerHTML = `
       <td style="text-align:center;font-weight:600;color:var(--text3);vertical-align:middle;">${tbody.children.length + 1}</td>
       <td style="vertical-align:middle;">
@@ -4849,8 +4988,24 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     overlay.querySelector("#mpGrandTotalText").textContent = `₹${grand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
   }
 
-  // Add initial row
-  addRow();
+  // Populate initial rows: if in edit mode, populate existing purchase items
+  if (isEdit && Array.isArray(editPurchase.items) && editPurchase.items.length > 0) {
+    editPurchase.items.forEach(it => {
+      addRow(
+        it.product_id,
+        it.quantity,
+        it.rate,
+        it.gst_rate,
+        it.serial_no || '',
+        it.model || '',
+        it.packaging_charges || 0,
+        it.transport_expenses || 0
+      );
+    });
+  } else {
+    // Add default single empty row
+    addRow();
+  }
 
   overlay.querySelector("#mpAddRowBtn").addEventListener("click", () => addRow());
   overlay.querySelector("#mpAddQuickProdHeaderBtn").addEventListener("click", () => {
@@ -4868,7 +5023,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
     e.preventDefault();
     const submitBtn = e.target.querySelector("button[type='submit']");
     if (submitBtn && submitBtn.disabled) return;
-    const origHtml = submitBtn ? submitBtn.innerHTML : "📦 Record All Purchase Items & Update Inventory";
+    const origHtml = submitBtn ? submitBtn.innerHTML : (isEdit ? "💾 Update Purchase Entry & Adjust Stock" : "📦 Record All Purchase Items & Update Inventory");
 
     const supId = overlay.querySelector("#mpSupplierId").value;
     if (!supId) return alert("Please select a primary supplier.");
@@ -4894,15 +5049,16 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
 
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Saving Entries...`;
+      submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> ${isEdit ? 'Updating Entries...' : 'Saving Entries...'}`;
     }
 
     const payload = {
+      purchase_id: isEdit ? editPurchase.id : undefined,
       company_id: targetCompId,
       supplier_id: supId,
       bill_no: overlay.querySelector("#mpBillNo").value.trim(),
       purchase_date: overlay.querySelector("#mpDate").value,
-      paid_amount: overlay.querySelector("#mpPaidAmt")?.value || null,
+      paid_amount: overlay.querySelector("#mpPaidAmt")?.value !== "" ? overlay.querySelector("#mpPaidAmt")?.value : null,
       interest_rate: overlay.querySelector("#mpInterestRate")?.value || 0,
       interest_frequency: overlay.querySelector("#mpInterestFreq")?.value || "monthly",
       due_date: overlay.querySelector("#mpDueDate")?.value || null,
@@ -4910,19 +5066,21 @@ async function openMultiPurchaseEntryModal(onSuccessCallback) {
       items
     };
 
+    const targetUrl = isEdit ? `${API_BASE}/inventory?action=multi-purchase-update` : `${API_BASE}/inventory?action=multi-purchase-entry`;
+
     try {
-      const res = await fetch(`${API_BASE}/inventory?action=multi-purchase-entry`, {
+      const res = await fetch(targetUrl, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload)
       });
       const d = await res.json();
       if (d.success) {
-        showToast(d.message || "Multi-product purchase entry recorded!", "success");
+        showToast(d.message || (isEdit ? "Purchase entry updated successfully!" : "Multi-product purchase entry recorded!"), "success");
         overlay.remove();
         if (onSuccessCallback) onSuccessCallback();
       } else {
-        showToast(d.error || "Purchase entry failed", "error");
+        showToast(d.error || (isEdit ? "Purchase update failed" : "Purchase entry failed"), "error");
       }
     } catch (err) {
       showToast("Purchase error: " + err.message, "error");

@@ -1987,30 +1987,55 @@ module.exports = async function handler(req, res) {
       let rows;
       if (isAll) {
         rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
-                 pi.quantity, prod.name as product_name, prod.sku, prod.model
+          SELECT p.*, v.legal_name as supplier_name, c.name as company_name
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
-          LEFT JOIN purchase_items pi ON pi.purchase_id = p.id
-          LEFT JOIN products prod ON pi.product_id = prod.id
-          ORDER BY p.created_at DESC
+          ORDER BY p.purchase_date DESC, p.created_at DESC
         `;
       } else {
         const cId = safeInt(compQuery) || safeInt(user.company_id) || 1;
         rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
-                 pi.quantity, prod.name as product_name, prod.sku, prod.model
+          SELECT p.*, v.legal_name as supplier_name, c.name as company_name
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
-          LEFT JOIN purchase_items pi ON pi.purchase_id = p.id
-          LEFT JOIN products prod ON pi.product_id = prod.id
           WHERE p.company_id = ${cId}
-          ORDER BY p.created_at DESC
+          ORDER BY p.purchase_date DESC, p.created_at DESC
         `;
       }
-      return res.status(200).json({ success: true, receipts: rows });
+
+      const purIds = rows.map(p => p.id);
+      let itemsMap = {};
+      if (purIds.length > 0) {
+        const itemRows = await sql`
+          SELECT pi.id, pi.purchase_id, pi.product_id, pi.quantity, pi.rate, pi.total,
+                 pi.serial_no, pi.packaging_charges, pi.transport_expenses,
+                 COALESCE(pi.gst_rate, prod.gst_rate, 18) as gst_rate,
+                 prod.name as product_name, prod.sku, COALESCE(prod.model, '') as model, prod.brand, prod.unit_of_measure
+          FROM purchase_items pi
+          LEFT JOIN products prod ON pi.product_id = prod.id
+          WHERE pi.purchase_id = ANY(${purIds})
+          ORDER BY pi.id ASC
+        `;
+        itemRows.forEach(item => {
+          if (!itemsMap[item.purchase_id]) itemsMap[item.purchase_id] = [];
+          itemsMap[item.purchase_id].push(item);
+        });
+      }
+
+      const receipts = rows.map(p => {
+        const items = itemsMap[p.id] || [];
+        const totalQty = items.reduce((sum, i) => sum + (parseInt(i.quantity, 10) || 0), 0);
+        return {
+          ...p,
+          items,
+          items_count: items.length,
+          total_qty: totalQty
+        };
+      });
+
+      return res.status(200).json({ success: true, receipts });
     }
 
     // ═══════════════ PAYABLES & INTEREST CALCULATOR ═══════════════
@@ -2248,6 +2273,232 @@ module.exports = async function handler(req, res) {
       await sql`DELETE FROM purchases WHERE id = ${recId}`;
 
       return res.status(200).json({ success: true, message: "Purchase receipt entry deleted, stock adjusted, and expense record removed!" });
+    }
+
+    else if (action === "stock-receipt-item-delete") {
+      const userRole = (user.role || '').toLowerCase();
+      const isSuperAdmin = userRole === 'superadmin' || userRole === 'super_admin' || user.username === 'superadmin';
+      const isStoreAdmin = userRole === 'storeadmin' || userRole === 'store_admin';
+      if (!isSuperAdmin && !isStoreAdmin && userRole !== 'admin') {
+        return res.status(403).json({ error: "Access denied. Only Superadmin and Storeadmin can delete purchase items." });
+      }
+
+      const itemId = safeInt(req.query.item_id || req.body?.item_id);
+      let purId = safeInt(req.query.purchase_id || req.body?.purchase_id);
+      if (!itemId) return res.status(400).json({ error: "item_id required" });
+
+      const itemRows = purId ?
+        await sql`SELECT * FROM purchase_items WHERE id = ${itemId} AND purchase_id = ${purId}` :
+        await sql`SELECT * FROM purchase_items WHERE id = ${itemId}`;
+      if (itemRows.length === 0) return res.status(404).json({ error: "Purchase item not found" });
+
+      const item = itemRows[0];
+      purId = item.purchase_id;
+      if (item.product_id && item.quantity) {
+        await sql`UPDATE products SET current_stock = GREATEST(0, current_stock - ${item.quantity}) WHERE id = ${item.product_id}`;
+      }
+
+      await sql`DELETE FROM purchase_items WHERE id = ${itemId}`;
+
+      // Check remaining items for this purchase
+      const remainingItems = await sql`SELECT * FROM purchase_items WHERE purchase_id = ${purId}`;
+      if (remainingItems.length === 0) {
+        const expReceiptNum = 'EXP-PUR-' + purId;
+        try {
+          await sql`DELETE FROM expenses WHERE receipt_number = ${expReceiptNum} OR description LIKE ${'%EXP-PUR-' + purId + '%'}`;
+        } catch (e) {}
+        await sql`DELETE FROM purchases WHERE id = ${purId}`;
+        return res.status(200).json({ success: true, message: "Sub-item deleted. Since it was the last item, the entire purchase entry was removed.", deleted_bill: true });
+      }
+
+      // Recalculate purchase totals from remaining items
+      let newGrandTotal = 0;
+      remainingItems.forEach(i => {
+        newGrandTotal += parseFloat(i.total || 0);
+      });
+      newGrandTotal = Math.round(newGrandTotal * 100) / 100;
+
+      const purRows = await sql`SELECT paid_amount FROM purchases WHERE id = ${purId}`;
+      const paidAmt = purRows.length > 0 ? parseFloat(purRows[0].paid_amount || 0) : 0;
+      const newPaidAmt = Math.min(newGrandTotal, paidAmt);
+      const newPendingAmt = Math.max(0, newGrandTotal - newPaidAmt);
+      const newStatus = newPendingAmt <= 0 ? 'paid' : (newPaidAmt > 0 ? 'partial' : 'unpaid');
+
+      await sql`
+        UPDATE purchases SET
+          total_amount = ${newGrandTotal},
+          grand_total = ${newGrandTotal},
+          paid_amount = ${newPaidAmt},
+          pending_amount = ${newPendingAmt},
+          payment_status = ${newStatus}
+        WHERE id = ${purId}
+      `;
+
+      try {
+        const expReceiptNum = 'EXP-PUR-' + purId;
+        await sql`UPDATE expenses SET amount = ${newPaidAmt} WHERE receipt_number = ${expReceiptNum} OR description LIKE ${'%EXP-PUR-' + purId + '%'}`;
+      } catch (e) {}
+
+      return res.status(200).json({
+        success: true,
+        message: "Sub-item deleted and bill total recalculated successfully!",
+        remaining_count: remainingItems.length,
+        new_grand_total: newGrandTotal
+      });
+    }
+
+    else if (action === "multi-purchase-update") {
+      const userRole = (user.role || '').toLowerCase();
+      const isSuperAdmin = userRole === 'superadmin' || userRole === 'super_admin' || user.username === 'superadmin';
+      const isStoreAdmin = userRole === 'storeadmin' || userRole === 'store_admin';
+      if (!isSuperAdmin && !isStoreAdmin && userRole !== 'admin') {
+        return res.status(403).json({ error: "Access denied. Only Superadmin and Storeadmin can edit purchase entries." });
+      }
+
+      const {
+        purchase_id, company_id, supplier_id, bill_no, purchase_date,
+        paid_amount, interest_rate, interest_frequency, due_date, bill_doc, items
+      } = req.body;
+
+      const purId = safeInt(purchase_id);
+      if (!purId) return res.status(400).json({ error: "purchase_id required" });
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ error: "At least 1 item is required" });
+      }
+
+      const existingPur = await sql`SELECT * FROM purchases WHERE id = ${purId}`;
+      if (existingPur.length === 0) return res.status(404).json({ error: "Purchase entry not found" });
+
+      const compId = safeInt(company_id) || existingPur[0].company_id || safeInt(user.company_id) || 1;
+      const supId = safeInt(supplier_id) || existingPur[0].supplier_id;
+
+      // 1. Revert previous stock from old purchase_items
+      const oldItems = await sql`SELECT product_id, quantity FROM purchase_items WHERE purchase_id = ${purId}`;
+      for (const oldIt of oldItems) {
+        if (oldIt.product_id && oldIt.quantity) {
+          await sql`UPDATE products SET current_stock = GREATEST(0, current_stock - ${oldIt.quantity}) WHERE id = ${oldIt.product_id}`;
+        }
+      }
+
+      // 2. Delete old purchase items
+      await sql`DELETE FROM purchase_items WHERE purchase_id = ${purId}`;
+
+      // 3. Insert updated purchase items, recalculating rates & line totals, and increment stock
+      let grandTotal = 0;
+      for (const item of items) {
+        const prodId = safeInt(item.product_id);
+        const qty = safeInt(item.quantity) || 1;
+        const rate = parseFloat(item.rate || item.purchase_rate || 0);
+        const gstRate = parseFloat(item.gst_rate || 18);
+        const transport = parseFloat(item.transport_expenses || 0);
+        const packaging = parseFloat(item.packaging_charges || item.packaging || 0);
+        const taxable = (qty * rate) + transport + packaging;
+        const lineTotal = taxable * (1 + gstRate / 100);
+        grandTotal += lineTotal;
+
+        if (prodId) {
+          const curP = (await sql`SELECT transport_expenses, packaging_charges, gst_rate, selling_percentage FROM products WHERE id = ${prodId}`)[0] || {};
+          const rates = calculateRates(
+            rate,
+            null,
+            curP.transport_expenses || transport || 0,
+            gstRate || curP.gst_rate || 18,
+            curP.selling_percentage || 0,
+            null,
+            null,
+            curP.packaging_charges || packaging || 0
+          );
+
+          await sql`
+            UPDATE products SET 
+              current_stock = current_stock + ${qty},
+              purchase_rate = ${rates.purchase_rate},
+              purchase_rate_incl_tax = ${rates.purchase_rate_incl_tax},
+              selling_rate = ${rates.selling_rate},
+              mrp = ${rates.mrp},
+              serial_no = COALESCE(${item.serial_no || item.product_serial_no || null}, serial_no),
+              model = COALESCE(${item.model ? item.model.trim() : null}, model),
+              supplier_id = COALESCE(${supId}, supplier_id),
+              packaging_charges = COALESCE(${packaging > 0 ? packaging : null}, packaging_charges)
+            WHERE id = ${prodId}
+          `;
+
+          await sql`
+            INSERT INTO purchase_items (purchase_id, product_id, quantity, rate, total, serial_no, packaging_charges, transport_expenses, gst_rate)
+            VALUES (${purId}, ${prodId}, ${qty}, ${rate}, ${lineTotal}, ${item.serial_no || item.product_serial_no || null}, ${packaging}, ${transport}, ${gstRate})
+          `;
+        }
+      }
+
+      grandTotal = Math.round(grandTotal * 100) / 100;
+      const paidAmt = Math.min(grandTotal, Math.max(0, parseFloat(paid_amount !== undefined && paid_amount !== null && paid_amount !== '' ? paid_amount : grandTotal)));
+      const pendingAmt = Math.max(0, grandTotal - paidAmt);
+      const pStatus = pendingAmt <= 0 ? 'paid' : (paidAmt > 0 ? 'partial' : 'unpaid');
+      const intRate = parseFloat(interest_rate || 0);
+      const intFreq = (interest_frequency || 'monthly').toString().trim().toLowerCase();
+
+      let finalBillDoc = existingPur[0].attachments_json;
+      if (bill_doc) {
+        finalBillDoc = JSON.stringify([bill_doc]);
+      }
+
+      const updatedPur = await sql`
+        UPDATE purchases SET
+          company_id = ${compId},
+          purchase_invoice_no = ${bill_no || null},
+          purchase_date = ${purchase_date ? new Date(purchase_date) : existingPur[0].purchase_date},
+          supplier_id = ${supId || null},
+          total_amount = ${grandTotal},
+          grand_total = ${grandTotal},
+          paid_amount = ${paidAmt},
+          pending_amount = ${pendingAmt},
+          payment_status = ${pStatus},
+          interest_rate = ${intRate},
+          interest_frequency = ${intFreq},
+          due_date = ${due_date || null},
+          attachments_json = ${finalBillDoc}
+        WHERE id = ${purId}
+        RETURNING *
+      `;
+
+      // Update expense entry if exists
+      if (paidAmt > 0) {
+        let dealerName = "Supplier Purchase";
+        if (supId) {
+          const vRes = await sql`SELECT legal_name FROM suppliers WHERE id = ${supId}`;
+          if (vRes.length > 0) dealerName = vRes[0].legal_name;
+        }
+        await ensureExpensesColumns(sql);
+        const expReceiptNum = 'EXP-PUR-' + purId;
+        const expExists = await sql`SELECT id FROM expenses WHERE receipt_number = ${expReceiptNum} LIMIT 1`;
+        if (expExists.length > 0) {
+          await sql`
+            UPDATE expenses SET
+              amount = ${paidAmt},
+              dealer_receiver = ${dealerName},
+              expense_date = ${purchase_date ? new Date(purchase_date) : new Date()},
+              description = ${`Purchase Entry - Bill #${bill_no || 'N/A'}`}
+            WHERE id = ${expExists[0].id}
+          `;
+        } else {
+          await sql`
+            INSERT INTO expenses (
+              company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+              description, receipt_number, approval_status, created_by
+            ) VALUES (
+              ${compId}, ${purchase_date ? new Date(purchase_date) : new Date()}, 'Inventory Purchase', ${dealerName},
+              ${paidAmt}, 'bank', ${`Purchase Entry - Bill #${bill_no || 'N/A'}`},
+              ${expReceiptNum}, 'approved', ${user.id}
+            )
+          `;
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Purchase Entry Bill #${bill_no || purId} updated successfully with ${items.length} item(s)!`,
+        purchase: updatedPur[0]
+      });
     }
 
     else if (action === "view-doc") {

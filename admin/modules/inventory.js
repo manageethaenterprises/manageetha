@@ -1076,37 +1076,46 @@ async function loadProductsSubTab() {
         if (!tb) return;
 
         tb.querySelectorAll(".editProdBtn").forEach(btn => {
-          btn.addEventListener("click", () => {
+          btn.addEventListener("click", async () => {
             const p = allProductsList.find(x => x.id == btn.dataset.id);
             if (!p) return;
-            document.getElementById("pEditingId").value = p.id;
-            document.getElementById("pName").value = p.name || '';
-            document.getElementById("pSku").value = p.sku || '';
-            document.getElementById("pBrand").value = p.brand || '';
-            document.getElementById("pModel").value = p.model || '';
-            if (document.getElementById("pSerialNo")) document.getElementById("pSerialNo").value = p.serial_no || '';
-            document.getElementById("pHsn").value = p.hsn_sac || '';
-            document.getElementById("pGst").value = p.gst_rate || '18';
-            document.getElementById("pPurRate").value = p.purchase_rate || '';
-            document.getElementById("pPurRateIncl").value = p.purchase_rate_incl_tax || '';
-            document.getElementById("pTransportExp").value = p.transport_expenses || '0';
-            document.getElementById("pSellingPct").value = p.selling_percentage !== undefined ? p.selling_percentage : '100';
-            document.getElementById("pSellRate").value = p.selling_rate || '';
-            const mrpEl = document.getElementById("pMrp");
-            if (mrpEl) {
-              mrpEl.value = p.mrp || '';
-              mrpEl.dataset.userOverridden = "false";
-            }
-            document.getElementById("pStock").value = p.current_stock || '0';
-            document.getElementById("pMinStock").value = p.min_stock || '5';
-            document.getElementById("pWeight").value = p.weight !== undefined ? p.weight : '';
-            document.getElementById("pRack").value = p.rack_no || '';
-            document.getElementById("prodModalTitle").textContent = "✏️ Edit Product Details";
-            document.getElementById("prodModalSubmitBtn").textContent = "💾 Update Product";
+            if (btn.disabled) return;
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Loading...`;
+            try {
+              document.getElementById("pEditingId").value = p.id;
+              document.getElementById("pName").value = p.name || '';
+              document.getElementById("pSku").value = p.sku || '';
+              document.getElementById("pBrand").value = p.brand || '';
+              document.getElementById("pModel").value = p.model || '';
+              if (document.getElementById("pSerialNo")) document.getElementById("pSerialNo").value = p.serial_no || '';
+              document.getElementById("pHsn").value = p.hsn_sac || '';
+              document.getElementById("pGst").value = p.gst_rate || '18';
+              document.getElementById("pPurRate").value = p.purchase_rate || '';
+              document.getElementById("pPurRateIncl").value = p.purchase_rate_incl_tax || '';
+              document.getElementById("pTransportExp").value = p.transport_expenses || '0';
+              document.getElementById("pSellingPct").value = p.selling_percentage !== undefined ? p.selling_percentage : '100';
+              document.getElementById("pSellRate").value = p.selling_rate || '';
+              const mrpEl = document.getElementById("pMrp");
+              if (mrpEl) {
+                mrpEl.value = p.mrp || '';
+                mrpEl.dataset.userOverridden = "false";
+              }
+              document.getElementById("pStock").value = p.current_stock || '0';
+              document.getElementById("pMinStock").value = p.min_stock || '5';
+              document.getElementById("pWeight").value = p.weight !== undefined ? p.weight : '';
+              document.getElementById("pRack").value = p.rack_no || '';
+              document.getElementById("prodModalTitle").textContent = "✏️ Edit Product Details";
+              document.getElementById("prodModalSubmitBtn").textContent = "💾 Update Product";
 
-            populateSuppliersDropdown(p.supplier_id);
-            autoCalcFormRates();
-            document.getElementById("prodModal").style.display = "flex";
+              await populateSuppliersDropdown(p.supplier_id);
+              autoCalcFormRates();
+              document.getElementById("prodModal").style.display = "flex";
+            } finally {
+              btn.disabled = false;
+              btn.innerHTML = origHtml;
+            }
           });
         });
 
@@ -1180,10 +1189,18 @@ async function loadProductsSubTab() {
     });
   });
 
-  on("exportProdBtn", "click", () => {
-    if (!filteredProductsList || filteredProductsList.length === 0) {
-      return showToast("No products found matching the current filters to export.", "warning");
-    }
+  on("exportProdBtn", "click", async (e) => {
+    const btn = e?.currentTarget || document.getElementById("exportProdBtn");
+    if (!btn || btn.disabled) return;
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Exporting...`;
+
+    try {
+      await new Promise(r => setTimeout(r, 40));
+      if (!filteredProductsList || filteredProductsList.length === 0) {
+        return showToast("No products found matching the current filters to export.", "warning");
+      }
 
     const selCompId = document.getElementById("prodCompanyFilter")?.value || "all";
     const compObj = (window.currentCompanies || []).find(c => String(c.id) === String(selCompId));
@@ -1252,6 +1269,12 @@ async function loadProductsSubTab() {
       link.download = `Inventory_Catalog_${compNameClean}_${dateStr}.csv`;
       link.click();
       showToast(`Exported ${exportRows.length} inventory products to CSV!`, "success");
+    }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
     }
   });
 
@@ -4597,15 +4620,26 @@ async function loadStockReceiptSubTab() {
 
       // Edit Receipt (Full modal in edit mode)
       tbody.querySelectorAll(".editReceiptBtn").forEach(btn => {
-        btn.onclick = (e) => {
+        btn.onclick = async (e) => {
           e.stopPropagation();
           if (!canEdit) {
             showToast("Access restricted: Only Superadmin and Storeadmin can edit purchase entries.", "error");
             return;
           }
-          const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
-          if (r) {
-            openMultiPurchaseEntryModal(() => fetchReceiptsLog(), r);
+          if (btn.disabled) return;
+          const origHtml = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Loading...`;
+          try {
+            const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
+            if (r) {
+              await openMultiPurchaseEntryModal(() => fetchReceiptsLog(), r);
+            }
+          } catch (err) {
+            showToast("Failed to open edit modal: " + err.message, "error");
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
           }
         };
       });
@@ -4627,7 +4661,7 @@ async function loadStockReceiptSubTab() {
           if (btn.disabled) return;
           const origHtml = btn.innerHTML;
           btn.disabled = true;
-          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Deleting...`;
           try {
             const res = await fetch(`${API_BASE}/inventory?action=stock-receipt-delete&id=${btn.dataset.id}`, {
               method: "POST",
@@ -4637,7 +4671,7 @@ async function loadStockReceiptSubTab() {
             if (d.success) {
               showToast(d.message || "Entire purchase entry deleted", "success");
               expandedBillIds.delete(parseInt(btn.dataset.id));
-              fetchReceiptsLog();
+              await fetchReceiptsLog();
               if (typeof loadDropdowns === "function") loadDropdowns();
             } else {
               showToast(d.error || "Failed to delete entry", "error");
@@ -4665,81 +4699,95 @@ async function loadStockReceiptSubTab() {
 
   on("receiptSearchInp", "input", renderReceiptsLogTable);
 
-  on("exportReceiptsBtn", "click", () => {
-    const searchTerm = (document.getElementById("receiptSearchInp")?.value || "").toLowerCase().trim();
-    let filtered = currentReceiptsList.filter(r => {
-      if (!searchTerm) return true;
-      const subItemsText = (r.items || []).map(it => `${it.product_name || ''} ${it.model || ''} ${it.serial_no || ''}`).join(" ");
-      const compStr = [r.purchase_invoice_no, r.supplier_name, r.purchase_date, subItemsText].map(v => (v || "").toLowerCase()).join(" ");
-      return compStr.includes(searchTerm);
-    });
+  on("exportReceiptsBtn", "click", async (e) => {
+    const btn = e?.currentTarget || document.getElementById("exportReceiptsBtn");
+    if (!btn || btn.disabled) return;
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Exporting...`;
 
-    if (!filtered || filtered.length === 0) {
-      return showToast("No purchase entries found matching the current filters to export.", "warning");
-    }
+    try {
+      await new Promise(r => setTimeout(r, 40));
+      const searchTerm = (document.getElementById("receiptSearchInp")?.value || "").toLowerCase().trim();
+      let filtered = currentReceiptsList.filter(r => {
+        if (!searchTerm) return true;
+        const subItemsText = (r.items || []).map(it => `${it.product_name || ''} ${it.model || ''} ${it.serial_no || ''}`).join(" ");
+        const compStr = [r.purchase_invoice_no, r.supplier_name, r.purchase_date, subItemsText].map(v => (v || "").toLowerCase()).join(" ");
+        return compStr.includes(searchTerm);
+      });
 
-    const curCompId = getActiveCompId();
-    const compObj = (window.currentCompanies || []).find(c => String(c.id) === String(curCompId));
-    const compNameClean = (compObj?.name || (curCompId === 'all' ? 'All_Companies' : 'Company_' + curCompId)).replace(/[^a-zA-Z0-9]/g, '_');
-    const dateStr = new Date().toISOString().split('T')[0];
+      if (!filtered || filtered.length === 0) {
+        return showToast("No purchase entries found matching the current filters to export.", "warning");
+      }
 
-    const exportRows = [];
-    filtered.forEach((r, bIdx) => {
-      const items = Array.isArray(r.items) && r.items.length > 0 ? r.items : [{
-        product_name: "Purchase Entry",
-        model: "",
-        serial_no: "",
-        quantity: r.total_quantity || 1,
-        purchase_rate: r.total_amount || 0,
-        gst_rate: 0,
-        packaging_charges: 0,
-        transport_expenses: 0,
-        total: r.grand_total || r.total_amount || 0
-      }];
+      const curCompId = getActiveCompId();
+      const compObj = (window.currentCompanies || []).find(c => String(c.id) === String(curCompId));
+      const compNameClean = (compObj?.name || (curCompId === 'all' ? 'All_Companies' : 'Company_' + curCompId)).replace(/[^a-zA-Z0-9]/g, '_');
+      const dateStr = new Date().toISOString().split('T')[0];
 
-      items.forEach((it, iIdx) => {
-        exportRows.push({
-          "Bill #": r.purchase_invoice_no || `PUR-${r.id}`,
-          "Invoice Date": r.purchase_date || "",
-          "Supplier": r.supplier_name || "Direct",
-          "Item #": iIdx + 1,
-          "Product Name": it.product_name || "",
-          "Model / Spec": it.model || "",
-          "Serial No": it.serial_no || "",
-          "Quantity (NOS)": parseFloat(it.quantity || 0),
-          "Pur Rate Excl (₹)": parseFloat(it.purchase_rate || 0),
-          "GST (%)": parseFloat(it.gst_rate || 0),
-          "Packaging (₹)": parseFloat(it.packaging_charges || 0),
-          "Transport (₹)": parseFloat(it.transport_expenses || 0),
-          "Item Line Total (₹)": parseFloat(it.total || 0),
-          "Bill Grand Total (₹)": parseFloat(r.grand_total || r.total_amount || 0),
-          "Company": r.company_name || compObj?.name || "Main Branch"
+      const exportRows = [];
+      filtered.forEach((r, bIdx) => {
+        const items = Array.isArray(r.items) && r.items.length > 0 ? r.items : [{
+          product_name: "Purchase Entry",
+          model: "",
+          serial_no: "",
+          quantity: r.total_quantity || 1,
+          purchase_rate: r.total_amount || 0,
+          gst_rate: 0,
+          packaging_charges: 0,
+          transport_expenses: 0,
+          total: r.grand_total || r.total_amount || 0
+        }];
+
+        items.forEach((it, iIdx) => {
+          exportRows.push({
+            "Bill #": r.purchase_invoice_no || `PUR-${r.id}`,
+            "Invoice Date": r.purchase_date || "",
+            "Supplier": r.supplier_name || "Direct",
+            "Item #": iIdx + 1,
+            "Product Name": it.product_name || "",
+            "Model / Spec": it.model || "",
+            "Serial No": it.serial_no || "",
+            "Quantity (NOS)": parseFloat(it.quantity || 0),
+            "Pur Rate Excl (₹)": parseFloat(it.purchase_rate || 0),
+            "GST (%)": parseFloat(it.gst_rate || 0),
+            "Packaging (₹)": parseFloat(it.packaging_charges || 0),
+            "Transport (₹)": parseFloat(it.transport_expenses || 0),
+            "Item Line Total (₹)": parseFloat(it.total || 0),
+            "Bill Grand Total (₹)": parseFloat(r.grand_total || r.total_amount || 0),
+            "Company": r.company_name || compObj?.name || "Main Branch"
+          });
         });
       });
-    });
 
-    if (typeof window.XLSX !== "undefined") {
-      const ws = window.XLSX.utils.json_to_sheet(exportRows);
-      const colWidths = Object.keys(exportRows[0]).map(k => ({
-        wch: Math.max(k.length, ...exportRows.map(r => String(r[k] || '').length)) + 2
-      }));
-      ws['!cols'] = colWidths;
-      const wb = window.XLSX.utils.book_new();
-      window.XLSX.utils.book_append_sheet(wb, ws, "Stock Receipts");
-      window.XLSX.writeFile(wb, `Stock_Receipts_${compNameClean}_${dateStr}.xlsx`);
-      showToast(`Exported ${exportRows.length} purchase receipt items to Excel (.xlsx)!`, "success");
-    } else {
-      const headers = Object.keys(exportRows[0]);
-      let csvContent = "\uFEFF" + headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
-      exportRows.forEach(row => {
-        csvContent += headers.map(h => `"${String(row[h] !== undefined && row[h] !== null ? row[h] : '').replace(/"/g, '""')}"`).join(",") + "\n";
-      });
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `Stock_Receipts_${compNameClean}_${dateStr}.csv`;
-      link.click();
-      showToast(`Exported ${exportRows.length} purchase receipt items to CSV!`, "success");
+      if (typeof window.XLSX !== "undefined") {
+        const ws = window.XLSX.utils.json_to_sheet(exportRows);
+        const colWidths = Object.keys(exportRows[0]).map(k => ({
+          wch: Math.max(k.length, ...exportRows.map(row => String(row[k] || '').length)) + 2
+        }));
+        ws['!cols'] = colWidths;
+        const wb = window.XLSX.utils.book_new();
+        window.XLSX.utils.book_append_sheet(wb, ws, "Stock Receipts");
+        window.XLSX.writeFile(wb, `Stock_Receipts_${compNameClean}_${dateStr}.xlsx`);
+        showToast(`Exported ${exportRows.length} purchase receipt items to Excel (.xlsx)!`, "success");
+      } else {
+        const headers = Object.keys(exportRows[0]);
+        let csvContent = "\uFEFF" + headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
+        exportRows.forEach(row => {
+          csvContent += headers.map(h => `"${String(row[h] !== undefined && row[h] !== null ? row[h] : '').replace(/"/g, '""')}"`).join(",") + "\n";
+        });
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Stock_Receipts_${compNameClean}_${dateStr}.csv`;
+        link.click();
+        showToast(`Exported ${exportRows.length} purchase receipt items to CSV!`, "success");
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
     }
   });
 

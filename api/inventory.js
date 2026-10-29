@@ -349,17 +349,33 @@ module.exports = async function handler(req, res) {
           END
           WHERE gst_rate IS NULL;
         `;
-        // Specifically heal Bill 2026621665 Row 2 (set 5% GST & correct line total) and fix grand_total
+        await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS round_off NUMERIC(10,2) DEFAULT 0;`;
+
+        // Specifically heal Bill 2026621665 with exact rates matching the physical invoice:
+        // Row 2 (Qty 1): Rate 97282.65, Pkg 100, GST 5% -> Total 102251.78
         await sql`
           UPDATE purchase_items
-          SET gst_rate = 5.00, total = 102251.78
+          SET rate = 97282.65, packaging_charges = 100, gst_rate = 5.00, total = 102251.78
           WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
-            AND rate > 97280 AND rate < 97285;
+            AND quantity = 1 AND rate > 97280 AND rate < 97285;
         `;
+        // Row 5 (Qty 2): Rate 97282.65, Pkg 200, GST 5% -> Total 204503.57
+        await sql`
+          UPDATE purchase_items
+          SET rate = 97282.65, packaging_charges = 200, gst_rate = 5.00, total = 204503.57
+          WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
+            AND quantity = 2 AND rate > 97280 AND rate < 97285;
+        `;
+        // Update Bill 2026621665 with exact invoice totals and supplier round-off (+0.34)
         await sql`
           UPDATE purchases
-          SET total_amount = 1827918.02, grand_total = 1827918.02
-          WHERE purchase_invoice_no = '2026621665' AND (grand_total > 1830000 OR total_amount > 1830000);
+          SET round_off = 0.34,
+              total_amount = 1827918.00,
+              grand_total = 1827918.00,
+              paid_amount = CASE WHEN paid_amount > 0 THEN 1827918.00 ELSE 0 END,
+              pending_amount = 0.00,
+              payment_status = 'paid'
+          WHERE purchase_invoice_no = '2026621665';
         `;
         await sql`
           UPDATE products
@@ -1770,7 +1786,9 @@ module.exports = async function handler(req, res) {
         const lineTotal = Math.round((taxable * (1 + gstRate / 100)) * 100) / 100;
         grandTotal += lineTotal;
       });
-      grandTotal = Math.round(grandTotal * 100) / 100;
+      const roundOffVal = parseFloat(req.body.round_off || 0) || 0;
+      const subtotalAmount = Math.round(grandTotal * 100) / 100;
+      grandTotal = Math.round((subtotalAmount + roundOffVal) * 100) / 100;
 
       const paidAmt = Math.min(grandTotal, Math.max(0, parseFloat(paid_amount !== undefined ? paid_amount : grandTotal)));
       const pendingAmt = Math.max(0, grandTotal - paidAmt);
@@ -1780,13 +1798,13 @@ module.exports = async function handler(req, res) {
 
       const purchaseRec = await sql`
         INSERT INTO purchases (
-          company_id, purchase_invoice_no, purchase_date, supplier_id, total_amount, grand_total,
+          company_id, purchase_invoice_no, purchase_date, supplier_id, total_amount, grand_total, round_off,
           paid_amount, pending_amount, payment_status, interest_rate, interest_frequency, due_date,
           attachments_json, created_by
         )
         VALUES (
           ${compId}, ${bill_no || null}, ${purchase_date ? new Date(purchase_date) : new Date()}, ${supId || null},
-          ${grandTotal}, ${grandTotal}, ${paidAmt}, ${pendingAmt}, ${pStatus}, ${intRate}, ${intFreq}, ${due_date || null},
+          ${grandTotal}, ${grandTotal}, ${roundOffVal}, ${paidAmt}, ${pendingAmt}, ${pStatus}, ${intRate}, ${intFreq}, ${due_date || null},
           ${bill_doc ? JSON.stringify([bill_doc]) : null}, ${user.id}
         )
         RETURNING *
@@ -2023,7 +2041,14 @@ module.exports = async function handler(req, res) {
       let rows;
       if (isAll) {
         rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, c.name as company_name
+          SELECT p.*, 
+                 v.legal_name as supplier_name,
+                 v.trade_name as supplier_trade_name,
+                 v.state as supplier_state,
+                 v.gstin as supplier_gstin,
+                 c.name as company_name,
+                 c.state as company_state,
+                 c.gstin as company_gstin
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
@@ -2032,7 +2057,14 @@ module.exports = async function handler(req, res) {
       } else {
         const cId = safeInt(compQuery) || safeInt(user.company_id) || 1;
         rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, c.name as company_name
+          SELECT p.*, 
+                 v.legal_name as supplier_name,
+                 v.trade_name as supplier_trade_name,
+                 v.state as supplier_state,
+                 v.gstin as supplier_gstin,
+                 c.name as company_name,
+                 c.state as company_state,
+                 c.gstin as company_gstin
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
@@ -2068,8 +2100,8 @@ module.exports = async function handler(req, res) {
           const taxable = (qty * rate) + pkg + trp;
           const savedTot = parseFloat(item.total) || 0;
 
-          // If gst_rate is missing or was defaulted to 18, check if saved total mathematically matches a different GST slab (e.g. 5%)
-          if (taxable > 0 && savedTot > 0) {
+          // If gst_rate is missing or 0, deduce from ratio if available
+          if ((itemGst === null || isNaN(itemGst) || itemGst <= 0) && taxable > 0 && savedTot > 0) {
             const ratio = savedTot / taxable;
             if (ratio > 0.99) {
               const deduced = Math.round((ratio - 1) * 100 * 100) / 100;
@@ -2078,7 +2110,6 @@ module.exports = async function handler(req, res) {
               else if (Math.abs(deduced - 18) < 0.25) itemGst = 18;
               else if (Math.abs(deduced - 28) < 0.25) itemGst = 28;
               else if (Math.abs(deduced) < 0.25) itemGst = 0;
-              else if (itemGst === null || itemGst <= 0) itemGst = deduced;
             }
           }
 
@@ -2086,6 +2117,14 @@ module.exports = async function handler(req, res) {
             itemGst = parseFloat(item.prod_gst_rate || 18);
           }
           item.gst_rate = itemGst;
+
+          // Reconcile line total: if saved total is wildly out of sync with qty & rate, use calculated total
+          const calculatedTot = Math.round((taxable * (1 + itemGst / 100)) * 100) / 100;
+          if (savedTot > 0 && Math.abs(savedTot - calculatedTot) < 2) {
+            item.total = savedTot;
+          } else {
+            item.total = calculatedTot;
+          }
 
           if (!itemsMap[item.purchase_id]) itemsMap[item.purchase_id] = [];
           itemsMap[item.purchase_id].push(item);
@@ -2514,7 +2553,10 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      grandTotal = Math.round(grandTotal * 100) / 100;
+      const roundOffVal = parseFloat(req.body.round_off !== undefined && req.body.round_off !== null ? req.body.round_off : (existingPur[0].round_off || 0)) || 0;
+      const subtotalAmount = Math.round(grandTotal * 100) / 100;
+      grandTotal = Math.round((subtotalAmount + roundOffVal) * 100) / 100;
+
       const paidAmt = Math.min(grandTotal, Math.max(0, parseFloat(paid_amount !== undefined && paid_amount !== null && paid_amount !== '' ? paid_amount : grandTotal)));
       const pendingAmt = Math.max(0, grandTotal - paidAmt);
       const pStatus = pendingAmt <= 0 ? 'paid' : (paidAmt > 0 ? 'partial' : 'unpaid');
@@ -2534,6 +2576,7 @@ module.exports = async function handler(req, res) {
           supplier_id = ${supId || null},
           total_amount = ${grandTotal},
           grand_total = ${grandTotal},
+          round_off = ${roundOffVal},
           paid_amount = ${paidAmt},
           pending_amount = ${pendingAmt},
           payment_status = ${pStatus},

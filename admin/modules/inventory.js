@@ -4389,7 +4389,7 @@ async function loadStockReceiptSubTab() {
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
             <span class="badge" style="background:#2563eb;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;" title="${esc(subTaxInfo.reason)}">⚡ IGST</span>
             <span style="font-weight:800;color:#1d4ed8;font-size:11.5px;">₹${subTotGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-            <span style="font-size:9px;color:var(--text3);">(Inter-State: ${esc(subTaxInfo.state || 'Punjab')})</span>
+            <span style="font-size:9px;color:var(--text3);">(Inter-State: ${esc(subTaxInfo.state || 'Other State')})</span>
           </div>
         ` : `
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
@@ -5095,20 +5095,28 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
   let initialRoundOff = 0;
   if (isEdit) {
-    if (editPurchase.round_off !== undefined && editPurchase.round_off !== null) {
+    if (editPurchase.round_off !== undefined && editPurchase.round_off !== null && parseFloat(editPurchase.round_off) !== 0) {
       initialRoundOff = parseFloat(editPurchase.round_off) || 0;
-    } else if (editPurchase.grand_total) {
-      let itemsTot = 0;
+    } else if (editPurchase.grand_total || editPurchase.total_amount) {
+      const targetBilled = parseFloat(editPurchase.grand_total || editPurchase.total_amount || 0);
+      let calculatedItemsSubtotal = 0;
       (editPurchase.items || []).forEach(it => {
-        itemsTot += parseFloat(it.total || 0);
+        const q = parseFloat(it.quantity) || 1;
+        const r = parseFloat(it.rate) || 0;
+        const pkg = parseFloat(it.packaging_charges) || 0;
+        const trp = parseFloat(it.transport_expenses) || 0;
+        const g = parseFloat(it.gst_rate !== undefined && it.gst_rate !== null ? it.gst_rate : 18) || 0;
+        const taxable = (q * r) + pkg + trp;
+        const lineTot = Math.round((taxable * (1 + g / 100)) * 100) / 100;
+        const rowTot = (it.total && Math.abs(parseFloat(it.total) - lineTot) <= 0.02) ? parseFloat(it.total) : lineTot;
+        calculatedItemsSubtotal += rowTot;
       });
-      const diff = parseFloat(editPurchase.grand_total) - itemsTot;
+      calculatedItemsSubtotal = Math.round(calculatedItemsSubtotal * 100) / 100;
+      const diff = targetBilled - calculatedItemsSubtotal;
+      // Universal rounding difference (typically within +/- ₹5)
       if (Math.abs(diff) > 0.005 && Math.abs(diff) < 5) {
         initialRoundOff = Math.round(diff * 100) / 100;
       }
-    }
-    if ((editPurchase.purchase_invoice_no || '').includes('2026621665') && initialRoundOff === 0) {
-      initialRoundOff = 0.34;
     }
   }
 
@@ -5614,20 +5622,15 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
       }
       if (!itemGst || isNaN(itemGst)) itemGst = 18;
 
-      // If this was row 5 of bill 2026621665 with 97282.82, normalize rate to physical invoice 97282.65
-      if (itQty === 2 && itRate > 97282.7 && itRate < 97282.9) {
-        itRate = 97282.65;
-      }
-
       addRow(
         it.product_id,
-        it.quantity,
+        itQty,
         itRate,
         itemGst,
         it.serial_no || '',
         it.model || '',
-        it.packaging_charges || 0,
-        it.transport_expenses || 0
+        itPkg,
+        itTrp
       );
     });
   } else {

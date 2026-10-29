@@ -351,39 +351,20 @@ module.exports = async function handler(req, res) {
         `;
         await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS round_off NUMERIC(10,2) DEFAULT 0;`;
 
-        // Specifically heal Bill 2026621665 with exact rates matching the physical invoice:
-        // Row 2 (Qty 1): Rate 97282.65, Pkg 100, GST 5% -> Total 102251.78
+        // Universally reconcile round_off for any existing purchases where grand_total differs slightly from item sum (<= Rs 5)
         await sql`
-          UPDATE purchase_items
-          SET rate = 97282.65, packaging_charges = 100, gst_rate = 5.00, total = 102251.78
-          WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
-            AND quantity = 1 AND rate > 97280 AND rate < 97285;
-        `;
-        // Row 5 (Qty 2): Rate 97282.65, Pkg 200, GST 5% -> Total 204503.57
-        await sql`
-          UPDATE purchase_items
-          SET rate = 97282.65, packaging_charges = 200, gst_rate = 5.00, total = 204503.57
-          WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
-            AND quantity = 2 AND rate > 97280 AND rate < 97285;
-        `;
-        // Update Bill 2026621665 with exact invoice totals and supplier round-off (+0.34)
-        await sql`
-          UPDATE purchases
-          SET round_off = 0.34,
-              total_amount = 1827918.00,
-              grand_total = 1827918.00,
-              paid_amount = CASE WHEN paid_amount > 0 THEN 1827918.00 ELSE 0 END,
-              pending_amount = 0.00,
-              payment_status = 'paid'
-          WHERE purchase_invoice_no = '2026621665';
-        `;
-        await sql`
-          UPDATE products
-          SET gst_rate = 5
-          WHERE id IN (
-            SELECT product_id FROM purchase_items 
-            WHERE purchase_id IN (SELECT id FROM purchases WHERE purchase_invoice_no = '2026621665')
-          );
+          UPDATE purchases p
+          SET round_off = ROUND((p.grand_total - item_sums.subtotal)::numeric, 2)
+          FROM (
+            SELECT purchase_id, SUM(total) as subtotal
+            FROM purchase_items
+            GROUP BY purchase_id
+          ) item_sums
+          WHERE p.id = item_sums.purchase_id
+            AND (p.round_off IS NULL OR p.round_off = 0)
+            AND p.grand_total > 0
+            AND ABS(p.grand_total - item_sums.subtotal) > 0.005
+            AND ABS(p.grand_total - item_sums.subtotal) < 5.0;
         `;
       } catch (e) { }
       await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS company_id INT REFERENCES companies(id) ON DELETE SET NULL;`;
@@ -2118,9 +2099,9 @@ module.exports = async function handler(req, res) {
           }
           item.gst_rate = itemGst;
 
-          // Reconcile line total: if saved total is wildly out of sync with qty & rate, use calculated total
+          // Reconcile line total: if saved total matches calculated total within normal rounding, keep it; otherwise calculate
           const calculatedTot = Math.round((taxable * (1 + itemGst / 100)) * 100) / 100;
-          if (savedTot > 0 && Math.abs(savedTot - calculatedTot) < 2) {
+          if (savedTot > 0 && Math.abs(savedTot - calculatedTot) <= 0.02) {
             item.total = savedTot;
           } else {
             item.total = calculatedTot;
@@ -2434,13 +2415,16 @@ module.exports = async function handler(req, res) {
       }
 
       // Recalculate purchase totals from remaining items
-      let newGrandTotal = 0;
+      let itemsSubtotal = 0;
       remainingItems.forEach(i => {
-        newGrandTotal += parseFloat(i.total || 0);
+        itemsSubtotal += parseFloat(i.total || 0);
       });
-      newGrandTotal = Math.round(newGrandTotal * 100) / 100;
+      itemsSubtotal = Math.round(itemsSubtotal * 100) / 100;
 
-      const purRows = await sql`SELECT paid_amount FROM purchases WHERE id = ${purId}`;
+      const purRows = await sql`SELECT paid_amount, round_off FROM purchases WHERE id = ${purId}`;
+      const roundOff = purRows.length > 0 ? (parseFloat(purRows[0].round_off) || 0) : 0;
+      const newGrandTotal = Math.round((itemsSubtotal + roundOff) * 100) / 100;
+
       const paidAmt = purRows.length > 0 ? parseFloat(purRows[0].paid_amount || 0) : 0;
       const newPaidAmt = Math.min(newGrandTotal, paidAmt);
       const newPendingAmt = Math.max(0, newGrandTotal - newPaidAmt);

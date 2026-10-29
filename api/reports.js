@@ -215,6 +215,7 @@ module.exports = async function handler(req, res) {
               FROM expenses e
               LEFT JOIN companies c ON e.company_id = c.id
               WHERE e.expense_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+                AND (e.receipt_number IS NULL OR e.receipt_number NOT LIKE 'EXP-PUR-%')
               ORDER BY e.expense_date DESC
             `;
           } else {
@@ -242,7 +243,9 @@ module.exports = async function handler(req, res) {
                      COALESCE(NULLIF(e.description, ''), e.category) as description
               FROM expenses e
               LEFT JOIN companies c ON e.company_id = c.id
-              WHERE e.company_id = ${targetCompId} AND e.expense_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+              WHERE e.company_id = ${targetCompId} 
+                AND e.expense_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+                AND (e.receipt_number IS NULL OR e.receipt_number NOT LIKE 'EXP-PUR-%')
               ORDER BY e.expense_date DESC
             `;
           }
@@ -388,10 +391,10 @@ module.exports = async function handler(req, res) {
               SELECT pur.id as raw_id,
                      'purchases' as module,
                      'outward' as flow_type,
-                     pur.purchase_date as transaction_date,
+                     COALESCE(pur.purchase_date, pur.created_at::date, CURRENT_DATE) as transaction_date,
                      COALESCE(NULLIF(pur.purchase_invoice_no, ''), 'PUR-' || pur.id) as ref_no,
-                     COALESCE(d.trade_name, d.legal_name, 'Supplier') as party_name,
-                     COALESCE(d.gstin, '—') as party_gstin,
+                     COALESCE(sup.trade_name, sup.legal_name, d.trade_name, d.legal_name, 'Supplier') as party_name,
+                     COALESCE(sup.gstin, d.gstin, '—') as party_gstin,
                      c.name as company_name,
                      c.gstin as company_gstin,
                      COALESCE(pur.total_amount, 0)::numeric as taxable_amount,
@@ -408,19 +411,20 @@ module.exports = async function handler(req, res) {
                      'Inward Inventory / Stock Receipt' as description
               FROM purchases pur
               LEFT JOIN companies c ON pur.company_id = c.id
+              LEFT JOIN suppliers sup ON pur.supplier_id = sup.id
               LEFT JOIN dealers d ON pur.supplier_id = d.id
-              WHERE pur.purchase_date::date BETWEEN ${startDate}::date AND ${endDate}::date
-              ORDER BY pur.purchase_date DESC
+              WHERE COALESCE(pur.purchase_date, pur.created_at::date, CURRENT_DATE)::date BETWEEN ${startDate}::date AND ${endDate}::date
+              ORDER BY transaction_date DESC
             `;
           } else {
             purRows = await sql`
               SELECT pur.id as raw_id,
                      'purchases' as module,
                      'outward' as flow_type,
-                     pur.purchase_date as transaction_date,
+                     COALESCE(pur.purchase_date, pur.created_at::date, CURRENT_DATE) as transaction_date,
                      COALESCE(NULLIF(pur.purchase_invoice_no, ''), 'PUR-' || pur.id) as ref_no,
-                     COALESCE(d.trade_name, d.legal_name, 'Supplier') as party_name,
-                     COALESCE(d.gstin, '—') as party_gstin,
+                     COALESCE(sup.trade_name, sup.legal_name, d.trade_name, d.legal_name, 'Supplier') as party_name,
+                     COALESCE(sup.gstin, d.gstin, '—') as party_gstin,
                      c.name as company_name,
                      c.gstin as company_gstin,
                      COALESCE(pur.total_amount, 0)::numeric as taxable_amount,
@@ -437,9 +441,10 @@ module.exports = async function handler(req, res) {
                      'Inward Inventory / Stock Receipt' as description
               FROM purchases pur
               LEFT JOIN companies c ON pur.company_id = c.id
+              LEFT JOIN suppliers sup ON pur.supplier_id = sup.id
               LEFT JOIN dealers d ON pur.supplier_id = d.id
-              WHERE pur.company_id = ${targetCompId} AND pur.purchase_date::date BETWEEN ${startDate}::date AND ${endDate}::date
-              ORDER BY pur.purchase_date DESC
+              WHERE pur.company_id = ${targetCompId} AND COALESCE(pur.purchase_date, pur.created_at::date, CURRENT_DATE)::date BETWEEN ${startDate}::date AND ${endDate}::date
+              ORDER BY transaction_date DESC
             `;
           }
           if (Array.isArray(purRows)) allRows.push(...purRows);

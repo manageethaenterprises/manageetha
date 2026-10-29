@@ -111,10 +111,10 @@ module.exports = async function handler(req, res) {
         ? await sql`SELECT COALESCE(SUM(grand_total), 0) as total_service, COUNT(id) as count_services FROM service_jobs WHERE created_at::date BETWEEN ${startDate} AND ${endDate} AND company_id = ANY(${companyIds})`
         : await sql`SELECT COALESCE(SUM(grand_total), 0) as total_service, COUNT(id) as count_services FROM service_jobs WHERE created_at::date BETWEEN ${startDate} AND ${endDate}`;
 
-      // Expenses total
+      // Expenses total (exclude auto-recorded EXP-PUR stock purchase expenses since purchases are already tracked separately below)
       const expenseQuery = filterCompany
-        ? await sql`SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(id) as count_expenses FROM expenses WHERE expense_date BETWEEN ${startDate} AND ${endDate} AND company_id = ANY(${companyIds})`
-        : await sql`SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(id) as count_expenses FROM expenses WHERE expense_date BETWEEN ${startDate} AND ${endDate}`;
+        ? await sql`SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(id) as count_expenses FROM expenses WHERE expense_date BETWEEN ${startDate} AND ${endDate} AND company_id = ANY(${companyIds}) AND (receipt_number IS NULL OR receipt_number NOT LIKE 'EXP-PUR-%')`
+        : await sql`SELECT COALESCE(SUM(amount), 0) as total_expenses, COUNT(id) as count_expenses FROM expenses WHERE expense_date BETWEEN ${startDate} AND ${endDate} AND (receipt_number IS NULL OR receipt_number NOT LIKE 'EXP-PUR-%')`;
 
       // Salaries paid (filtered by date)
       let salaryQuery = [{ total_salaries: 0 }];
@@ -156,7 +156,9 @@ module.exports = async function handler(req, res) {
           ) ret ON c.id = ret.company_id
           LEFT JOIN (
             SELECT company_id, SUM(amount) as total_expenses FROM expenses
-            WHERE expense_date BETWEEN ${startDate} AND ${endDate} GROUP BY company_id
+            WHERE expense_date BETWEEN ${startDate} AND ${endDate}
+              AND (receipt_number IS NULL OR receipt_number NOT LIKE 'EXP-PUR-%')
+            GROUP BY company_id
           ) e ON c.id = e.company_id
           LEFT JOIN (
             SELECT company_id, SUM(grand_total) as total_service FROM service_jobs
@@ -183,7 +185,9 @@ module.exports = async function handler(req, res) {
           ) ret ON c.id = ret.company_id
           LEFT JOIN (
             SELECT company_id, SUM(amount) as total_expenses FROM expenses
-            WHERE expense_date BETWEEN ${startDate} AND ${endDate} GROUP BY company_id
+            WHERE expense_date BETWEEN ${startDate} AND ${endDate}
+              AND (receipt_number IS NULL OR receipt_number NOT LIKE 'EXP-PUR-%')
+            GROUP BY company_id
           ) e ON c.id = e.company_id
           LEFT JOIN (
             SELECT company_id, SUM(grand_total) as total_service FROM service_jobs

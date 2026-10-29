@@ -589,6 +589,7 @@ module.exports = async function handler(req, res) {
           FROM expenses e
           WHERE e.company_id = ${compId}
             AND e.amount > 0
+            AND (e.receipt_number IS NULL OR e.receipt_number NOT LIKE 'EXP-PUR-%')
           ORDER BY e.expense_date DESC LIMIT 500
         `;
         outflows = outflows.concat(expRows);

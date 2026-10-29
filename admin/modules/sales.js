@@ -2187,17 +2187,90 @@ function openCustomInvoiceModal(onSuccess) {
   modal = document.createElement("div");
   modal.id = "customInvoiceModal";
   modal.className = "modal active";
-  modal.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;";
+  modal.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:12px;overflow-y:auto;backdrop-filter:blur(4px);";
   modal.innerHTML = `
-    <div class="modal-content" style="max-width:960px;width:95%;max-height:88vh;overflow-y:auto;background:var(--bg-primary, #ffffff);border-radius:12px;padding:24px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);border:1px solid var(--border);box-sizing:border-box;">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:16px;">
-        <h3 style="font-size:18px; font-weight:700; color:var(--text1); margin:0;">➕ Create Custom Invoice</h3>
-        <button class="close-modal" id="closeCustInvModal" style="background:none; border:none; font-size:24px; cursor:pointer; color:var(--text2);">&times;</button>
+    <style>
+      .custom-inv-modal-content {
+        width: 96vw !important;
+        max-width: min(1600px, 97vw) !important;
+        max-height: 94vh !important;
+        padding: 24px 28px !important;
+      }
+      .custom-inv-grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .custom-inv-date-comp-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .cust-inv-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .cust-table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .cust-table-scroll::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+      }
+      .cust-table-scroll::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 4px;
+      }
+      .cust-table-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+      }
+      .cust-table-scroll::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+
+      @media (max-width: 992px) {
+        .custom-inv-modal-content {
+          width: 98vw !important;
+          padding: 18px 14px !important;
+          max-height: 96vh !important;
+        }
+        .custom-inv-grid-2 {
+          grid-template-columns: 1fr !important;
+          gap: 12px !important;
+        }
+        .custom-inv-date-comp-grid {
+          grid-template-columns: 1fr !important;
+          gap: 12px !important;
+        }
+      }
+      @media (max-width: 600px) {
+        .custom-inv-modal-content {
+          padding: 14px 10px !important;
+        }
+        .cust-inv-summary-grid {
+          grid-template-columns: 1fr 1fr !important;
+        }
+      }
+    </style>
+
+    <div class="modal-content custom-inv-modal-content" style="background:var(--bg-primary, #ffffff);border-radius:12px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.35);border:1px solid var(--border);box-sizing:border-box;display:flex;flex-direction:column;overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:14px; margin-bottom:16px; flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:20px; color:#4f46e5;">➕</span>
+          <h3 style="font-size:19px; font-weight:800; color:var(--text1); margin:0; letter-spacing:0.2px;">Create Custom Invoice</h3>
+        </div>
+        <button class="close-modal" id="closeCustInvModal" style="background:#f1f5f9; border:1px solid #cbd5e1; font-size:18px; line-height:1; width:32px; height:32px; border-radius:50%; cursor:pointer; color:var(--text2); display:flex; align-items:center; justify-content:center; transition:all 0.15s ease;" title="Close">&times;</button>
       </div>
 
       <form id="custInvForm">
         <!-- 1st Dropdown: Invoice Type -->
-        <div class="form-group" style="margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:8px; border:1px solid #cbd5e1;">
+        <div class="form-group" style="margin-bottom:16px; background:#f8fafc; padding:12px 14px; border-radius:8px; border:1px solid #cbd5e1;">
           <label style="font-weight:700; font-size:13px; color:#1e293b; display:block; margin-bottom:6px;">Select Invoice Type *</label>
           <select id="custInvType" class="form-input" style="font-weight:600; font-size:14px; padding:8px 12px; width:100%; box-sizing:border-box;">
             <option value="salary">Salary Reimbursement / Labour Charges</option>
@@ -2208,105 +2281,109 @@ function openCustomInvoiceModal(onSuccess) {
           </select>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div class="custom-inv-grid-2">
           <!-- Billed To -->
-          <div style="border:1px solid var(--border); padding:12px; border-radius:8px; background:var(--bg2);">
-            <h4 style="font-size:13px; font-weight:700; margin-top:0; margin-bottom:10px; color:var(--primary);">Details of Receiver (Billed to)</h4>
+          <div style="border:1px solid var(--border); padding:14px; border-radius:8px; background:var(--bg2);">
+            <h4 style="font-size:13.5px; font-weight:700; margin-top:0; margin-bottom:12px; color:var(--primary); display:flex; align-items:center; gap:6px;">
+              <span>🏢</span> Details of Receiver (Billed to)
+            </h4>
             <div class="form-group" style="margin-bottom:8px;">
-              <label style="font-size:11px;">Receiver Name *</label>
+              <label style="font-size:11px; font-weight:600;">Receiver Name *</label>
               <input type="text" id="custRecName" class="form-input" value="BTL EPC LTD" required style="width:100%; box-sizing:border-box;">
             </div>
             <div class="form-group" style="margin-bottom:8px;">
-              <label style="font-size:11px;">Address *</label>
+              <label style="font-size:11px; font-weight:600;">Address *</label>
               <input type="text" id="custRecAddr" class="form-input" value="26-01-34-11A,RAMACHANDRAPURAM" required style="width:100%; box-sizing:border-box;">
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
               <div class="form-group" style="margin-bottom:8px;">
-                <label style="font-size:11px;">State</label>
+                <label style="font-size:11px; font-weight:600;">State</label>
                 <input type="text" id="custRecState" class="form-input" value="AP" style="width:100%; box-sizing:border-box;">
               </div>
               <div class="form-group" style="margin-bottom:8px;">
-                <label style="font-size:11px;">State Code</label>
+                <label style="font-size:11px; font-weight:600;">State Code</label>
                 <input type="text" id="custRecStateCode" class="form-input" value="37" style="width:100%; box-sizing:border-box;">
               </div>
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label style="font-size:11px;">GSTIN/UIN</label>
+              <label style="font-size:11px; font-weight:600;">GSTIN/UIN</label>
               <input type="text" id="custRecGstin" class="form-input" value="37AADCS7466G1Z0" style="width:100%; box-sizing:border-box;">
             </div>
           </div>
 
           <!-- Consignee (Shipped to) -->
-          <div style="border:1px solid var(--border); padding:12px; border-radius:8px; background:var(--bg2);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-              <h4 style="font-size:13px; font-weight:700; margin:0; color:var(--primary);">Consignee (Shipped to)</h4>
-              <label style="font-size:11px; cursor:pointer; color:var(--primary); font-weight:600;">
+          <div style="border:1px solid var(--border); padding:14px; border-radius:8px; background:var(--bg2);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:6px;">
+              <h4 style="font-size:13.5px; font-weight:700; margin:0; color:var(--primary); display:flex; align-items:center; gap:6px;">
+                <span>🚚</span> Consignee (Shipped to)
+              </h4>
+              <label style="font-size:11.5px; cursor:pointer; color:var(--primary); font-weight:600; display:inline-flex; align-items:center; gap:4px;">
                 <input type="checkbox" id="custSameConsignee" checked> Same as Billed To
               </label>
             </div>
             <div class="form-group" style="margin-bottom:8px;">
-              <label style="font-size:11px;">Consignee Name</label>
+              <label style="font-size:11px; font-weight:600;">Consignee Name</label>
               <input type="text" id="custConName" class="form-input" value="BTL EPC LTD" style="width:100%; box-sizing:border-box;">
             </div>
             <div class="form-group" style="margin-bottom:8px;">
-              <label style="font-size:11px;">Address</label>
+              <label style="font-size:11px; font-weight:600;">Address</label>
               <input type="text" id="custConAddr" class="form-input" value="26-01-34-11A,RAMACHANDRAPURAM" style="width:100%; box-sizing:border-box;">
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
               <div class="form-group" style="margin-bottom:8px;">
-                <label style="font-size:11px;">State</label>
+                <label style="font-size:11px; font-weight:600;">State</label>
                 <input type="text" id="custConState" class="form-input" value="AP" style="width:100%; box-sizing:border-box;">
               </div>
               <div class="form-group" style="margin-bottom:8px;">
-                <label style="font-size:11px;">State Code</label>
+                <label style="font-size:11px; font-weight:600;">State Code</label>
                 <input type="text" id="custConStateCode" class="form-input" value="37" style="width:100%; box-sizing:border-box;">
               </div>
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <label style="font-size:11px;">GSTIN/UIN</label>
+              <label style="font-size:11px; font-weight:600;">GSTIN/UIN</label>
               <input type="text" id="custConGstin" class="form-input" value="37AADCS7466G1Z0" style="width:100%; box-sizing:border-box;">
             </div>
           </div>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div class="custom-inv-date-comp-grid">
           <div class="form-group" style="margin-bottom:0;">
-            <label style="font-size:11px; font-weight:600;">Invoice Date *</label>
-            <input type="date" id="custInvDate" class="form-input" value="${new Date().toISOString().split('T')[0]}" required style="width:100%; box-sizing:border-box;">
+            <label style="font-size:11.5px; font-weight:600; color:var(--text2);">Invoice Date *</label>
+            <input type="date" id="custInvDate" class="form-input" value="${new Date().toISOString().split('T')[0]}" required style="width:100%; box-sizing:border-box; font-size:13px; padding:7px 10px;">
           </div>
           <div class="form-group" style="margin-bottom:0;">
-            <label style="font-size:11px; font-weight:600;">Company</label>
-            <input type="text" class="form-input" value="${esc(matchedComp.name || 'MANASWINI ENTERPRISES')}" readonly style="background:var(--bg1); width:100%; box-sizing:border-box;">
+            <label style="font-size:11.5px; font-weight:600; color:var(--text2);">Company</label>
+            <input type="text" class="form-input" value="${esc(matchedComp.name || 'MANASWINI ENTERPRISES')}" readonly style="background:var(--bg1); width:100%; box-sizing:border-box; font-size:13px; padding:7px 10px; font-weight:600;">
           </div>
         </div>
 
         <!-- Dealers Sales Commission Calculator (Shown only when type === dealers_commission) -->
-        <div id="dealerCommissionSection" style="display:none; margin-bottom:16px; border:1.5px solid #3b82f6; background:#eff6ff; padding:14px; border-radius:10px; box-shadow:0 4px 6px -1px rgba(59,130,246,0.1);">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+        <div id="dealerCommissionSection" style="display:none; margin-bottom:16px; border:1.5px solid #3b82f6; background:#eff6ff; padding:16px; border-radius:10px; box-shadow:0 4px 6px -1px rgba(59,130,246,0.1);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
             <div>
-              <h4 style="font-size:14px; font-weight:700; color:#1d4ed8; margin:0; display:flex; align-items:center; gap:6px;">
+              <h4 style="font-size:14.5px; font-weight:700; color:#1d4ed8; margin:0; display:flex; align-items:center; gap:6px;">
                 📊 Dealer Sales Breakdown Commission Matrix
               </h4>
-              <p style="font-size:11.5px; color:#3b82f6; margin:2px 0 0 0;">
+              <p style="font-size:12px; color:#3b82f6; margin:3px 0 0 0;">
                 Enter individual dealer sales invoices. Column totals and commission amounts will be calculated automatically in real time.
               </p>
             </div>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <button type="button" id="btnAddDealerMatrixRow" class="btn btn-sm" style="background:#2563eb; color:#fff; font-weight:600; font-size:11px; padding:5px 10px; border:none; border-radius:4px; cursor:pointer;">
+              <button type="button" id="btnAddDealerMatrixRow" class="btn btn-sm" style="background:#2563eb; color:#fff; font-weight:600; font-size:11.5px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.1);">
                 ➕ Add Dealer Invoice Row
               </button>
-              <button type="button" id="btnAddDealerModelCol" class="btn btn-sm" style="background:#0284c7; color:#fff; font-weight:600; font-size:11px; padding:5px 10px; border:none; border-radius:4px; cursor:pointer;">
+              <button type="button" id="btnAddDealerModelCol" class="btn btn-sm" style="background:#0284c7; color:#fff; font-weight:600; font-size:11.5px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.1);">
                 ➕ Add Model Column
               </button>
-              <button type="button" id="btnResetDealerSampleData" class="btn btn-sm" style="background:#475569; color:#fff; font-weight:600; font-size:11px; padding:5px 10px; border:none; border-radius:4px; cursor:pointer;">
+              <button type="button" id="btnResetDealerSampleData" class="btn btn-sm" style="background:#475569; color:#fff; font-weight:600; font-size:11.5px; padding:6px 12px; border:none; border-radius:5px; cursor:pointer; display:inline-flex; align-items:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.1);">
                 🔄 Pre-fill Sample Data
               </button>
             </div>
           </div>
 
           <!-- EXCEL MATRIX TABLE -->
-          <div style="overflow-x:auto; background:#fff; border-radius:8px; border:1px solid #bfdbfe; margin-bottom:14px;">
-            <table id="dealerMatrixTable" style="width:100%; min-width:850px; font-size:11.5px; border-collapse:collapse; text-align:left;">
+          <div class="cust-table-scroll" style="background:#fff; border-radius:8px; border:1px solid #bfdbfe; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            <table id="dealerMatrixTable" style="width:100%; min-width:1080px; font-size:11.5px; border-collapse:collapse; text-align:left;">
               <thead id="dealerMatrixTHead">
                 <!-- Rendered dynamically -->
               </thead>
@@ -2320,82 +2397,88 @@ function openCustomInvoiceModal(onSuccess) {
           </div>
 
           <!-- SUMMARY TABLE -->
-          <div style="background:#fff; border-radius:8px; border:1px solid #bfdbfe; padding:12px;">
-            <h5 style="font-size:12.5px; font-weight:700; color:#1e40af; margin:0 0 8px 0;">
-              📋 Product Model Commission Summary
+          <div style="background:#fff; border-radius:8px; border:1px solid #bfdbfe; padding:14px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+            <h5 style="font-size:13px; font-weight:700; color:#1e40af; margin:0 0 10px 0; display:flex; align-items:center; gap:6px;">
+              <span>📋</span> Product Model Commission Summary
             </h5>
-            <table style="width:100%; font-size:12px; border-collapse:collapse; border:1px solid #dbeafe;">
-              <thead>
-                <tr style="background:#dbeafe; color:#1e40af; font-weight:bold;">
-                  <th style="padding:6px 8px; text-align:left; border:1px solid #bfdbfe;">PRODUCT MODEL</th>
-                  <th style="padding:6px 8px; text-align:center; border:1px solid #bfdbfe;">COMMISSION RATE (₹)</th>
-                  <th style="padding:6px 8px; text-align:center; border:1px solid #bfdbfe;">UNITS SOLD</th>
-                  <th style="padding:6px 8px; text-align:center; border:1px solid #bfdbfe;">BONUS (₹)</th>
-                  <th style="padding:6px 8px; text-align:right; border:1px solid #bfdbfe;">TOTAL COMMISSION (₹)</th>
-                </tr>
-              </thead>
-              <tbody id="dealerSummaryTBody">
-                <!-- Rendered dynamically -->
-              </tbody>
-              <tfoot>
-                <tr style="background:#eff6ff; font-weight:bold;">
-                  <td colspan="4" style="padding:8px; text-align:right; border:1px solid #bfdbfe; font-size:12.5px; color:#1e3a8a;">Total Commission Taxable Value:</td>
-                  <td style="padding:8px; text-align:right; color:#1d4ed8; font-size:14px; font-weight:800; border:1px solid #bfdbfe;" id="dealerTotalCommissionAmt">₹0.00</td>
-                </tr>
-              </tfoot>
-            </table>
+            <div class="cust-table-scroll">
+              <table style="width:100%; min-width:650px; font-size:12px; border-collapse:collapse; border:1px solid #dbeafe;">
+                <thead>
+                  <tr style="background:#dbeafe; color:#1e40af; font-weight:bold;">
+                    <th style="padding:7px 10px; text-align:left; border:1px solid #bfdbfe;">PRODUCT MODEL</th>
+                    <th style="padding:7px 10px; text-align:center; border:1px solid #bfdbfe;">COMMISSION RATE (₹)</th>
+                    <th style="padding:7px 10px; text-align:center; border:1px solid #bfdbfe;">UNITS SOLD</th>
+                    <th style="padding:7px 10px; text-align:center; border:1px solid #bfdbfe;">BONUS (₹)</th>
+                    <th style="padding:7px 10px; text-align:right; border:1px solid #bfdbfe;">TOTAL COMMISSION (₹)</th>
+                  </tr>
+                </thead>
+                <tbody id="dealerSummaryTBody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+                <tfoot>
+                  <tr style="background:#eff6ff; font-weight:bold;">
+                    <td colspan="4" style="padding:9px 12px; text-align:right; border:1px solid #bfdbfe; font-size:13px; color:#1e3a8a;">Total Commission Taxable Value:</td>
+                    <td style="padding:9px 12px; text-align:right; color:#1d4ed8; font-size:15px; font-weight:800; border:1px solid #bfdbfe;" id="dealerTotalCommissionAmt">₹0.00</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         </div>
 
         <!-- Custom Line Items Table -->
         <div style="margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <h4 style="font-size:13px; font-weight:700; margin:0; color:var(--text1);">Invoice Line Items</h4>
-            <button type="button" id="btnAddCustItem" class="btn btn-sm btn-outline" style="font-size:12px; font-weight:600;">➕ Add Line Item</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <h4 style="font-size:13.5px; font-weight:700; margin:0; color:var(--text1);">Invoice Line Items</h4>
+            <button type="button" id="btnAddCustItem" class="btn btn-sm btn-outline" style="font-size:12px; font-weight:600; padding:4px 10px;">➕ Add Line Item</button>
           </div>
-          <table style="width:100%; font-size:12px; border-collapse:collapse; table-layout:fixed;" class="data-table">
-            <thead>
-              <tr>
-                <th style="width:32%;">Description of Goods / Services</th>
-                <th style="width:14%;">HSN/SAC</th>
-                <th style="width:18%;">Taxable Value (₹)</th>
-                <th style="width:12%;">GST Rate %</th>
-                <th style="width:16%;">Total Value (₹)</th>
-                <th style="width:8%;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="custItemsTbody">
-              <!-- Rendered via JS -->
-            </tbody>
-          </table>
+          <div class="cust-table-scroll" style="border-radius:6px; border:1px solid var(--border);">
+            <table style="width:100%; min-width:720px; font-size:12px; border-collapse:collapse;" class="data-table">
+              <thead>
+                <tr>
+                  <th style="min-width:240px;">Description of Goods / Services</th>
+                  <th style="width:110px; min-width:100px;">HSN/SAC</th>
+                  <th style="width:140px; min-width:130px;">Taxable Value (₹)</th>
+                  <th style="width:100px; min-width:90px;">GST Rate %</th>
+                  <th style="width:130px; min-width:120px;">Total Value (₹)</th>
+                  <th style="width:65px; text-align:center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="custItemsTbody">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Tax & Grand Total Summary Box -->
-        <div style="background:var(--bg2); border:1px solid var(--border); padding:12px; border-radius:8px; margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:4px;">
-            <span>Subtotal (Taxable Amount):</span>
-            <span id="custSummaryTaxable">₹0.00</span>
+        <div style="background:var(--bg2); border:1px solid var(--border); padding:16px; border-radius:10px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+          <div class="cust-inv-summary-grid">
+            <div style="background:var(--bg-primary); padding:10px 14px; border-radius:6px; border:1px solid var(--border);">
+              <div style="font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.3px;">Subtotal (Taxable)</div>
+              <div style="font-size:16px; font-weight:800; color:var(--text1); margin-top:2px;" id="custSummaryTaxable">₹0.00</div>
+            </div>
+            <div style="background:var(--bg-primary); padding:10px 14px; border-radius:6px; border:1px solid var(--border);">
+              <div style="font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.3px;">CGST Amount</div>
+              <div style="font-size:16px; font-weight:800; color:var(--text2); margin-top:2px;" id="custSummaryCgst">₹0.00</div>
+            </div>
+            <div style="background:var(--bg-primary); padding:10px 14px; border-radius:6px; border:1px solid var(--border);">
+              <div style="font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:0.3px;">SGST Amount</div>
+              <div style="font-size:16px; font-weight:800; color:var(--text2); margin-top:2px;" id="custSummarySgst">₹0.00</div>
+            </div>
+            <div style="background:linear-gradient(135deg,#eff6ff,#dbeafe); padding:10px 14px; border-radius:6px; border:1px solid #93c5fd;">
+              <div style="font-size:11px; font-weight:700; color:#1e40af; text-transform:uppercase; letter-spacing:0.3px;">Grand Total</div>
+              <div style="font-size:18px; font-weight:800; color:#1d4ed8; margin-top:2px;" id="custSummaryGrand">₹0.00</div>
+            </div>
           </div>
-          <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text2); margin-bottom:2px;">
-            <span>CGST Amount:</span>
-            <span id="custSummaryCgst">₹0.00</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text2); margin-bottom:4px;">
-            <span>SGST Amount:</span>
-            <span id="custSummarySgst">₹0.00</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:15px; font-weight:800; color:var(--primary); border-top:1px solid var(--border); padding-top:6px;">
-            <span>Grand Total (in Figures):</span>
-            <span id="custSummaryGrand">₹0.00</span>
-          </div>
-          <div style="font-size:11.5px; font-weight:600; color:var(--text2); margin-top:4px; font-style:italic;" id="custSummaryWords">
+          <div style="font-size:12px; font-weight:600; color:var(--text2); font-style:italic;" id="custSummaryWords">
             Words: Zero Rupees Only
           </div>
         </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:12px;">
-          <button type="button" class="btn btn-outline" id="cancelCustInvModal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="btnSaveCustInv" style="background:linear-gradient(135deg,#4f46e5,#3b82f6); color:#fff; font-weight:700; padding:8px 20px;">💾 Save & Print Custom Invoice</button>
+        <div style="display:flex; justify-content:flex-end; gap:12px; flex-wrap:wrap; align-items:center;">
+          <button type="button" class="btn btn-outline" id="cancelCustInvModal" style="padding:8px 18px; font-weight:600;">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnSaveCustInv" style="background:linear-gradient(135deg,#4f46e5,#3b82f6); color:#fff; font-weight:700; padding:9px 24px; border-radius:6px; box-shadow:0 2px 4px rgba(79,70,229,0.25);">💾 Save & Print Custom Invoice</button>
         </div>
       </form>
     </div>
@@ -2462,31 +2545,31 @@ function openCustomInvoiceModal(onSuccess) {
 
     // Header
     let headHtml = `
-      <tr style="background:#dbeafe; color:#1e40af; font-weight:bold; font-size:11px;">
-        <th style="padding:6px; border:1px solid #bfdbfe; width:45px; text-align:center;">SR.NO</th>
-        <th style="padding:6px; border:1px solid #bfdbfe; min-width:160px;">DEALER NAME</th>
-        <th style="padding:6px; border:1px solid #bfdbfe; width:120px;">INV.NO</th>
-        <th style="padding:6px; border:1px solid #bfdbfe; width:95px; text-align:center;">INV.Date</th>
+      <tr style="background:#dbeafe; color:#1e40af; font-weight:bold; font-size:11.5px;">
+        <th style="padding:7px 4px; border:1px solid #bfdbfe; width:45px; text-align:center;">SR.NO</th>
+        <th style="padding:7px 8px; border:1px solid #bfdbfe; min-width:220px;">DEALER NAME</th>
+        <th style="padding:7px 6px; border:1px solid #bfdbfe; width:130px; min-width:120px;">INV.NO</th>
+        <th style="padding:7px 6px; border:1px solid #bfdbfe; width:95px; min-width:90px; text-align:center;">INV.DATE</th>
     `;
     dealerModels.forEach((m) => {
       headHtml += `
-        <th style="padding:4px 6px; border:1px solid #bfdbfe; text-align:center; min-width:85px; background:#eff6ff;">
-          <div style="display:flex; flex-direction:column; gap:2px; align-items:center;">
-            <input type="text" class="form-input matrixModelNameInp" data-mid="${m.id}" value="${esc(m.name)}" style="width:100%; font-size:11px; font-weight:bold; text-align:center; padding:2px 4px; box-sizing:border-box;">
+        <th style="padding:4px 6px; border:1px solid #bfdbfe; text-align:center; min-width:95px; background:#eff6ff;">
+          <div style="display:flex; flex-direction:column; gap:3px; align-items:center;">
+            <input type="text" class="form-input matrixModelNameInp" data-mid="${m.id}" value="${esc(m.name)}" style="width:100%; font-size:11.5px; font-weight:bold; text-align:center; padding:3px 4px; box-sizing:border-box; border-radius:4px;" title="Edit Model Name">
             <div style="display:flex; align-items:center; gap:2px; font-size:10px; color:#1e40af;">
-              <span>Rate ₹</span>
-              <input type="number" class="form-input matrixModelRateInp" data-mid="${m.id}" value="${m.rate}" style="width:55px; font-size:10.5px; text-align:center; padding:1px 2px; box-sizing:border-box;">
-              ${dealerModels.length > 1 ? `<button type="button" class="delMatrixColBtn" data-mid="${m.id}" style="background:none; border:none; color:#ef4444; font-weight:bold; cursor:pointer; font-size:12px; padding:0 2px;" title="Delete Column">&times;</button>` : ''}
+              <span style="font-weight:600;">Rate ₹</span>
+              <input type="number" class="form-input matrixModelRateInp" data-mid="${m.id}" value="${m.rate}" style="width:60px; font-size:11px; text-align:center; padding:2px 3px; box-sizing:border-box; font-weight:600; border-radius:4px;" title="Edit Commission Rate (₹)">
+              ${dealerModels.length > 1 ? `<button type="button" class="delMatrixColBtn" data-mid="${m.id}" style="background:none; border:none; color:#ef4444; font-weight:bold; cursor:pointer; font-size:13px; padding:0 2px;" title="Delete Column">&times;</button>` : ''}
             </div>
           </div>
         </th>
       `;
     });
     headHtml += `
-        <th style="padding:6px; border:1px solid #bfdbfe; width:80px; text-align:center;">GRAND TOTAL QTY</th>
-        <th style="padding:6px; border:1px solid #bfdbfe; width:100px; text-align:right;">VALUE (₹)</th>
-        <th style="padding:6px; border:1px solid #bfdbfe; min-width:100px;">REMARKS</th>
-        <th style="padding:6px; border:1px solid #bfdbfe; width:40px; text-align:center;">ACT</th>
+        <th style="padding:7px 6px; border:1px solid #bfdbfe; width:85px; min-width:80px; text-align:center;">TOTAL QTY</th>
+        <th style="padding:7px 8px; border:1px solid #bfdbfe; width:110px; min-width:100px; text-align:right;">VALUE (₹)</th>
+        <th style="padding:7px 8px; border:1px solid #bfdbfe; min-width:120px;">REMARKS</th>
+        <th style="padding:7px 4px; border:1px solid #bfdbfe; width:45px; text-align:center;">ACT</th>
       </tr>
     `;
     thead.innerHTML = headHtml;
@@ -2506,8 +2589,8 @@ function openCustomInvoiceModal(onSuccess) {
         colTotals[m.id] += q;
         rowQtySum += q;
         modelColsHtml += `
-          <td style="padding:2px; border:1px solid #bfdbfe; text-align:center;">
-            <input type="number" min="0" class="form-input matrixCellInp" data-ridx="${rIdx}" data-mid="${m.id}" value="${q || ''}" style="width:100%; text-align:center; font-size:11.5px; padding:2px 4px; box-sizing:border-box;">
+          <td style="padding:3px; border:1px solid #bfdbfe; text-align:center;">
+            <input type="number" min="0" class="form-input matrixCellInp" data-ridx="${rIdx}" data-mid="${m.id}" value="${q || ''}" style="width:100%; text-align:center; font-size:12px; font-weight:600; padding:4px 3px; box-sizing:border-box; border-radius:4px;">
           </td>
         `;
       });
@@ -2516,26 +2599,26 @@ function openCustomInvoiceModal(onSuccess) {
 
       bodyHtml += `
         <tr style="background:${rIdx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-          <td style="padding:4px; border:1px solid #bfdbfe; text-align:center; font-weight:600; color:#64748b;">${rIdx + 1}</td>
-          <td style="padding:2px; border:1px solid #bfdbfe;">
-            <input type="text" class="form-input matrixDealerInp" data-ridx="${rIdx}" value="${esc(r.dealer_name || '')}" placeholder="Dealer Name" style="width:100%; font-size:11.5px; padding:2px 4px; box-sizing:border-box;">
+          <td style="padding:4px; border:1px solid #bfdbfe; text-align:center; font-weight:600; color:#64748b; font-size:11px;">${rIdx + 1}</td>
+          <td style="padding:3px; border:1px solid #bfdbfe;">
+            <input type="text" class="form-input matrixDealerInp" data-ridx="${rIdx}" value="${esc(r.dealer_name || '')}" placeholder="Dealer Name" style="width:100%; font-size:11.5px; padding:4px 6px; box-sizing:border-box; border-radius:4px;">
           </td>
-          <td style="padding:2px; border:1px solid #bfdbfe;">
-            <input type="text" class="form-input matrixInvNoInp" data-ridx="${rIdx}" value="${esc(r.inv_no || '')}" placeholder="Inv No" style="width:100%; font-size:11.5px; padding:2px 4px; box-sizing:border-box;">
+          <td style="padding:3px; border:1px solid #bfdbfe;">
+            <input type="text" class="form-input matrixInvNoInp" data-ridx="${rIdx}" value="${esc(r.inv_no || '')}" placeholder="Inv No" style="width:100%; font-size:11.5px; padding:4px 6px; box-sizing:border-box; border-radius:4px;">
           </td>
-          <td style="padding:2px; border:1px solid #bfdbfe;">
-            <input type="text" class="form-input matrixInvDateInp" data-ridx="${rIdx}" value="${esc(r.inv_date || '')}" placeholder="Date" style="width:100%; text-align:center; font-size:11.5px; padding:2px 4px; box-sizing:border-box;">
+          <td style="padding:3px; border:1px solid #bfdbfe;">
+            <input type="text" class="form-input matrixInvDateInp" data-ridx="${rIdx}" value="${esc(r.inv_date || '')}" placeholder="Date" style="width:100%; text-align:center; font-size:11.5px; padding:4px 6px; box-sizing:border-box; border-radius:4px;">
           </td>
           ${modelColsHtml}
-          <td style="padding:4px; border:1px solid #bfdbfe; text-align:center; font-weight:bold; color:#1e40af; background:#f1f5f9;">${rowQtySum}</td>
-          <td style="padding:2px; border:1px solid #bfdbfe;">
-            <input type="number" step="0.01" class="form-input matrixValueInp" data-ridx="${rIdx}" value="${r.value !== undefined ? r.value : ''}" placeholder="0.00" style="width:100%; text-align:right; font-size:11.5px; padding:2px 4px; box-sizing:border-box;">
+          <td style="padding:4px; border:1px solid #bfdbfe; text-align:center; font-weight:800; color:#1e40af; background:#f1f5f9; font-size:12px;">${rowQtySum}</td>
+          <td style="padding:3px; border:1px solid #bfdbfe;">
+            <input type="number" step="0.01" class="form-input matrixValueInp" data-ridx="${rIdx}" value="${r.value !== undefined ? r.value : ''}" placeholder="0.00" style="width:100%; text-align:right; font-size:11.5px; padding:4px 6px; box-sizing:border-box; border-radius:4px;">
           </td>
-          <td style="padding:2px; border:1px solid #bfdbfe;">
-            <input type="text" class="form-input matrixRemarksInp" data-ridx="${rIdx}" value="${esc(r.remarks || '')}" placeholder="Remarks" style="width:100%; font-size:11.5px; padding:2px 4px; box-sizing:border-box;">
+          <td style="padding:3px; border:1px solid #bfdbfe;">
+            <input type="text" class="form-input matrixRemarksInp" data-ridx="${rIdx}" value="${esc(r.remarks || '')}" placeholder="Remarks" style="width:100%; font-size:11.5px; padding:4px 6px; box-sizing:border-box; border-radius:4px;">
           </td>
-          <td style="padding:2px; border:1px solid #bfdbfe; text-align:center;">
-            <button type="button" class="delMatrixRowBtn" data-ridx="${rIdx}" style="background:none; border:none; color:#ef4444; font-weight:bold; cursor:pointer; font-size:14px;" title="Delete Row">&times;</button>
+          <td style="padding:3px; border:1px solid #bfdbfe; text-align:center;">
+            <button type="button" class="delMatrixRowBtn" data-ridx="${rIdx}" style="background:#fee2e2; border:1px solid #fca5a5; color:#ef4444; font-weight:bold; cursor:pointer; font-size:13px; width:24px; height:24px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center;" title="Delete Row">&times;</button>
           </td>
         </tr>
       `;

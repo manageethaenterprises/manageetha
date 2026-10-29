@@ -2320,6 +2320,12 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "stock-receipt-delete") {
+      const userRole = (user.role || '').toLowerCase();
+      const isSuperAdmin = userRole === 'superadmin' || userRole === 'super_admin' || user.username === 'superadmin';
+      if (!isSuperAdmin) {
+        return res.status(403).json({ error: "Access denied. Only Superadmin can delete an entire purchase invoice/bill. You can delete or edit individual sub-items instead." });
+      }
+
       const recId = safeInt(req.query.id || req.body?.id);
       if (!recId) return res.status(400).json({ error: "Purchase Receipt ID required" });
 
@@ -2362,6 +2368,15 @@ module.exports = async function handler(req, res) {
 
       const item = itemRows[0];
       purId = item.purchase_id;
+
+      // If this is the only item in the purchase bill, only Superadmin is allowed to delete it (as it deletes the entire bill)
+      const allItemsForPur = await sql`SELECT id FROM purchase_items WHERE purchase_id = ${purId}`;
+      if (allItemsForPur.length <= 1 && !isSuperAdmin) {
+        return res.status(403).json({ 
+          error: "Access denied. Cannot delete the only item in this purchase bill because deleting it would delete the entire invoice. Only Superadmin can delete an entire purchase invoice. You can edit this item instead." 
+        });
+      }
+
       if (item.product_id && item.quantity) {
         await sql`UPDATE products SET current_stock = GREATEST(0, current_stock - ${item.quantity}) WHERE id = ${item.product_id}`;
       }

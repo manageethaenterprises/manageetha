@@ -772,7 +772,11 @@ function printSupplierProfile(s) {
 // ── SubTab 1: Products Master ──
 async function loadProductsSubTab() {
   const subContent = document.getElementById("invSubContent");
-  const compId = getActiveCompId();
+  const userObj = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
+  const isSuper = (userObj?.role || '').toLowerCase() === 'superadmin' || userObj?.username === 'superadmin';
+  const initialCompId = getActiveCompId();
+  const effectiveCompId = (initialCompId && initialCompId !== 'all') ? initialCompId : (isSuper ? 'all' : (userObj?.company_id || 1));
+  const compOptionsHtml = await getCompaniesOptionsHtml(effectiveCompId);
 
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
@@ -780,8 +784,15 @@ async function loadProductsSubTab() {
         <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">Product Catalog Master</h3>
         <div style="font-size:12px;color:var(--text3);margin-top:2px;">Manage products, pricing, minimum reorder thresholds, and assigned suppliers.</div>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <input type="text" id="prodSearchInp" class="form-input" placeholder="🔍 Search SKU, product, brand, model, supplier, HSN..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:280px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="prodCompanyFilter" class="form-select" style="max-width:185px;font-size:12.5px;padding:6px 10px;" title="Filter products by company branch">
+          ${isSuper ? '<option value="all">🏢 All Companies</option>' : ''}
+          ${compOptionsHtml}
+        </select>
+        <input type="text" id="prodSearchInp" class="form-input" placeholder="🔍 Search SKU, product, brand, model, supplier, HSN..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:250px;">
+        <button class="btn btn-secondary" id="exportProdBtn" title="Export inventory data based on current search & company filter" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+          📊 Export Excel / CSV
+        </button>
         <button class="btn btn-secondary" id="dlTemplateHeaderBtn">📄 Download Template</button>
         <button class="btn btn-secondary" id="importExcelBtn">📥 Import Excel / CSV</button>
         <button class="btn btn-primary" id="addProdBtn">+ Add New Product</button>
@@ -993,130 +1004,256 @@ async function loadProductsSubTab() {
     } catch (e) {}
   }
 
-  async function fetchProducts() {
-    try {
-      const res = await fetch(`${API_BASE}/inventory?action=products&company_id=${compId}`, { headers: authHeaders() });
-      const data = await res.json();
-      if (!data.success) return;
+  let allProductsList = [];
+  let filteredProductsList = [];
+  let sortKey = 'created_at';
+  let sortDir = 'desc';
 
-      currentProductsList = data.products || [];
-      const tbody = document.getElementById("prodTableBody");
-      if (!tbody) return;
+  function renderProductsTable() {
+    const tbody = document.getElementById("prodTableBody");
+    if (!tbody) return;
 
-      window.renderPaginatedTable({
-        data: currentProductsList,
-        pageSize: 10,
-        currentPage: 1,
-        tbody: "prodTableBody",
-        paginationContainer: "prodPagination",
-        infoContainer: "prodInfo",
-        renderRow: (p) => `
-          <tr>
-            <td><span class="badge badge-purple">${esc(p.sku || 'SKU-' + p.id)}</span></td>
-            <td style="font-weight:600;color:var(--text1);">${esc(p.name)}</td>
-            <td>${esc(p.brand || '—')} / ${esc(p.model || '—')}</td>
-            <td><span class="badge badge-neutral" style="font-family:monospace;font-weight:600;">${esc(p.serial_no || '—')}</span></td>
-            <td><span class="badge badge-outline" style="font-weight:600;">${esc(p.supplier_name || 'Unassigned')}</span></td>
-            <td>${esc(p.hsn_sac || '—')}</td>
-            <td>${p.gst_rate}%</td>
-            <td>
-              <div>${formatCurrency(p.purchase_rate)}</div>
-              ${p.purchase_rate_incl_tax ? `<div style="font-size:11px;color:var(--text3);">Incl: ${formatCurrency(p.purchase_rate_incl_tax)}</div>` : ''}
-            </td>
-            <td>${formatCurrency(p.transport_expenses || 0)}</td>
-            <td><span class="badge badge-outline">${p.selling_percentage || 0}%</span></td>
-            <td style="font-weight:600;color:var(--text1);">${formatCurrency(p.selling_rate)}</td>
-            <td style="font-weight:600;color:var(--success);">${formatCurrency(p.mrp || p.selling_rate)}</td>
-            <td>
-              <span class="badge ${p.current_stock <= p.min_stock ? 'badge-danger' : 'badge-success'}">
-                ${p.current_stock} ${esc(p.unit_of_measure || 'NOS')}
-              </span>
-            </td>
-            <td>${p.weight ? `${parseFloat(p.weight)} kg` : '—'}</td>
-            <td>${esc(p.rack_no || '—')}</td>
-            <td>
-              <div style="display:flex;gap:6px;">
-                <button class="btn btn-sm btn-outline editProdBtn" data-id="${p.id}">✏️ Edit</button>
-                <button class="btn btn-sm btn-danger deleteProdBtn" data-id="${p.id}">🗑️ Delete</button>
-              </div>
-            </td>
-          </tr>
-        `,
-        onRender: () => {
-          const tb = document.getElementById("prodTableBody");
-          if (!tb) return;
+    const searchTerm = (document.getElementById("prodSearchInp")?.value || "").toLowerCase().trim();
+    const selComp = document.getElementById("prodCompanyFilter")?.value || "all";
 
-          tb.querySelectorAll(".editProdBtn").forEach(btn => {
-            btn.addEventListener("click", () => {
-              const p = currentProductsList.find(x => x.id == btn.dataset.id);
-              if (!p) return;
-              document.getElementById("pEditingId").value = p.id;
-              document.getElementById("pName").value = p.name || '';
-              document.getElementById("pSku").value = p.sku || '';
-              document.getElementById("pBrand").value = p.brand || '';
-              document.getElementById("pModel").value = p.model || '';
-              if (document.getElementById("pSerialNo")) document.getElementById("pSerialNo").value = p.serial_no || '';
-              document.getElementById("pHsn").value = p.hsn_sac || '';
-              document.getElementById("pGst").value = p.gst_rate || '18';
-              document.getElementById("pPurRate").value = p.purchase_rate || '';
-              document.getElementById("pPurRateIncl").value = p.purchase_rate_incl_tax || '';
-              document.getElementById("pTransportExp").value = p.transport_expenses || '0';
-              document.getElementById("pSellingPct").value = p.selling_percentage !== undefined ? p.selling_percentage : '100';
-              document.getElementById("pSellRate").value = p.selling_rate || '';
-              const mrpEl = document.getElementById("pMrp");
-              if (mrpEl) {
-                mrpEl.value = p.mrp || '';
-                mrpEl.dataset.userOverridden = "false";
-              }
-              document.getElementById("pStock").value = p.current_stock || '0';
-              document.getElementById("pMinStock").value = p.min_stock || '5';
-              document.getElementById("pWeight").value = p.weight !== undefined ? p.weight : '';
-              document.getElementById("pRack").value = p.rack_no || '';
-              document.getElementById("prodModalTitle").textContent = "✏️ Edit Product Details";
-              document.getElementById("prodModalSubmitBtn").textContent = "💾 Update Product";
+    filteredProductsList = allProductsList.filter(p => {
+      if (selComp !== "all") {
+        if (p.company_id && p.company_id != selComp) return false;
+      }
+      if (!searchTerm) return true;
 
-              populateSuppliersDropdown(p.supplier_id);
-              autoCalcFormRates();
-              document.getElementById("prodModal").style.display = "flex";
-            });
+      const compStr = [
+        p.sku, p.name, p.brand, p.model, p.serial_no, p.supplier_name,
+        p.hsn_sac, p.company_name, p.rack_no, p.barcode
+      ].map(v => (v || "").toLowerCase()).join(" ");
+
+      return compStr.includes(searchTerm);
+    });
+
+    filteredProductsList = window.sortDataArray(filteredProductsList, sortKey, sortDir);
+
+    window.renderPaginatedTable({
+      data: filteredProductsList,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "prodTableBody",
+      paginationContainer: "prodPagination",
+      infoContainer: "prodInfo",
+      renderRow: (p) => `
+        <tr>
+          <td><span class="badge badge-purple">${esc(p.sku || 'SKU-' + p.id)}</span></td>
+          <td style="font-weight:600;color:var(--text1);">${esc(p.name)}</td>
+          <td>${esc(p.brand || '—')} / ${esc(p.model || '—')}</td>
+          <td><span class="badge badge-neutral" style="font-family:monospace;font-weight:600;">${esc(p.serial_no || '—')}</span></td>
+          <td><span class="badge badge-outline" style="font-weight:600;">${esc(p.supplier_name || 'Unassigned')}</span></td>
+          <td>${esc(p.hsn_sac || '—')}</td>
+          <td>${p.gst_rate}%</td>
+          <td>
+            <div>${formatCurrency(p.purchase_rate)}</div>
+            ${p.purchase_rate_incl_tax ? `<div style="font-size:11px;color:var(--text3);">Incl: ${formatCurrency(p.purchase_rate_incl_tax)}</div>` : ''}
+          </td>
+          <td>${formatCurrency(p.transport_expenses || 0)}</td>
+          <td><span class="badge badge-outline">${p.selling_percentage || 0}%</span></td>
+          <td style="font-weight:600;color:var(--text1);">${formatCurrency(p.selling_rate)}</td>
+          <td style="font-weight:600;color:var(--success);">${formatCurrency(p.mrp || p.selling_rate)}</td>
+          <td>
+            <span class="badge ${p.current_stock <= p.min_stock ? 'badge-danger' : 'badge-success'}">
+              ${p.current_stock} ${esc(p.unit_of_measure || 'NOS')}
+            </span>
+          </td>
+          <td>${p.weight ? `${parseFloat(p.weight)} kg` : '—'}</td>
+          <td>${esc(p.rack_no || '—')}</td>
+          <td>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-outline editProdBtn" data-id="${p.id}">✏️ Edit</button>
+              <button class="btn btn-sm btn-danger deleteProdBtn" data-id="${p.id}">🗑️ Delete</button>
+            </div>
+          </td>
+        </tr>
+      `,
+      onRender: () => {
+        const tb = document.getElementById("prodTableBody");
+        if (!tb) return;
+
+        tb.querySelectorAll(".editProdBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const p = allProductsList.find(x => x.id == btn.dataset.id);
+            if (!p) return;
+            document.getElementById("pEditingId").value = p.id;
+            document.getElementById("pName").value = p.name || '';
+            document.getElementById("pSku").value = p.sku || '';
+            document.getElementById("pBrand").value = p.brand || '';
+            document.getElementById("pModel").value = p.model || '';
+            if (document.getElementById("pSerialNo")) document.getElementById("pSerialNo").value = p.serial_no || '';
+            document.getElementById("pHsn").value = p.hsn_sac || '';
+            document.getElementById("pGst").value = p.gst_rate || '18';
+            document.getElementById("pPurRate").value = p.purchase_rate || '';
+            document.getElementById("pPurRateIncl").value = p.purchase_rate_incl_tax || '';
+            document.getElementById("pTransportExp").value = p.transport_expenses || '0';
+            document.getElementById("pSellingPct").value = p.selling_percentage !== undefined ? p.selling_percentage : '100';
+            document.getElementById("pSellRate").value = p.selling_rate || '';
+            const mrpEl = document.getElementById("pMrp");
+            if (mrpEl) {
+              mrpEl.value = p.mrp || '';
+              mrpEl.dataset.userOverridden = "false";
+            }
+            document.getElementById("pStock").value = p.current_stock || '0';
+            document.getElementById("pMinStock").value = p.min_stock || '5';
+            document.getElementById("pWeight").value = p.weight !== undefined ? p.weight : '';
+            document.getElementById("pRack").value = p.rack_no || '';
+            document.getElementById("prodModalTitle").textContent = "✏️ Edit Product Details";
+            document.getElementById("prodModalSubmitBtn").textContent = "💾 Update Product";
+
+            populateSuppliersDropdown(p.supplier_id);
+            autoCalcFormRates();
+            document.getElementById("prodModal").style.display = "flex";
           });
+        });
 
-          tb.querySelectorAll(".deleteProdBtn").forEach(btn => {
-            btn.addEventListener("click", async () => {
-              const p = currentProductsList.find(x => x.id == btn.dataset.id);
-              if (!confirm(`Are you sure you want to delete product '${p?.name || 'Item'}' from inventory catalog?`)) return;
-              if (btn.disabled) return;
-              const origHtml = btn.innerHTML;
-              btn.disabled = true;
-              btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-              try {
-                const r = await fetch(`${API_BASE}/inventory?action=product-delete&id=${btn.dataset.id}`, {
-                  method: "POST",
-                  headers: authHeaders()
-                });
-                const d = await r.json();
-                if (d.success) {
-                  showToast(d.message || "Product deleted", "success");
-                  fetchProducts();
-                } else {
-                  showToast(d.error || "Failed to delete product", "error");
-                  btn.disabled = false;
-                  btn.innerHTML = origHtml;
-                }
-              } catch (err) {
-                showToast("Delete product error: " + err.message, "error");
+        tb.querySelectorAll(".deleteProdBtn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const p = allProductsList.find(x => x.id == btn.dataset.id);
+            if (!confirm(`Are you sure you want to delete product '${p?.name || 'Item'}' from inventory catalog?`)) return;
+            if (btn.disabled) return;
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+            try {
+              const r = await fetch(`${API_BASE}/inventory?action=product-delete&id=${btn.dataset.id}`, {
+                method: "POST",
+                headers: authHeaders()
+              });
+              const d = await r.json();
+              if (d.success) {
+                showToast(d.message || "Product deleted", "success");
+                fetchProducts();
+              } else {
+                showToast(d.error || "Failed to delete product", "error");
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
               }
-            });
+            } catch (err) {
+              showToast("Delete product error: " + err.message, "error");
+              btn.disabled = false;
+              btn.innerHTML = origHtml;
+            }
           });
-        }
-      });
+        });
+      }
+    });
+  }
 
+  async function fetchProducts() {
+    try {
+      const selComp = document.getElementById("prodCompanyFilter")?.value || getActiveCompId();
+      const compParam = (selComp && selComp !== 'all') ? `&company_id=${selComp}` : (selComp === 'all' ? `&company_id=all` : '');
+      const res = await fetch(`${API_BASE}/inventory?action=products${compParam}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!data.success) return;
+
+      allProductsList = data.products || [];
+      renderProductsTable();
     } catch (err) {
       showToast("Fetch products error: " + err.message, "error");
     }
   }
+
+  on("prodSearchInp", "input", () => {
+    renderProductsTable();
+  });
+
+  on("prodCompanyFilter", "change", () => {
+    fetchProducts();
+  });
+
+  document.querySelectorAll("#invSubContent table thead th[data-sort-key]").forEach(th => {
+    th.style.cursor = "pointer";
+    th.addEventListener("click", () => {
+      const key = th.dataset.sortKey;
+      if (sortKey === key) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortKey = key;
+        sortDir = 'asc';
+      }
+      renderProductsTable();
+    });
+  });
+
+  on("exportProdBtn", "click", () => {
+    if (!filteredProductsList || filteredProductsList.length === 0) {
+      return showToast("No products found matching the current filters to export.", "warning");
+    }
+
+    const selCompId = document.getElementById("prodCompanyFilter")?.value || "all";
+    const compObj = (window.currentCompanies || []).find(c => String(c.id) === String(selCompId));
+    const compNameClean = (compObj?.name || (selCompId === 'all' ? 'All_Companies' : 'Company_' + selCompId)).replace(/[^a-zA-Z0-9]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    const exportRows = filteredProductsList.map((p, idx) => {
+      const purExcl = parseFloat(p.purchase_rate || 0);
+      const gst = parseFloat(p.gst_rate || 0);
+      const purIncl = parseFloat(p.purchase_rate_incl_tax || (purExcl * (1 + gst / 100)));
+      const sellPrice = parseFloat(p.selling_rate || 0);
+      const mrp = parseFloat(p.mrp || 0);
+      const stock = parseFloat(p.current_stock || 0);
+      const minStock = parseFloat(p.min_stock || 0);
+
+      let status = "In Stock";
+      if (stock <= 0) status = "Out of Stock";
+      else if (stock <= minStock) status = "Low Stock";
+
+      return {
+        "S.No": idx + 1,
+        "Company Branch": p.company_name || compObj?.name || "Main",
+        "SKU Code": p.sku || ('SKU-' + p.id),
+        "Product Name": p.name || "",
+        "Brand": p.brand || "",
+        "Model": p.model || "",
+        "Serial No": p.serial_no || "",
+        "Assigned Supplier": p.supplier_name || "Unassigned",
+        "HSN/SAC Code": p.hsn_sac || "",
+        "GST Rate (%)": gst,
+        "Purchase Rate Excl Tax (₹)": purExcl,
+        "Purchase Rate Incl Tax (₹)": Math.round(purIncl * 100) / 100,
+        "Packaging Charges (₹)": parseFloat(p.packaging_charges || 0),
+        "Transport Expenses (₹)": parseFloat(p.transport_expenses || 0),
+        "Selling Percentage (%)": parseFloat(p.selling_percentage || 0),
+        "Selling Price Excl Tax (₹)": sellPrice,
+        "MRP Incl Tax (₹)": mrp,
+        "Current Stock Qty": stock,
+        "Unit of Measure": p.unit_of_measure || "NOS",
+        "Min Reorder Level": minStock,
+        "Stock Status": status,
+        "Weight (kg)": p.weight ? parseFloat(p.weight) : "",
+        "Rack Location": p.rack_no || ""
+      };
+    });
+
+    if (typeof window.XLSX !== "undefined") {
+      const ws = window.XLSX.utils.json_to_sheet(exportRows);
+      const colWidths = Object.keys(exportRows[0]).map(k => ({
+        wch: Math.max(k.length, ...exportRows.map(r => String(r[k] || '').length)) + 2
+      }));
+      ws['!cols'] = colWidths;
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, "Inventory Catalog");
+      window.XLSX.writeFile(wb, `Inventory_Catalog_${compNameClean}_${dateStr}.xlsx`);
+      showToast(`Exported ${exportRows.length} inventory products to Excel (.xlsx)!`, "success");
+    } else {
+      const headers = Object.keys(exportRows[0]);
+      let csvContent = "\uFEFF" + headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
+      exportRows.forEach(row => {
+        csvContent += headers.map(h => `"${String(row[h] !== undefined && row[h] !== null ? row[h] : '').replace(/"/g, '""')}"`).join(",") + "\n";
+      });
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `Inventory_Catalog_${compNameClean}_${dateStr}.csv`;
+      link.click();
+      showToast(`Exported ${exportRows.length} inventory products to CSV!`, "success");
+    }
+  });
 
   on("dlTemplateHeaderBtn", "click", () => {
     window.downloadProductImportTemplate();
@@ -3913,7 +4050,12 @@ async function loadStockReceiptSubTab() {
       <div style="min-width:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
           <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">📜 Stock Receipts & Purchase Entry Log</h3>
-          <input type="text" id="receiptSearchInp" class="form-input" placeholder="🔍 Search Date, Bill No, Supplier, Product..." style="padding:4px 10px;font-size:12px;border-radius:6px;width:240px;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="receiptSearchInp" class="form-input" placeholder="🔍 Search Date, Bill No, Supplier, Product..." style="padding:4px 10px;font-size:12px;border-radius:6px;width:240px;">
+            <button class="btn btn-secondary btn-sm" id="exportReceiptsBtn" title="Export purchase receipts & sub-items based on current search & company filter" style="display:inline-flex;align-items:center;gap:5px;font-weight:600;padding:4px 10px;font-size:12px;">
+              📊 Export Excel / CSV
+            </button>
+          </div>
         </div>
         <div class="table-container" style="max-height:550px;overflow:auto;">
           <table class="data-table">
@@ -4195,16 +4337,18 @@ async function loadStockReceiptSubTab() {
               <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.transport_expenses || 0) > 0 ? '₹' + parseFloat(it.transport_expenses).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
               <td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--text1);font-size:12px;">₹${parseFloat(it.total || lineTot).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
               <td style="text-align:center;padding:6px 4px;">
-                <button type="button" class="btn btn-xs btn-danger deleteSubItemBtn" 
-                  data-item-id="${it.id}" 
-                  data-item-name="${esc(it.product_name || 'Sub-item')}" 
-                  data-item-qty="${it.quantity}" 
-                  data-bill-id="${r.id}"
-                  data-bill-no="${esc(r.purchase_invoice_no || 'N/A')}"
-                  style="padding:2px 6px;font-size:11px;" 
-                  title="Delete only this sub-item and deduct its stock">
-                  🗑️
-                </button>
+                ${canEdit ? `
+                  <button type="button" class="btn btn-xs btn-danger deleteSubItemBtn" 
+                    data-item-id="${it.id}" 
+                    data-item-name="${esc(it.product_name || 'Sub-item')}" 
+                    data-item-qty="${it.quantity}" 
+                    data-bill-id="${r.id}"
+                    data-bill-no="${esc(r.purchase_invoice_no || 'N/A')}"
+                    style="padding:2px 6px;font-size:11px;" 
+                    title="Delete only this sub-item and deduct its stock">
+                    🗑️
+                  </button>
+                ` : '—'}
               </td>
             </tr>
           `;
@@ -4279,9 +4423,11 @@ async function loadStockReceiptSubTab() {
                     ✏️ Edit
                   </button>
                 ` : ''}
-                <button type="button" class="btn btn-xs btn-danger deleteReceiptBtn" data-id="${r.id}" style="padding:4px 8px;font-size:12px;" title="Delete entire purchase entry">
-                  🗑️ Delete
-                </button>
+                ${isSuper ? `
+                  <button type="button" class="btn btn-xs btn-danger deleteReceiptBtn" data-id="${r.id}" style="padding:4px 8px;font-size:12px;" title="Delete entire purchase bill (Superadmin only)">
+                    🗑️ Delete
+                  </button>
+                ` : ''}
               </div>
             </td>
           </tr>
@@ -4370,13 +4516,28 @@ async function loadStockReceiptSubTab() {
       tbody.querySelectorAll(".deleteSubItemBtn").forEach(btn => {
         btn.onclick = async (e) => {
           e.stopPropagation();
+          if (!canEdit) {
+            showToast("Access restricted: Only Superadmin and Storeadmin can delete sub-items.", "error");
+            return;
+          }
+
           const itemId = btn.dataset.itemId;
           const itemName = btn.dataset.itemName;
           const itemQty = btn.dataset.itemQty;
           const billId = btn.dataset.billId;
           const billNo = btn.dataset.billNo;
 
-          if (!confirm(`Are you sure you want to delete sub-item "${itemName}" (${itemQty} NOS) from Bill${billNo}?\n\n⚠️ Only this sub-item will be removed, ${itemQty} NOS will be deducted from product stock, and the invoice total will be recalculated.\n\nThe rest of the bill will remain intact.`)) {
+          // If bill only has 1 item and user is not superadmin, block deletion of entire bill via sub-item
+          if (!isSuper) {
+            const r = currentReceiptsList.find(x => x.id == billId);
+            const totalItemsCount = (r?.items?.length) || 1;
+            if (totalItemsCount <= 1) {
+              showToast("Cannot delete the only item in this bill. Entire invoice deletion is restricted to Superadmin only. You can edit this item instead.", "warning");
+              return;
+            }
+          }
+
+          if (!confirm(`Are you sure you want to delete sub-item "${itemName}" (${itemQty} NOS) from Bill ${billNo}?\n\n⚠️ Only this sub-item will be removed, ${itemQty} NOS will be deducted from product stock, and the invoice total will be recalculated.\n\nThe rest of the bill will remain intact.`)) {
             return;
           }
 
@@ -4423,10 +4584,14 @@ async function loadStockReceiptSubTab() {
         };
       });
 
-      // Delete Entire Receipt
+      // Delete Entire Receipt (Strictly Superadmin only)
       tbody.querySelectorAll(".deleteReceiptBtn").forEach(btn => {
         btn.onclick = async (e) => {
           e.stopPropagation();
+          if (!isSuper) {
+            showToast("Access restricted: Only Superadmin can delete an entire purchase invoice/bill.", "error");
+            return;
+          }
           const r = currentReceiptsList.find(x => x.id == btn.dataset.id);
           const billNo = r?.purchase_invoice_no || 'N/A';
           const itemsCount = r?.items_count || (r?.items?.length || 1);
@@ -4473,6 +4638,84 @@ async function loadStockReceiptSubTab() {
   }
 
   on("receiptSearchInp", "input", renderReceiptsLogTable);
+
+  on("exportReceiptsBtn", "click", () => {
+    const searchTerm = (document.getElementById("receiptSearchInp")?.value || "").toLowerCase().trim();
+    let filtered = currentReceiptsList.filter(r => {
+      if (!searchTerm) return true;
+      const subItemsText = (r.items || []).map(it => `${it.product_name || ''} ${it.model || ''} ${it.serial_no || ''}`).join(" ");
+      const compStr = [r.purchase_invoice_no, r.supplier_name, r.purchase_date, subItemsText].map(v => (v || "").toLowerCase()).join(" ");
+      return compStr.includes(searchTerm);
+    });
+
+    if (!filtered || filtered.length === 0) {
+      return showToast("No purchase entries found matching the current filters to export.", "warning");
+    }
+
+    const curCompId = getActiveCompId();
+    const compObj = (window.currentCompanies || []).find(c => String(c.id) === String(curCompId));
+    const compNameClean = (compObj?.name || (curCompId === 'all' ? 'All_Companies' : 'Company_' + curCompId)).replace(/[^a-zA-Z0-9]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    const exportRows = [];
+    filtered.forEach((r, bIdx) => {
+      const items = Array.isArray(r.items) && r.items.length > 0 ? r.items : [{
+        product_name: "Purchase Entry",
+        model: "",
+        serial_no: "",
+        quantity: r.total_quantity || 1,
+        purchase_rate: r.total_amount || 0,
+        gst_rate: 0,
+        packaging_charges: 0,
+        transport_expenses: 0,
+        total: r.grand_total || r.total_amount || 0
+      }];
+
+      items.forEach((it, iIdx) => {
+        exportRows.push({
+          "Bill #": r.purchase_invoice_no || `PUR-${r.id}`,
+          "Invoice Date": r.purchase_date || "",
+          "Supplier": r.supplier_name || "Direct",
+          "Item #": iIdx + 1,
+          "Product Name": it.product_name || "",
+          "Model / Spec": it.model || "",
+          "Serial No": it.serial_no || "",
+          "Quantity (NOS)": parseFloat(it.quantity || 0),
+          "Pur Rate Excl (₹)": parseFloat(it.purchase_rate || 0),
+          "GST (%)": parseFloat(it.gst_rate || 0),
+          "Packaging (₹)": parseFloat(it.packaging_charges || 0),
+          "Transport (₹)": parseFloat(it.transport_expenses || 0),
+          "Item Line Total (₹)": parseFloat(it.total || 0),
+          "Bill Grand Total (₹)": parseFloat(r.grand_total || r.total_amount || 0),
+          "Company": r.company_name || compObj?.name || "Main Branch"
+        });
+      });
+    });
+
+    if (typeof window.XLSX !== "undefined") {
+      const ws = window.XLSX.utils.json_to_sheet(exportRows);
+      const colWidths = Object.keys(exportRows[0]).map(k => ({
+        wch: Math.max(k.length, ...exportRows.map(r => String(r[k] || '').length)) + 2
+      }));
+      ws['!cols'] = colWidths;
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, "Stock Receipts");
+      window.XLSX.writeFile(wb, `Stock_Receipts_${compNameClean}_${dateStr}.xlsx`);
+      showToast(`Exported ${exportRows.length} purchase receipt items to Excel (.xlsx)!`, "success");
+    } else {
+      const headers = Object.keys(exportRows[0]);
+      let csvContent = "\uFEFF" + headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
+      exportRows.forEach(row => {
+        csvContent += headers.map(h => `"${String(row[h] !== undefined && row[h] !== null ? row[h] : '').replace(/"/g, '""')}"`).join(",") + "\n";
+      });
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `Stock_Receipts_${compNameClean}_${dateStr}.csv`;
+      link.click();
+      showToast(`Exported ${exportRows.length} purchase receipt items to CSV!`, "success");
+    }
+  });
 
   function openEditReceiptModal(r, onSuccess) {
     openMultiPurchaseEntryModal(onSuccess, r);

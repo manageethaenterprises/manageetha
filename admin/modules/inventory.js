@@ -802,6 +802,7 @@ async function loadProductsSubTab() {
         </button>
         <button class="btn btn-secondary" id="dlTemplateHeaderBtn">📄 Download Template</button>
         <button class="btn btn-secondary" id="importExcelBtn">📥 Import Excel / CSV</button>
+        <button class="btn btn-secondary" id="printBarcodeLabelsBtn" title="Print Barcode Stickers (Thermal & A4 Sheets)" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">🏷️ Barcode Labels</button>
         <button class="btn btn-primary" id="addProdBtn">+ Add New Product</button>
       </div>
     </div>
@@ -1082,6 +1083,7 @@ async function loadProductsSubTab() {
           <td>${esc(p.rack_no || '—')}</td>
           <td>
             <div style="display:flex;gap:6px;">
+              <button class="btn btn-sm btn-outline printProdBarcodeBtn" data-id="${p.id}" title="Print Barcode Sticker">🏷️</button>
               <button class="btn btn-sm btn-outline editProdBtn" data-id="${p.id}">✏️ Edit</button>
               <button class="btn btn-sm btn-danger deleteProdBtn" data-id="${p.id}">🗑️ Delete</button>
             </div>
@@ -1091,6 +1093,13 @@ async function loadProductsSubTab() {
       onRender: () => {
         const tb = document.getElementById("prodTableBody");
         if (!tb) return;
+
+        tb.querySelectorAll(".printProdBarcodeBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const p = allProductsList.find(x => x.id == btn.dataset.id);
+            if (p) openBarcodePrintModal([p]);
+          });
+        });
 
         tb.querySelectorAll(".editProdBtn").forEach(btn => {
           btn.addEventListener("click", async () => {
@@ -1340,6 +1349,16 @@ async function loadProductsSubTab() {
       showToast("Download error: " + err.message, "error");
     } finally {
       setTimeout(() => setButtonLoading(btn, false), 400);
+    }
+  });
+
+  on("printBarcodeLabelsBtn", "click", function () {
+    if (filteredProductsList && filteredProductsList.length > 0) {
+      openBarcodePrintModal(filteredProductsList);
+    } else if (allProductsList && allProductsList.length > 0) {
+      openBarcodePrintModal(allProductsList);
+    } else {
+      showToast("No products found to print barcode labels", "info");
     }
   });
 
@@ -7619,3 +7638,353 @@ function openInterestConfigModal(purchase, onSuccess) {
   });
 }
 
+
+
+// ── Pure JS Barcode Generator (Code 39 SVG) ──
+if (!window.generateBarcodeSVG) {
+  window.generateBarcodeSVG = function (text, height = 30, showText = true) {
+    if (!text) return '';
+    const raw = String(text).toUpperCase().replace(/[^A-Z0-9\-\.\ \$\+\%]/g, '-');
+    const str = '*' + raw + '*';
+    const patterns = {
+      '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
+      '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
+      '8': '100100100', '9': '001100100', 'A': '100001001', 'B': '001001001',
+      'C': '101001000', 'D': '000011001', 'E': '100011000', 'F': '001011000',
+      'G': '000001101', 'H': '100001100', 'I': '001001100', 'J': '000011100',
+      'K': '100000011', 'L': '001000011', 'M': '101000010', 'N': '000010011',
+      'O': '100010010', 'P': '001010010', 'Q': '000000111', 'R': '100000110',
+      'S': '001000110', 'T': '000010110', 'U': '110000001', 'V': '011000001',
+      'W': '111000000', 'X': '010010001', 'Y': '110010000', 'Z': '011010000',
+      '-': '010000101', '.': '110000100', ' ': '011000100', '*': '010010100',
+      '$': '010101000', '/': '010100010', '+': '010001010', '%': '000101010'
+    };
+    const narrow = 1.2, wide = 2.8, gap = 1.4, quietZone = 8;
+    let x = quietZone;
+    let rectsHtml = '';
+    for (let c = 0; c < str.length; c++) {
+      const pat = patterns[str[c]] || patterns['-'];
+      for (let i = 0; i < 9; i++) {
+        const isBar = (i % 2 === 0);
+        const w = (pat[i] === '1') ? wide : narrow;
+        if (isBar) rectsHtml += `<rect x="${x.toFixed(1)}" y="2" width="${w.toFixed(1)}" height="${height}" fill="#000000" />`;
+        x += w;
+      }
+      x += gap;
+    }
+    const svgWidth = Math.ceil(x + quietZone);
+    const svgHeight = height + (showText ? 15 : 4);
+    const bgHtml = `<rect width="${svgWidth}" height="${svgHeight}" fill="#ffffff" />`;
+    const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 12}" font-family="Consolas, monospace" font-size="10" font-weight="bold" text-anchor="middle" fill="#000000">${raw}</text>` : '';
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" style="display:block;margin:0 auto;background:#fff;">${bgHtml}${rectsHtml}${textHtml}</svg>`;
+  };
+}
+
+// ── Modal & Print Handler for Barcode Labels ──
+function openBarcodePrintModal(products) {
+  const prods = Array.isArray(products) ? products : [products];
+  if (!prods.length) return showToast("No products selected", "warning");
+
+  const existingOverlay = document.getElementById("barcodePrintModalOverlay");
+  if (existingOverlay) existingOverlay.remove();
+
+  const isSingle = prods.length === 1;
+  const pSingle = isSingle ? prods[0] : null;
+
+  const overlay = document.createElement("div");
+  overlay.id = "barcodePrintModalOverlay";
+  overlay.className = "modal-overlay";
+  overlay.style.display = "flex";
+  overlay.style.zIndex = "99999";
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:650px;width:95%;">
+      <div class="modal-header">
+        <h3 style="margin:0;font-size:16px;font-weight:700;">🏷️ Print Barcode Sticker Labels</h3>
+        <button class="modal-close" id="closeBarcodePrintModal">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border-color);">
+          <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
+            ${isSingle ? `Target Product: ${esc(pSingle.name)} (${esc(pSingle.sku || pSingle.display_sku)})` : `Multiple Products: ${prods.length} items from catalog`}
+          </div>
+          <div style="font-size:12px;color:var(--text3);">
+            These barcode stickers can be scanned directly in POS Billing and Service Warranty modules.
+          </div>
+        </div>
+
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+          <div class="form-group">
+            <label class="form-label" style="font-weight:600;">Printer / Format Type</label>
+            <select id="bcFormatSelect" class="form-select">
+              <option value="thermal">🖨️ Thermal Sticker (50mm x 25mm / 2x1 inch)</option>
+              <option value="thermal_large">🖨️ Large Thermal Sticker (50mm x 38mm / 2x1.5 inch)</option>
+              <option value="a4_24">📄 A4 Sticker Sheet (24 Labels - 3x8 Grid)</option>
+              <option value="a4_40">📄 A4 Sticker Sheet (40 Labels - 4x10 Grid)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="font-weight:600;">Labels Per Product</label>
+            <input type="number" id="bcQtyInput" class="form-input" min="1" max="100" value="${isSingle ? (pSingle.current_stock > 0 ? Math.min(pSingle.current_stock, 10) : 1) : 1}">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="bcShowComp" checked> Show Company Name
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="bcShowPrice" checked> Show MRP / Price
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="bcShowHsn" checked> Show HSN Code
+          </label>
+        </div>
+
+        <!-- Live Preview Box -->
+        <div style="margin-top:10px;">
+          <label class="form-label" style="font-weight:600;">Preview of Sticker</label>
+          <div id="bcLivePreview" style="background:#fff;color:#000;border:2px dashed #94a3b8;border-radius:6px;padding:12px;text-align:center;max-width:280px;margin:0 auto;box-shadow:0 2px 4px rgba(0,0,0,0.06);">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;background:var(--bg-secondary);border-top:1px solid var(--border-color);">
+        <button type="button" class="btn btn-secondary" id="cancelBarcodePrint">Cancel</button>
+        <button type="button" class="btn btn-primary" id="doPrintBarcodeBtn" style="font-weight:700;">🖨️ Open Print Preview</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const updatePreview = () => {
+    const previewEl = document.getElementById("bcLivePreview");
+    if (!previewEl) return;
+    const sample = prods[0];
+    const showComp = document.getElementById("bcShowComp").checked;
+    const showPrice = document.getElementById("bcShowPrice").checked;
+    const showHsn = document.getElementById("bcShowHsn").checked;
+
+    const compName = sample.company_name || 'MANASWINI ENTERPRISES';
+    const skuCode = sample.sku || sample.display_sku || ('SKU-' + sample.id);
+    const priceVal = sample.mrp ? '₹' + parseFloat(sample.mrp).toLocaleString('en-IN') : (sample.selling_rate ? '₹' + parseFloat(sample.selling_rate).toLocaleString('en-IN') : '');
+    const svgCode = window.generateBarcodeSVG(skuCode, 28, true);
+
+    previewEl.innerHTML = `
+      <div style="font-size:11px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;color:#1e293b;line-height:1.2;">
+        ${showComp ? esc(compName) : ''}
+      </div>
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        ${esc(sample.name)}
+      </div>
+      <div style="font-size:10px;color:#475569;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        ${esc(sample.brand || '')} ${esc(sample.model || '')}
+      </div>
+      <div style="margin:4px 0;">
+        ${svgCode}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:700;color:#0f172a;margin-top:3px;padding:0 4px;">
+        <span>${showHsn && sample.hsn_sac ? 'HSN: ' + esc(sample.hsn_sac) : ''}</span>
+        <span style="font-size:11px;color:#16a34a;">${showPrice && priceVal ? 'MRP: ' + priceVal : ''}</span>
+      </div>
+    `;
+  };
+
+  overlay.querySelector("#closeBarcodePrintModal").addEventListener("click", () => overlay.remove());
+  overlay.querySelector("#cancelBarcodePrint").addEventListener("click", () => overlay.remove());
+  overlay.querySelectorAll("#bcShowComp, #bcShowPrice, #bcShowHsn").forEach(el => el.addEventListener("change", updatePreview));
+
+  overlay.querySelector("#doPrintBarcodeBtn").addEventListener("click", () => {
+    const format = document.getElementById("bcFormatSelect").value;
+    const qty = parseInt(document.getElementById("bcQtyInput").value, 10) || 1;
+    const showComp = document.getElementById("bcShowComp").checked;
+    const showPrice = document.getElementById("bcShowPrice").checked;
+    const showHsn = document.getElementById("bcShowHsn").checked;
+
+    printBarcodeStickersWindow({ prods, format, qty, showComp, showPrice, showHsn });
+  });
+
+  updatePreview();
+}
+
+function printBarcodeStickersWindow({ prods, format, qty, showComp, showPrice, showHsn }) {
+  const printWin = window.open("", "_blank", "width=850,height=900");
+  if (!printWin) return alert("Please allow popups to print barcode stickers.");
+
+  const isThermal = format.startsWith("thermal");
+  const isLargeThermal = format === "thermal_large";
+
+  let stickersHtml = '';
+
+  prods.forEach(p => {
+    const compName = p.company_name || 'MANASWINI ENTERPRISES';
+    const skuCode = p.sku || p.display_sku || ('SKU-' + p.id);
+    const priceVal = p.mrp ? '₹' + parseFloat(p.mrp).toLocaleString('en-IN') : (p.selling_rate ? '₹' + parseFloat(p.selling_rate).toLocaleString('en-IN') : '');
+    const svgCode = window.generateBarcodeSVG(skuCode, isLargeThermal ? 34 : 26, true);
+
+    const singleSticker = `
+      <div class="barcode-sticker">
+        ${showComp ? `<div class="comp-title">${compName}</div>` : ''}
+        <div class="prod-name">${p.name || ''}</div>
+        <div class="prod-sub">${p.brand || ''} ${p.model || ''}</div>
+        <div class="barcode-svg-container">${svgCode}</div>
+        <div class="sticker-footer">
+          <span>${showHsn && p.hsn_sac ? 'HSN: ' + p.hsn_sac : ''}</span>
+          <span class="price-tag">${showPrice && priceVal ? 'MRP: ' + priceVal : ''}</span>
+        </div>
+      </div>
+    `;
+
+    for (let i = 0; i < qty; i++) {
+      stickersHtml += singleSticker;
+    }
+  });
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Barcode Stickers - Manageetha ERP</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f8fafc; padding: 16px; color: #000; }
+    
+    @media screen {
+      .print-actions {
+        background: #fff; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center;
+      }
+      .print-btn {
+        background: #2563eb; color: #fff; border: none; padding: 10px 22px; font-weight: 700;
+        font-size: 14px; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 4px rgba(37,99,235,0.3);
+      }
+      .stickers-container {
+        display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-start;
+      }
+    }
+
+    /* Sticker Card Styling */
+    .barcode-sticker {
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 6px 8px;
+      width: ${isLargeThermal ? '50mm' : (isThermal ? '50mm' : '63.5mm')};
+      height: ${isLargeThermal ? '38mm' : (isThermal ? '28mm' : '38.1mm')};
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: center;
+      page-break-inside: avoid;
+      overflow: hidden;
+    }
+
+    .comp-title {
+      font-size: 8.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1;
+    }
+
+    .prod-name {
+      font-size: 10px;
+      font-weight: 700;
+      color: #000;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+
+    .prod-sub {
+      font-size: 8px;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1;
+    }
+
+    .barcode-svg-container {
+      margin: 2px 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .barcode-svg-container svg {
+      max-width: 95%;
+      height: auto;
+    }
+
+    .sticker-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 8px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0 2px;
+    }
+    .price-tag {
+      font-size: 9px;
+      color: #000;
+    }
+
+    @media print {
+      body { background: #fff; padding: 0; margin: 0; }
+      .print-actions { display: none !important; }
+      
+      ${isThermal ? `
+        @page { size: auto; margin: 0mm; }
+        .stickers-container { display: block; margin: 0; padding: 0; }
+        .barcode-sticker {
+          border: none;
+          border-radius: 0;
+          margin: 0;
+          padding: 2mm 3mm;
+          page-break-after: always;
+          width: 100vw;
+          height: 100vh;
+        }
+      ` : `
+        @page { size: A4; margin: 10mm; }
+        .stickers-container {
+          display: grid;
+          grid-template-columns: ${format === 'a4_40' ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)'};
+          gap: 2mm;
+          margin: 0 auto;
+        }
+        .barcode-sticker {
+          border: 1px dotted #e2e8f0;
+          margin: 0;
+        }
+      `}
+    }
+  </style>
+</head>
+<body>
+  <div class="print-actions">
+    <div>
+      <h3 style="margin:0;font-size:16px;">🏷️ Barcode Stickers Preview</h3>
+      <div style="font-size:12px;color:#64748b;margin-top:2px;">Format: ${format.toUpperCase()} | Ready to print</div>
+    </div>
+    <button class="print-btn" onclick="window.print()">🖨️ Print Labels Now</button>
+  </div>
+
+  <div class="stickers-container">
+    ${stickersHtml}
+  </div>
+</body>
+</html>`;
+
+  printWin.document.write(html);
+  printWin.document.close();
+}
+window.openBarcodePrintModal = openBarcodePrintModal;

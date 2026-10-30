@@ -69,6 +69,7 @@ module.exports = async function handler(req, res) {
           WHERE LOWER(TRIM(COALESCE(si.serial_number, ''))) = ${cleanQ}
              OR LOWER(TRIM(COALESCE(p.serial_no, ''))) = ${cleanQ}
              OR LOWER(TRIM(COALESCE(p.barcode, ''))) = ${cleanQ}
+             OR LOWER(TRIM(COALESCE(p.sku, ''))) = ${cleanQ}
              OR LOWER(TRIM(COALESCE(s.challan_number, ''))) LIKE ${'%' + cleanQ + '%'}
           ORDER BY s.created_at DESC
           LIMIT 1
@@ -80,13 +81,14 @@ module.exports = async function handler(req, res) {
       }
 
       if (!matchedSale) {
-        // Fallback: search products table directly by serial_no or barcode
+        // Fallback: search products table directly by serial_no, barcode, or sku
         const prodRows = await sql`
           SELECT p.*, comp.name as company_name
           FROM products p
           LEFT JOIN companies comp ON p.company_id = comp.id
           WHERE LOWER(TRIM(COALESCE(p.serial_no, ''))) = ${cleanQ}
              OR LOWER(TRIM(COALESCE(p.barcode, ''))) = ${cleanQ}
+             OR LOWER(TRIM(COALESCE(p.sku, ''))) = ${cleanQ}
           LIMIT 1
         `;
         if (prodRows.length > 0) {

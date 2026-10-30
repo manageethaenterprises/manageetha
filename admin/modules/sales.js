@@ -5373,18 +5373,22 @@ async function loadSalesPOSSubTab() {
 
     const q = code.toLowerCase();
 
-    // 1. Search productsList locally: match against serial_no and barcode (DO NOT compare with SKU)
+    // 1. Search productsList locally: match against sku, display_sku, serial_no, and barcode
     let matchedProd = (productsList || []).find(p => {
+      const sku = String(p.sku || '').toLowerCase().trim();
+      const dispSku = String(p.display_sku || '').toLowerCase().trim();
       const serialNo = String(p.serial_no || p.serial_number || '').toLowerCase().trim();
       const barcode = String(p.barcode || '').toLowerCase().trim();
       const name = String(p.name || '').toLowerCase().trim();
       const model = String(p.model || '').toLowerCase().trim();
-      return (serialNo && (serialNo === q || q.includes(serialNo))) ||
+      return (sku && (sku === q || q.includes(sku))) ||
+             (dispSku && (dispSku === q || q.includes(dispSku))) ||
+             (serialNo && (serialNo === q || q.includes(serialNo))) ||
              (barcode && (barcode === q || q.includes(barcode))) ||
              (name && name === q) || (model && model === q);
     });
 
-    // 2. If not found locally, attempt API lookup searching by serial_no / barcode query
+    // 2. If not found locally, attempt API lookup searching by sku / serial_no / barcode query
     if (!matchedProd) {
       try {
         const compIdVal = selectedCompanyId || "all";
@@ -5395,9 +5399,11 @@ async function loadSalesPOSSubTab() {
         const d = await r.json();
         if (d.success && Array.isArray(d.products) && d.products.length > 0) {
           matchedProd = d.products.find(p => {
+            const sku = String(p.sku || '').toLowerCase().trim();
+            const dispSku = String(p.display_sku || '').toLowerCase().trim();
             const serialNo = String(p.serial_no || p.serial_number || '').toLowerCase().trim();
             const barcode = String(p.barcode || '').toLowerCase().trim();
-            return serialNo === q || barcode === q;
+            return sku === q || dispSku === q || serialNo === q || barcode === q;
           }) || d.products[0];
 
           if (matchedProd && !productsList.some(p => p.id === matchedProd.id)) {

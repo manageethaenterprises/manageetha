@@ -1,3 +1,10 @@
+function safeInt(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const n = parseInt(val, 10);
+  return isNaN(n) ? null : n;
+}
+window.safeInt = safeInt;
+
 // ═══════════════════════════════════════════════════
 // BUSINESS ERP — inventory.js
 // Universal Suppliers, Product Catalog, Low Stock Reorder POs, Purchase Orders, Stock Receipts
@@ -1015,6 +1022,9 @@ async function loadProductsSubTab() {
 
     const searchTerm = (document.getElementById("prodSearchInp")?.value || "").toLowerCase().trim();
     const selComp = document.getElementById("prodCompanyFilter")?.value || "all";
+    const userRole = (window.currentUser?.role || '').toLowerCase();
+    const isSuper = userRole === 'superadmin' || window.currentUser?.username === 'superadmin';
+    const isAllSuper = isSuper && (selComp === 'all');
 
     filteredProductsList = allProductsList.filter(p => {
       if (selComp !== "all") {
@@ -1023,14 +1033,21 @@ async function loadProductsSubTab() {
       if (!searchTerm) return true;
 
       const compStr = [
-        p.sku, p.name, p.brand, p.model, p.serial_no, p.supplier_name,
+        p.display_sku, p.all_companies_sku, p.sku, p.name, p.brand, p.model, p.serial_no, p.supplier_name,
         p.hsn_sac, p.company_name, p.rack_no, p.barcode
       ].map(v => (v || "").toLowerCase()).join(" ");
 
       return compStr.includes(searchTerm);
     });
 
-    filteredProductsList = window.sortDataArray(filteredProductsList, sortKey, sortDir);
+    // Assign display_sku: if Superadmin viewing All Companies, show SKU 1 to 52 (SKU-001 to SKU-052)
+    // If viewing a specific company, show that company's SKU (SKU-001 to SKU-022)
+    filteredProductsList.forEach((p, idx) => {
+      p.display_sku = isAllSuper ? (p.all_companies_sku || `SKU-${String(idx + 1).padStart(3, '0')}`) : (p.sku || ('SKU-' + p.id));
+    });
+
+    const activeSortKey = (sortKey === 'sku' && isAllSuper) ? 'display_sku' : sortKey;
+    filteredProductsList = window.sortDataArray(filteredProductsList, activeSortKey, sortDir);
 
     window.renderPaginatedTable({
       data: filteredProductsList,
@@ -1041,7 +1058,7 @@ async function loadProductsSubTab() {
       infoContainer: "prodInfo",
       renderRow: (p) => `
         <tr>
-          <td><span class="badge badge-purple">${esc(p.sku || 'SKU-' + p.id)}</span></td>
+          <td><span class="badge badge-purple">${esc(p.display_sku || p.sku || 'SKU-' + p.id)}</span></td>
           <td style="font-weight:600;color:var(--text1);">${esc(p.name)}</td>
           <td>${esc(p.brand || '—')} / ${esc(p.model || '—')}</td>
           <td><span class="badge badge-neutral" style="font-family:monospace;font-weight:600;">${esc(p.serial_no || '—')}</span></td>
@@ -1161,6 +1178,19 @@ async function loadProductsSubTab() {
       if (!data.success) return;
 
       allProductsList = data.products || [];
+
+      // Sort all products consistently (by company branch, then id/sku)
+      allProductsList.sort((a, b) => {
+        const compComp = String(a.company_name || '').localeCompare(String(b.company_name || ''));
+        if (compComp !== 0) return compComp;
+        return (a.id || 0) - (b.id || 0);
+      });
+
+      // Attach superadmin all_companies_sku from SKU-001 to SKU-052
+      allProductsList.forEach((p, idx) => {
+        p.all_companies_sku = `SKU-${String(idx + 1).padStart(3, '0')}`;
+      });
+
       renderProductsTable();
     } catch (err) {
       showToast("Fetch products error: " + err.message, "error");
@@ -1246,7 +1276,7 @@ async function loadProductsSubTab() {
       return {
         "S.No": idx + 1,
         "Company Branch": p.company_name || compObj?.name || "Main",
-        "SKU Code": p.sku || ('SKU-' + p.id),
+        "SKU Code": (selCompId === 'all' && (window.currentUser?.role === 'superadmin' || window.currentUser?.username === 'superadmin')) ? (p.display_sku || p.all_companies_sku || ('SKU-' + (idx + 1))) : (p.sku || ('SKU-' + p.id)),
         "Product Name": p.name || "",
         "Brand": p.brand || "",
         "Model": p.model || "",

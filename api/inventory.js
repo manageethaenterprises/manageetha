@@ -755,7 +755,7 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      let rows;
+            let rows;
       if (targetCompId) {
         rows = await sql`
           SELECT p.*, v.legal_name as supplier_name, c.name as company_name
@@ -763,7 +763,7 @@ module.exports = async function handler(req, res) {
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
           WHERE p.company_id = ${targetCompId} AND p.is_active = true
-          ORDER BY p.created_at DESC
+          ORDER BY p.id ASC
         `;
       } else {
         rows = await sql`
@@ -772,8 +772,11 @@ module.exports = async function handler(req, res) {
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
           WHERE p.is_active = true
-          ORDER BY p.created_at DESC
+          ORDER BY c.name ASC, p.id ASC
         `;
+        rows.forEach((r, idx) => {
+          r.all_companies_sku = `SKU-${String(idx + 1).padStart(3, '0')}`;
+        });
       }
       return res.status(200).json({ success: true, products: rows });
     }

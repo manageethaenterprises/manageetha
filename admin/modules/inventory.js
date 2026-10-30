@@ -7455,77 +7455,82 @@ async function loadPayablesSubTab() {
 
     if (filtered.length === 0) {
       tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--text3);">No matching supplier payables found.</td></tr>`;
+      const infoEl = document.getElementById("payablesInfo");
+      const pagEl = document.getElementById("payablesPagination");
+      if (infoEl) infoEl.innerHTML = "";
+      if (pagEl) pagEl.innerHTML = "";
       return;
     }
 
-    tbody.innerHTML = filtered.map(p => {
-      const pDate = p.purchase_date ? new Date(p.purchase_date).toLocaleDateString('en-IN') : '—';
-      const statusBadge = p.payment_status === 'paid' ? '<span class="badge badge-success">Paid</span>' :
-                          (p.payment_status === 'partial' ? '<span class="badge badge-warning">Partial</span>' :
-                          '<span class="badge badge-danger">Unpaid</span>');
+    window.renderPaginatedTable({
+      data: filtered,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "payablesTableBody",
+      paginationContainer: "payablesPagination",
+      infoContainer: "payablesInfo",
+      renderRow: (p) => {
+        const pDate = p.purchase_date ? new Date(p.purchase_date).toLocaleDateString('en-IN') : '—';
+        const statusBadge = p.payment_status === 'paid' ? '<span class="badge badge-success">Paid</span>' :
+                            (p.payment_status === 'partial' ? '<span class="badge badge-warning">Partial</span>' :
+                            '<span class="badge badge-danger">Unpaid</span>');
 
-      const freqLabel = p.interest_frequency ? p.interest_frequency.charAt(0).toUpperCase() + p.interest_frequency.slice(1) : 'Monthly';
-      const intRateDisplay = parseFloat(p.interest_rate || 0) > 0 ? `${p.interest_rate}% / ${freqLabel}` : '<span style="color:var(--text3);">0%</span>';
-      const daysElapsed = p.days_elapsed !== undefined ? p.days_elapsed : 0;
-      const accruedInt = parseFloat(p.accrued_interest || 0);
-      const netPay = parseFloat(p.net_payable || 0);
-      const pending = parseFloat(p.pending_amount || 0);
+        const freqLabel = p.interest_frequency ? p.interest_frequency.charAt(0).toUpperCase() + p.interest_frequency.slice(1) : 'Monthly';
+        const intRateDisplay = parseFloat(p.interest_rate || 0) > 0 ? `${p.interest_rate}% / ${freqLabel}` : '<span style="color:var(--text3);">0%</span>';
+        const daysElapsed = p.days_elapsed !== undefined ? p.days_elapsed : 0;
+        const accruedInt = parseFloat(p.accrued_interest || 0);
+        const netPay = parseFloat(p.net_payable || 0);
+        const pending = parseFloat(p.pending_amount || 0);
 
-      return `
-        <tr>
-          <td>
-            <div style="font-weight:700;color:var(--text1);">${esc(p.purchase_invoice_no || 'Bill' + p.id)}</div>
-            <div style="font-size:11px;color:var(--text3);">${pDate}</div>
-          </td>
-          <td>
-            <div style="font-weight:700;color:var(--primary);font-size:13px;">${esc(p.supplier_legal_name || p.supplier_name || 'Direct Supplier')}</div>
-            ${p.supplier_trade_name ? `<div style="font-size:11px;color:var(--text2);font-weight:500;">${esc(p.supplier_trade_name)}</div>` : ''}
-            ${p.company_name ? `<span class="badge badge-outline" style="font-size:10px;margin-top:2px;">${esc(p.company_name)}</span>` : ''}
-            ${p.supplier_phone ? `<div style="font-size:11px;color:var(--text3);">📞 ${esc(p.supplier_phone)}</div>` : ''}
-          </td>
-          <td style="font-weight:600;">₹${parseFloat(p.grand_total || p.total_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td style="color:var(--success);font-weight:600;">₹${parseFloat(p.paid_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td style="color:#ef4444;font-weight:700;">₹${pending.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td><span class="badge badge-outline" style="font-size:11px;">${intRateDisplay}</span></td>
-          <td><span class="badge badge-purple" style="font-size:11px;">${daysElapsed} days</span></td>
-          <td style="color:#f59e0b;font-weight:700;">₹${accruedInt.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td style="color:var(--primary);font-weight:800;font-size:13.5px;">₹${netPay.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${statusBadge}</td>
-          <td style="text-align:center;">
-            <div style="display:flex;gap:4px;justify-content:center;flex-wrap:nowrap;">
-              ${pending > 0 ? `<button class="btn btn-xs btn-success paySupplierBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 7px;font-weight:600;">💳 Pay</button>` : ''}
-              <button class="btn btn-xs btn-outline editPayableBillBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 7px;" title="View & Edit Purchase Entry / Payment Amount">✏️ Edit</button>
-              <button class="btn btn-xs btn-outline editInterestBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 6px;" title="Set Interest Rate & Frequency">⚙️</button>
-            </div>
-          </td>
-        </tr>
-      `;
-    }).join("");
+        return `
+          <tr>
+            <td>
+              <div style="font-weight:700;color:var(--text1);">${esc(p.purchase_invoice_no || 'Bill' + p.id)}</div>
+              <div style="font-size:11px;color:var(--text3);">${pDate}</div>
+            </td>
+            <td>
+              <div style="font-weight:700;color:var(--primary);font-size:13px;">${esc(p.supplier_legal_name || p.supplier_name || 'Direct Supplier')}</div>
+              ${p.supplier_trade_name ? `<div style="font-size:11px;color:var(--text2);font-weight:500;">${esc(p.supplier_trade_name)}</div>` : ''}
+              ${p.company_name ? `<span class="badge badge-outline" style="font-size:10px;margin-top:2px;">${esc(p.company_name)}</span>` : ''}
+              ${p.supplier_phone ? `<div style="font-size:11px;color:var(--text3);">📞 ${esc(p.supplier_phone)}</div>` : ''}
+            </td>
+            <td style="font-weight:600;">₹${parseFloat(p.grand_total || p.total_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            <td style="color:var(--success);font-weight:600;">₹${parseFloat(p.paid_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            <td style="color:#ef4444;font-weight:700;">₹${pending.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            <td><span class="badge badge-outline" style="font-size:11px;">${intRateDisplay}</span></td>
+            <td><span class="badge badge-purple" style="font-size:11px;">${daysElapsed} days</span></td>
+            <td style="color:#f59e0b;font-weight:700;">₹${accruedInt.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            <td style="color:var(--primary);font-weight:800;font-size:13.5px;">₹${netPay.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            <td>${statusBadge}</td>
+            <td style="text-align:center;">
+              <div style="display:flex;gap:6px;justify-content:center;flex-wrap:nowrap;">
+                ${pending > 0 ? `<button class="btn btn-xs btn-success paySupplierBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 8px;font-weight:600;">💳 Pay</button>` : ''}
+                <button class="btn btn-xs btn-outline editInterestBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 8px;font-weight:600;" title="Set Interest Rate & Frequency">⚙️ Interest</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      },
+      onRender: () => {
+        const tb = document.getElementById("payablesTableBody");
+        if (!tb) return;
 
-    tbody.querySelectorAll(".paySupplierBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.id;
-        const purchase = payablesData.find(x => x.id == id);
-        if (purchase) openRecordPaymentModal(purchase, fetchPayables);
-      });
-    });
+        tb.querySelectorAll(".paySupplierBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.id;
+            const purchase = payablesData.find(x => x.id == id);
+            if (purchase) openRecordPaymentModal(purchase, fetchPayables);
+          });
+        });
 
-    tbody.querySelectorAll(".editInterestBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.id;
-        const purchase = payablesData.find(x => x.id == id);
-        if (purchase) openInterestConfigModal(purchase, fetchPayables);
-      });
-    });
-
-    tbody.querySelectorAll(".editPayableBillBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.id;
-        const purchase = payablesData.find(x => x.id == id);
-        if (purchase) {
-          openMultiPurchaseEntryModal(() => fetchPayables(), purchase);
-        }
-      });
+        tb.querySelectorAll(".editInterestBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.id;
+            const purchase = payablesData.find(x => x.id == id);
+            if (purchase) openInterestConfigModal(purchase, fetchPayables);
+          });
+        });
+      }
     });
   }
 

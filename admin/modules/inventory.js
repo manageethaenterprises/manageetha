@@ -7292,14 +7292,28 @@ async function loadPayablesSubTab() {
       </div>
     </div>
 
-    <!-- FILTERS -->
-    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;background:var(--bg-card);padding:12px 16px;border-radius:8px;border:1px solid var(--border);">
-      <input type="text" id="payablesSearchInput" class="form-input" placeholder="🔍 Search Supplier, Bill..." style="max-width:260px;font-size:13px;">
-      <select id="payablesStatusFilter" class="form-select" style="max-width:180px;font-size:13px;">
-        <option value="all">All Statuses</option>
-        <option value="unpaid" selected>Pending / Unpaid / Partial</option>
-        <option value="paid">Fully Paid</option>
-      </select>
+    <!-- FILTERS & STATUS TABS -->
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;justify-content:space-between;background:var(--bg-card);padding:12px 16px;border-radius:8px;border:1px solid var(--border);">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;" id="payablesPillsContainer">
+        <button type="button" class="btn btn-sm payablesFilterPill active" data-status="all" style="font-weight:700;padding:5px 14px;border-radius:20px;background:var(--primary,#3b82f6);color:#fff;border:none;">
+          📋 All Invoices (<span id="pillCountAll">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-outline payablesFilterPill" data-status="unpaid" style="font-weight:700;padding:5px 14px;border-radius:20px;color:#ef4444;border-color:#fca5a5;background:transparent;">
+          ⏳ Pending / Unpaid (<span id="pillCountUnpaid">0</span>)
+        </button>
+        <button type="button" class="btn btn-sm btn-outline payablesFilterPill" data-status="paid" style="font-weight:700;padding:5px 14px;border-radius:20px;color:#10b981;border-color:#86efac;background:transparent;">
+          ✅ Fully Paid (<span id="pillCountPaid">0</span>)
+        </button>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="payablesSearchInput" class="form-input" placeholder="🔍 Search Supplier, Bill No..." style="max-width:240px;font-size:12.5px;padding:6px 12px;border-radius:6px;">
+        <select id="payablesStatusFilter" class="form-select" style="max-width:170px;font-size:12.5px;padding:6px 10px;display:none;">
+          <option value="all" selected>All Statuses</option>
+          <option value="unpaid">Pending / Unpaid / Partial</option>
+          <option value="paid">Fully Paid</option>
+        </select>
+      </div>
     </div>
 
     <!-- TABLE -->
@@ -7329,9 +7343,12 @@ async function loadPayablesSubTab() {
 
   let payablesData = [];
 
+  let currentStatusFilter = 'all';
+
   async function fetchPayables() {
     try {
-      const targetCompId = (compId && compId !== 'all') ? compId : 1;
+      const activeComp = getActiveCompId();
+      const targetCompId = (activeComp && activeComp !== 'all') ? activeComp : 'all';
       const res = await fetch(`${API_BASE}/inventory?action=payables-list&company_id=${targetCompId}`, { headers: authHeaders() });
       const data = await res.json();
       if (!data.success) {
@@ -7339,21 +7356,42 @@ async function loadPayablesSubTab() {
         return;
       }
       payablesData = data.payables || [];
+      updatePayablesPillCounts();
       renderPayablesTable();
     } catch (err) {
       showToast("Error loading payables: " + err.message, "error");
     }
   }
 
+  function updatePayablesPillCounts() {
+    const totalCount = payablesData.length;
+    const unpaidCount = payablesData.filter(p => p.payment_status !== 'paid' && parseFloat(p.pending_amount || 0) > 0).length;
+    const paidCount = payablesData.filter(p => p.payment_status === 'paid' || parseFloat(p.pending_amount || 0) <= 0).length;
+
+    const elAll = document.getElementById("pillCountAll");
+    const elUnpaid = document.getElementById("pillCountUnpaid");
+    const elPaid = document.getElementById("pillCountPaid");
+
+    if (elAll) elAll.textContent = totalCount;
+    if (elUnpaid) elUnpaid.textContent = unpaidCount;
+    if (elPaid) elPaid.textContent = paidCount;
+  }
+
   function renderPayablesTable() {
     const search = (document.getElementById("payablesSearchInput")?.value || "").toLowerCase();
-    const statusFilter = document.getElementById("payablesStatusFilter")?.value || "unpaid";
+    const statusFilter = currentStatusFilter;
 
     let filtered = payablesData.filter(p => {
+      const supLegal = (p.supplier_legal_name || p.supplier_name || '').toLowerCase();
+      const supTrade = (p.supplier_trade_name || '').toLowerCase();
+      const billNo = (p.purchase_invoice_no || '').toLowerCase();
+      const compName = (p.company_name || '').toLowerCase();
+
       const matchSearch = !search ||
-        (p.supplier_legal_name || '').toLowerCase().includes(search) ||
-        (p.supplier_trade_name || '').toLowerCase().includes(search) ||
-        (p.purchase_invoice_no || '').toLowerCase().includes(search);
+        supLegal.includes(search) ||
+        supTrade.includes(search) ||
+        billNo.includes(search) ||
+        compName.includes(search);
 
       let matchStatus = true;
       if (statusFilter === 'unpaid') {
@@ -7407,7 +7445,9 @@ async function loadPayablesSubTab() {
             <div style="font-size:11px;color:var(--text3);">${pDate}</div>
           </td>
           <td>
-            <div style="font-weight:700;color:var(--primary);">${esc(p.supplier_legal_name || 'Direct Supplier')}</div>
+            <div style="font-weight:700;color:var(--primary);font-size:13px;">${esc(p.supplier_legal_name || p.supplier_name || 'Direct Supplier')}</div>
+            ${p.supplier_trade_name ? `<div style="font-size:11px;color:var(--text2);font-weight:500;">${esc(p.supplier_trade_name)}</div>` : ''}
+            ${p.company_name ? `<span class="badge badge-outline" style="font-size:10px;margin-top:2px;">${esc(p.company_name)}</span>` : ''}
             ${p.supplier_phone ? `<div style="font-size:11px;color:var(--text3);">📞 ${esc(p.supplier_phone)}</div>` : ''}
           </td>
           <td style="font-weight:600;">₹${parseFloat(p.grand_total || p.total_amount || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
@@ -7419,9 +7459,10 @@ async function loadPayablesSubTab() {
           <td style="color:var(--primary);font-weight:800;font-size:13.5px;">₹${netPay.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${statusBadge}</td>
           <td style="text-align:center;">
-            <div style="display:flex;gap:6px;justify-content:center;">
-              ${pending > 0 ? `<button class="btn btn-xs btn-success paySupplierBtn" data-id="${p.id}" style="white-space:nowrap;padding:4px 8px;">💳 Pay</button>` : ''}
-              <button class="btn btn-xs btn-outline editInterestBtn" data-id="${p.id}" style="white-space:nowrap;padding:4px 8px;" title="Set Interest Rate & Frequency">⚙️ Interest</button>
+            <div style="display:flex;gap:4px;justify-content:center;flex-wrap:nowrap;">
+              ${pending > 0 ? `<button class="btn btn-xs btn-success paySupplierBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 7px;font-weight:600;">💳 Pay</button>` : ''}
+              <button class="btn btn-xs btn-outline editPayableBillBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 7px;" title="View & Edit Purchase Entry / Payment Amount">✏️ Edit</button>
+              <button class="btn btn-xs btn-outline editInterestBtn" data-id="${p.id}" style="white-space:nowrap;padding:3px 6px;" title="Set Interest Rate & Frequency">⚙️</button>
             </div>
           </td>
         </tr>
@@ -7443,11 +7484,50 @@ async function loadPayablesSubTab() {
         if (purchase) openInterestConfigModal(purchase, fetchPayables);
       });
     });
+
+    tbody.querySelectorAll(".editPayableBillBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const purchase = payablesData.find(x => x.id == id);
+        if (purchase) {
+          openMultiPurchaseEntryModal(() => fetchPayables(), purchase);
+        }
+      });
+    });
   }
+
+  // Hook up status filter pills
+  document.querySelectorAll(".payablesFilterPill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      currentStatusFilter = pill.dataset.status;
+      document.querySelectorAll(".payablesFilterPill").forEach(p => {
+        if (p === pill) {
+          p.classList.add("active");
+          p.style.background = p.dataset.status === 'unpaid' ? '#ef4444' : (p.dataset.status === 'paid' ? '#10b981' : 'var(--primary,#3b82f6)');
+          p.style.color = '#fff';
+          p.style.borderColor = 'transparent';
+        } else {
+          p.classList.remove("active");
+          p.style.background = 'transparent';
+          p.style.color = p.dataset.status === 'unpaid' ? '#ef4444' : (p.dataset.status === 'paid' ? '#10b981' : 'var(--text1,#0f172a)');
+          p.style.borderColor = p.dataset.status === 'unpaid' ? '#fca5a5' : (p.dataset.status === 'paid' ? '#86efac' : 'var(--border,#cbd5e1)');
+        }
+      });
+      renderPayablesTable();
+    });
+  });
 
   document.getElementById("refreshPayablesBtn")?.addEventListener("click", fetchPayables);
   document.getElementById("payablesSearchInput")?.addEventListener("input", renderPayablesTable);
-  document.getElementById("payablesStatusFilter")?.addEventListener("change", renderPayablesTable);
+  document.getElementById("payablesStatusFilter")?.addEventListener("change", (e) => {
+    currentStatusFilter = e.target.value;
+    renderPayablesTable();
+  });
+
+  // Re-fetch when global company filter changes
+  window.addEventListener("companyChanged", () => {
+    fetchPayables();
+  });
 
   await fetchPayables();
 }
@@ -8182,8 +8262,14 @@ async function openEntityLedgerModal(entityType = 'supplier', entityId, fromDate
           <td style="padding:7px 12px;text-align:center;font-family:monospace;white-space:nowrap;">${formatDate(e.post_date)}</td>
           <td style="padding:7px 12px;font-family:monospace;font-weight:600;color:#1e293b;">${esc(e.document_no || '—')}</td>
           <td style="padding:7px 12px;color:#334155;">
-            <div style="font-weight:600;">${esc(e.narration || '')}</div>
-            ${e.payment_mode ? `<div style="font-size:10.5px;color:#64748b;">Mode: ${esc(e.payment_mode)} ${e.bank_name ? ' | ' + esc(e.bank_name) : ''}</div>` : ''}
+            <div style="font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              ${e.entry_type === 'target_incentive' ? '<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px;padding:1px 5px;font-weight:700;">🎯 Target Incentive</span>' : ''}
+              ${e.entry_type === 'bonus' ? '<span class="badge" style="background:#ecfdf5;color:#065f46;font-size:10px;padding:1px 5px;font-weight:700;">🎁 Bonus</span>' : ''}
+              ${e.entry_type === 'quarterly_incentive' ? '<span class="badge" style="background:#fef9c3;color:#854d0e;font-size:10px;padding:1px 5px;font-weight:700;">🏆 Incentive</span>' : ''}
+              ${e.entry_type === 'discount' ? '<span class="badge" style="background:#eff6ff;color:#1e40af;font-size:10px;padding:1px 5px;font-weight:700;">🏷️ Discount</span>' : ''}
+              <span>${esc(e.narration || '')}</span>
+            </div>
+            ${e.payment_mode ? `<div style="font-size:10.5px;color:#64748b;margin-top:2px;">Mode: ${esc(e.payment_mode)} ${e.bank_name ? ' | ' + esc(e.bank_name) : ''}</div>` : ''}
           </td>
           <td style="padding:7px 12px;text-align:right;font-family:monospace;font-weight:600;color:${e.debit > 0 ? '#0f172a' : '#94a3b8'};">
             ${e.debit > 0 ? parseFloat(e.debit).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}
@@ -8345,6 +8431,11 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
                 <select id="leEntryType" class="form-select" required>
                   <option value="bank_payment" ${isEdit && editEntry.entry_type === 'bank_payment' ? 'selected' : ''}>💳 Bank Transfer / Payment Made</option>
                   <option value="purchase_invoice" ${isEdit && editEntry.entry_type === 'purchase_invoice' ? 'selected' : ''}>📥 Purchase Bill / Inward Invoice</option>
+                  <option value="target_incentive" ${isEdit && editEntry.entry_type === 'target_incentive' ? 'selected' : ''}>🎯 Target Incentive / Performance Rebate</option>
+                  <option value="bonus" ${isEdit && editEntry.entry_type === 'bonus' ? 'selected' : ''}>🎁 Bonus / Annual Reward</option>
+                  <option value="quarterly_incentive" ${isEdit && editEntry.entry_type === 'quarterly_incentive' ? 'selected' : ''}>🏆 Quarterly / Monthly Incentive</option>
+                  <option value="volume_rebate" ${isEdit && editEntry.entry_type === 'volume_rebate' ? 'selected' : ''}>📈 Volume / Turnover Rebate</option>
+                  <option value="scheme_discount" ${isEdit && editEntry.entry_type === 'scheme_discount' ? 'selected' : ''}>⭐ Scheme Discount / Special Offer</option>
                   <option value="discount" ${isEdit && editEntry.entry_type === 'discount' ? 'selected' : ''}>🏷️ SPD Discount / Trade Rebate</option>
                   <option value="credit_note" ${isEdit && editEntry.entry_type === 'credit_note' ? 'selected' : ''}>📄 Credit Note</option>
                   <option value="debit_note" ${isEdit && editEntry.entry_type === 'debit_note' ? 'selected' : ''}>📄 Debit Note</option>
@@ -8380,15 +8471,20 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
               <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label" style="font-weight:600;font-size:12px;">Payment Mode / Channel</label>
                 <select id="lePaymentMode" class="form-select">
-                  <option value="Axis Bank">Axis Bank Transfer</option>
-                  <option value="Kotak Bank">Kotak Bank Transfer</option>
-                  <option value="HDFC Bank">HDFC Bank Transfer</option>
-                  <option value="State Bank of India">SBI Transfer</option>
-                  <option value="IMPS">IMPS / Fast Transfer</option>
-                  <option value="NEFT/RTGS">NEFT / RTGS</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Cash">Cash</option>
-                  <option value="Discount Adjustment">Discount Adjustment</option>
+                  <option value="Axis Bank" ${isEdit && editEntry.payment_mode === 'Axis Bank' ? 'selected' : ''}>Axis Bank Transfer</option>
+                  <option value="Kotak Bank" ${isEdit && editEntry.payment_mode === 'Kotak Bank' ? 'selected' : ''}>Kotak Bank Transfer</option>
+                  <option value="HDFC Bank" ${isEdit && editEntry.payment_mode === 'HDFC Bank' ? 'selected' : ''}>HDFC Bank Transfer</option>
+                  <option value="State Bank of India" ${isEdit && editEntry.payment_mode === 'State Bank of India' ? 'selected' : ''}>SBI Transfer</option>
+                  <option value="IMPS" ${isEdit && editEntry.payment_mode === 'IMPS' ? 'selected' : ''}>IMPS / Fast Transfer</option>
+                  <option value="NEFT/RTGS" ${isEdit && editEntry.payment_mode === 'NEFT/RTGS' ? 'selected' : ''}>NEFT / RTGS</option>
+                  <option value="UPI" ${isEdit && editEntry.payment_mode === 'UPI' ? 'selected' : ''}>UPI / QR Transfer</option>
+                  <option value="Cheque" ${isEdit && editEntry.payment_mode === 'Cheque' ? 'selected' : ''}>Cheque</option>
+                  <option value="Cash" ${isEdit && editEntry.payment_mode === 'Cash' ? 'selected' : ''}>Cash</option>
+                  <option value="Target Incentive Adjustment" ${isEdit && editEntry.payment_mode === 'Target Incentive Adjustment' ? 'selected' : ''}>🎯 Target Incentive Adjustment</option>
+                  <option value="Bonus Adjustment" ${isEdit && editEntry.payment_mode === 'Bonus Adjustment' ? 'selected' : ''}>🎁 Bonus / Reward Adjustment</option>
+                  <option value="Discount Adjustment" ${isEdit && editEntry.payment_mode === 'Discount Adjustment' ? 'selected' : ''}>🏷️ Discount Adjustment</option>
+                  <option value="Credit Note Adjustment" ${isEdit && editEntry.payment_mode === 'Credit Note Adjustment' ? 'selected' : ''}>📄 Credit Note Adjustment</option>
+                  <option value="Journal Adjustment" ${isEdit && editEntry.payment_mode === 'Journal Adjustment' ? 'selected' : ''}>⚖️ Journal Adjustment</option>
                 </select>
               </div>
 
@@ -8408,9 +8504,11 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
             <div class="form-group" style="margin-bottom:10px;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <label class="form-label" style="font-weight:600;font-size:12px;margin:0;">Narration / Statement Text *</label>
-                <div style="display:flex;gap:4px;">
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
                   <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="/516115492525/GEETHA ENTERPRISES AXIS">+ Axis Trf</button>
                   <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="IMPS/P2A/+ GEETHAEN AXIS">+ IMPS</button>
+                  <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="TARGET INCENTIVE ACHIEVED FOR" style="color:#b45309;border-color:#f59e0b;">+ Target Incentive</button>
+                  <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="ANNUAL / FESTIVE BONUS REWARD" style="color:#047857;border-color:#10b981;">+ Bonus</button>
                   <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="SPD DISCOUNT FTM AUG TO NOV">+ Discount</button>
                   <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="NAGAR AGRO ECMS HDFC">+ ECMS</button>
                 </div>
@@ -8457,9 +8555,20 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
     const debitRadio = overlay.querySelector("input[name='leFlow'][value='debit']");
     const creditRadio = overlay.querySelector("input[name='leFlow'][value='credit']");
 
-    if (val === 'bank_payment' || val === 'debit_note' || val === 'discount') {
+    if (['bank_payment', 'debit_note', 'discount', 'bonus', 'target_incentive', 'quarterly_incentive', 'volume_rebate', 'scheme_discount'].includes(val)) {
       if (isSupplier) debitRadio.checked = true;
       else creditRadio.checked = true;
+
+      const payModeEl = overlay.querySelector("#lePaymentMode");
+      if (payModeEl) {
+        if (val === 'target_incentive' || val === 'quarterly_incentive') {
+          payModeEl.value = 'Target Incentive Adjustment';
+        } else if (val === 'bonus') {
+          payModeEl.value = 'Bonus Adjustment';
+        } else if (val === 'discount' || val === 'volume_rebate' || val === 'scheme_discount') {
+          payModeEl.value = 'Discount Adjustment';
+        }
+      }
     } else if (val === 'purchase_invoice' || val === 'credit_note') {
       if (isSupplier) creditRadio.checked = true;
       else debitRadio.checked = true;

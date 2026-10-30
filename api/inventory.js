@@ -2606,24 +2606,26 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ PAYABLES & INTEREST CALCULATOR ═══════════════
     else if (action === "payables-list") {
-      const cId = safeInt(compQuery) || safeInt(user.company_id) || 1;
+      const compParam = req.query.company_id || req.body?.company_id;
+      const isAllComps = compParam === "all" || (!compParam && user.role === "superadmin") || compQuery === "all";
+      const cId = safeInt(compParam) || safeInt(compQuery) || safeInt(user.company_id) || 1;
       let rows;
-      if (isAll) {
+      if (isAllComps) {
         rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, v.phone as supplier_phone, v.trade_name as supplier_trade_name, c.name as company_name
+          SELECT p.*, v.legal_name as supplier_name, v.legal_name as supplier_legal_name, v.phone as supplier_phone, v.trade_name as supplier_trade_name, c.name as company_name
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
-          ORDER BY p.created_at DESC
+          ORDER BY p.purchase_date DESC, p.created_at DESC
         `;
       } else {
         rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, v.phone as supplier_phone, v.trade_name as supplier_trade_name, c.name as company_name
+          SELECT p.*, v.legal_name as supplier_name, v.legal_name as supplier_legal_name, v.phone as supplier_phone, v.trade_name as supplier_trade_name, c.name as company_name
           FROM purchases p
           LEFT JOIN suppliers v ON p.supplier_id = v.id
           LEFT JOIN companies c ON p.company_id = c.id
           WHERE p.company_id = ${cId}
-          ORDER BY p.created_at DESC
+          ORDER BY p.purchase_date DESC, p.created_at DESC
         `;
       }
 

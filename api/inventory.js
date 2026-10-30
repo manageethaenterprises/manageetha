@@ -368,6 +368,40 @@ module.exports = async function handler(req, res) {
 
   try {
     try {
+      // Ensure entity_ledger table and columns exist for suppliers & dealers
+      try {
+        await sql`
+          CREATE TABLE IF NOT EXISTS entity_ledger (
+            id SERIAL PRIMARY KEY,
+            company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+            entity_type VARCHAR(20) NOT NULL,
+            entity_id INT NOT NULL,
+            post_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            document_no VARCHAR(100),
+            entry_type VARCHAR(50) NOT NULL,
+            narration TEXT,
+            debit NUMERIC(15,2) DEFAULT 0,
+            credit NUMERIC(15,2) DEFAULT 0,
+            balance NUMERIC(15,2) DEFAULT 0,
+            payment_mode VARCHAR(50),
+            bank_name VARCHAR(100),
+            reference_id INT,
+            attachments_json TEXT,
+            created_by INT,
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `;
+        try { await sql`CREATE INDEX IF NOT EXISTS idx_entity_ledger_lookup ON entity_ledger (entity_type, entity_id, post_date);`; } catch(e){}
+        try {
+          await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS opening_balance_date DATE;`;
+          await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS opening_balance_type VARCHAR(50) DEFAULT 'credit';`;
+          await sql`ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS account_code VARCHAR(50);`;
+          await sql`ALTER TABLE dealers ADD COLUMN IF NOT EXISTS opening_balance_date DATE;`;
+          await sql`ALTER TABLE dealers ADD COLUMN IF NOT EXISTS opening_balance_type VARCHAR(50) DEFAULT 'debit';`;
+          await sql`ALTER TABLE dealers ADD COLUMN IF NOT EXISTS account_code VARCHAR(50);`;
+        } catch(e){}
+      } catch(e) {}
+
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS purchase_rate_incl_tax NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS transport_expenses NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS packaging_charges NUMERIC(15,2) DEFAULT 0;`;
@@ -611,6 +645,362 @@ module.exports = async function handler(req, res) {
 
       await sql`UPDATE suppliers SET is_active = false WHERE id = ${supId}`;
       return res.status(200).json({ success: true, message: "Supplier deleted successfully!" });
+    }
+
+    // ═══════════════ ENTITY LEDGER (SUPPLIERS & DEALERS) ═══════════════
+    else if (action === "entity-ledger-list") {
+      const entityType = (req.query.entity_type || req.body?.entity_type || "supplier").toLowerCase().trim();
+      const entityId = safeInt(req.query.entity_id || req.body?.entity_id);
+      const fromDate = req.query.from_date || req.body?.from_date || null;
+      const toDate = req.query.to_date || req.body?.to_date || null;
+      const includeAuto = req.query.include_auto !== "false";
+
+      if (!entityId) return res.status(400).json({ error: "entity_id is required" });
+      if (entityType !== "supplier" && entityType !== "dealer") {
+        return res.status(400).json({ error: "entity_type must be 'supplier' or 'dealer'" });
+      }
+
+      let entity = null;
+      if (entityType === "supplier") {
+        const rows = await sql`
+          SELECT s.*, c.name as company_name, c.address as company_address, c.gstin as company_gstin, c.phone as company_phone, c.email as company_email
+          FROM suppliers s
+          LEFT JOIN companies c ON s.company_id = c.id
+          WHERE s.id = ${entityId}
+        `;
+        if (rows.length === 0) return res.status(404).json({ error: "Supplier not found" });
+        entity = rows[0];
+      } else {
+        const rows = await sql`
+          SELECT d.*, c.name as company_name, c.address as company_address, c.gstin as company_gstin, c.phone as company_phone, c.email as company_email
+          FROM dealers d
+          LEFT JOIN companies c ON d.company_id = c.id
+          WHERE d.id = ${entityId}
+        `;
+        if (rows.length === 0) return res.status(404).json({ error: "Dealer not found" });
+        entity = rows[0];
+      }
+
+      const compIdToUse = entity.company_id || (safeInt(compQuery) || safeInt(user.company_id) || 1);
+      const compRows = await sql`SELECT * FROM companies WHERE id = ${compIdToUse}`;
+      const company = compRows[0] || {};
+
+      // 1. Fetch manual entries from entity_ledger
+      const manualEntries = await sql`
+        SELECT el.*, u.username as created_by_name
+        FROM entity_ledger el
+        LEFT JOIN users u ON el.created_by = u.id
+        WHERE el.entity_type = ${entityType} AND el.entity_id = ${entityId}
+        ORDER BY el.post_date ASC, el.id ASC
+      `;
+
+      let allRawEntries = [...manualEntries.map(e => ({
+        id: e.id,
+        post_date: e.post_date ? new Date(e.post_date).toISOString().split('T')[0] : '',
+        document_no: e.document_no || '',
+        entry_type: e.entry_type || 'manual_entry',
+        narration: e.narration || '',
+        debit: parseFloat(e.debit || 0),
+        credit: parseFloat(e.credit || 0),
+        payment_mode: e.payment_mode || '',
+        bank_name: e.bank_name || '',
+        attachments_json: e.attachments_json || null,
+        is_manual: true,
+        created_at: e.created_at
+      }))];
+
+      // 2. Auto-linked ERP entries
+      if (includeAuto) {
+        const manualDocNos = new Set(allRawEntries.map(e => (e.document_no || '').toLowerCase().trim()).filter(Boolean));
+
+        if (entityType === "supplier") {
+          try {
+            const purRows = await sql`
+              SELECT p.id, p.purchase_date, p.purchase_invoice_no, p.bill_number, p.grand_total, p.total_amount, p.created_at
+              FROM purchases p
+              WHERE p.supplier_id = ${entityId}
+              ORDER BY p.purchase_date ASC, p.id ASC
+            `;
+            for (const p of purRows) {
+              const docNo = (p.purchase_invoice_no || p.bill_number || `PUR-${p.id}`).trim();
+              if (manualDocNos.has(docNo.toLowerCase())) continue;
+              allRawEntries.push({
+                id: `pur-${p.id}`,
+                post_date: p.purchase_date ? new Date(p.purchase_date).toISOString().split('T')[0] : '',
+                document_no: docNo,
+                entry_type: 'purchase_invoice',
+                narration: `Purchase Bill #${docNo}`,
+                debit: 0,
+                credit: parseFloat(p.grand_total || p.total_amount || 0),
+                payment_mode: '',
+                bank_name: '',
+                is_manual: false,
+                created_at: p.created_at
+              });
+            }
+          } catch(e){}
+
+          try {
+            const expRows = await sql`
+              SELECT e.id, e.expense_date, e.receipt_number, e.amount, e.payment_mode, e.notes, e.created_at
+              FROM expenses e
+              WHERE (
+                LOWER(TRIM(COALESCE(e.dealer_receiver, ''))) = LOWER(TRIM(${entity.legal_name}))
+                OR (e.receipt_number LIKE 'EXP-PUR-%' AND EXISTS (
+                     SELECT 1 FROM purchases pu WHERE pu.supplier_id = ${entityId} AND ('EXP-PUR-' || pu.id::text) = e.receipt_number
+                   ))
+              )
+              ORDER BY e.expense_date ASC, e.id ASC
+            `;
+            for (const e of expRows) {
+              const docNo = (e.receipt_number || `EXP-${e.id}`).trim();
+              if (manualDocNos.has(docNo.toLowerCase())) continue;
+              allRawEntries.push({
+                id: `exp-${e.id}`,
+                post_date: e.expense_date ? new Date(e.expense_date).toISOString().split('T')[0] : '',
+                document_no: docNo,
+                entry_type: 'bank_payment',
+                narration: e.notes ? `${e.notes} (${e.payment_mode || 'Bank'})` : `Payment to Supplier: ${e.payment_mode || 'Bank Transfer'}`,
+                debit: parseFloat(e.amount || 0),
+                credit: 0,
+                payment_mode: e.payment_mode || 'Bank Transfer',
+                bank_name: '',
+                is_manual: false,
+                created_at: e.created_at
+              });
+            }
+          } catch(e){}
+        } else if (entityType === "dealer") {
+          try {
+            const saleRows = await sql`
+              SELECT s.id, s.invoice_date, s.sale_date, s.invoice_number, s.challan_number, s.grand_total, s.total_amount, s.paid_amount, s.payment_mode, s.created_at
+              FROM sales s
+              WHERE LOWER(TRIM(COALESCE(s.customer_name, ''))) = LOWER(TRIM(${entity.legal_name}))
+                 OR LOWER(TRIM(COALESCE(s.customer_name, ''))) = LOWER(TRIM(${entity.trade_name || '---'}))
+              ORDER BY COALESCE(s.invoice_date, s.sale_date) ASC, s.id ASC
+            `;
+            for (const s of saleRows) {
+              const docNo = (s.invoice_number || s.challan_number || `INV-${s.id}`).trim();
+              if (manualDocNos.has(docNo.toLowerCase())) continue;
+              const sDate = s.invoice_date || s.sale_date;
+              allRawEntries.push({
+                id: `sale-${s.id}`,
+                post_date: sDate ? new Date(sDate).toISOString().split('T')[0] : '',
+                document_no: docNo,
+                entry_type: 'sale_invoice',
+                narration: `Sales Invoice #${docNo}`,
+                debit: parseFloat(s.grand_total || s.total_amount || 0),
+                credit: 0,
+                payment_mode: '',
+                bank_name: '',
+                is_manual: false,
+                created_at: s.created_at
+              });
+              if (parseFloat(s.paid_amount || 0) > 0) {
+                allRawEntries.push({
+                  id: `sale-pay-${s.id}`,
+                  post_date: sDate ? new Date(sDate).toISOString().split('T')[0] : '',
+                  document_no: `RCPT-${docNo}`,
+                  entry_type: 'bank_receipt',
+                  narration: `Receipt against Invoice #${docNo} (${s.payment_mode || 'Bank'})`,
+                  debit: 0,
+                  credit: parseFloat(s.paid_amount || 0),
+                  payment_mode: s.payment_mode || 'Bank',
+                  bank_name: '',
+                  is_manual: false,
+                  created_at: s.created_at
+                });
+              }
+            }
+          } catch(e){}
+        }
+      }
+
+      // Sort all chronologically
+      allRawEntries.sort((a, b) => {
+        const da = a.post_date || '';
+        const db = b.post_date || '';
+        if (da !== db) return da.localeCompare(db);
+        return String(a.id).localeCompare(String(b.id));
+      });
+
+      // Calculate Running Balance
+      const rawOpeningAmt = parseFloat(entity.opening_balance || 0);
+      const rawOpeningType = (entity.opening_balance_type || (entityType === "supplier" ? "Credit" : "Debit")).trim();
+      const isSupplier = (entityType === "supplier");
+
+      let runningBalance = isSupplier
+        ? (rawOpeningType.toLowerCase() === "debit" ? -rawOpeningAmt : rawOpeningAmt)
+        : (rawOpeningType.toLowerCase() === "credit" ? -rawOpeningAmt : rawOpeningAmt);
+
+      let effectiveOpeningBalance = rawOpeningAmt;
+      let effectiveOpeningType = rawOpeningType;
+
+      const filteredEntries = [];
+      let totalPeriodDebit = 0;
+      let totalPeriodCredit = 0;
+
+      for (const entry of allRawEntries) {
+        const d = entry.post_date;
+        const isBeforeFrom = fromDate && d && d < fromDate;
+        const isAfterTo = toDate && d && d > toDate;
+
+        if (isSupplier) {
+          runningBalance = runningBalance + entry.credit - entry.debit;
+        } else {
+          runningBalance = runningBalance + entry.debit - entry.credit;
+        }
+
+        entry.balance = Math.abs(runningBalance);
+        if (isSupplier) {
+          entry.balance_type = runningBalance >= 0 ? "Credit" : "Debit";
+          entry.balance_formatted = runningBalance >= 0 
+            ? `${entry.balance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}-` 
+            : `${entry.balance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} Dr`;
+        } else {
+          entry.balance_type = runningBalance >= 0 ? "Debit" : "Credit";
+          entry.balance_formatted = runningBalance >= 0 
+            ? `${entry.balance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} Dr` 
+            : `${entry.balance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} Cr`;
+        }
+
+        if (isBeforeFrom) {
+          effectiveOpeningBalance = Math.abs(runningBalance);
+          effectiveOpeningType = entry.balance_type;
+        } else if (!isAfterTo) {
+          filteredEntries.push(entry);
+          totalPeriodDebit += entry.debit;
+          totalPeriodCredit += entry.credit;
+        }
+      }
+
+      const closingBalance = Math.abs(runningBalance);
+      const closingBalanceType = isSupplier
+        ? (runningBalance >= 0 ? "Credit" : "Debit")
+        : (runningBalance >= 0 ? "Debit" : "Credit");
+
+      return res.status(200).json({
+        success: true,
+        entity,
+        company,
+        entity_type: entityType,
+        opening_balance: effectiveOpeningBalance,
+        opening_balance_type: effectiveOpeningType,
+        opening_balance_date: entity.opening_balance_date || '2025-04-01',
+        entries: filteredEntries,
+        totals: {
+          total_debit: Math.round(totalPeriodDebit * 100) / 100,
+          total_credit: Math.round(totalPeriodCredit * 100) / 100,
+          closing_balance: Math.round(closingBalance * 100) / 100,
+          closing_balance_type: closingBalanceType,
+          closing_balance_formatted: isSupplier 
+            ? (runningBalance >= 0 ? `${closingBalance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}-` : `${closingBalance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} Dr`)
+            : (runningBalance >= 0 ? `${closingBalance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} Dr` : `${closingBalance.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} Cr`)
+        }
+      });
+    }
+
+    else if (action === "entity-ledger-create") {
+      const {
+        entity_type, entity_id, company_id, post_date, document_no,
+        entry_type, narration, debit, credit, payment_mode, bank_name,
+        attachments_json
+      } = req.body;
+
+      const eType = (entity_type || "supplier").toLowerCase().trim();
+      const eId = safeInt(entity_id);
+      if (!eId) return res.status(400).json({ error: "entity_id required" });
+      const compId = safeInt(company_id) || safeInt(user.company_id) || 1;
+
+      const pDate = post_date || new Date().toISOString().split('T')[0];
+      const docNo = (document_no || '').trim() || null;
+      const eNarration = (narration || '').trim() || 'Ledger Entry';
+      const debAmt = parseFloat(debit || 0);
+      const credAmt = parseFloat(credit || 0);
+
+      const inserted = await sql`
+        INSERT INTO entity_ledger (
+          company_id, entity_type, entity_id, post_date, document_no,
+          entry_type, narration, debit, credit, payment_mode, bank_name,
+          attachments_json, created_by
+        ) VALUES (
+          ${compId}, ${eType}, ${eId}, ${pDate}, ${docNo},
+          ${entry_type || 'manual_entry'}, ${eNarration}, ${debAmt}, ${credAmt},
+          ${payment_mode || null}, ${bank_name || null}, ${attachments_json || null},
+          ${user.userId || null}
+        )
+        RETURNING *
+      `;
+
+      return res.status(200).json({ success: true, entry: inserted[0], message: "Ledger entry recorded successfully!" });
+    }
+
+    else if (action === "entity-ledger-update") {
+      const {
+        id, post_date, document_no, entry_type, narration,
+        debit, credit, payment_mode, bank_name, attachments_json
+      } = req.body;
+      const recId = safeInt(id);
+      if (!recId) return res.status(400).json({ error: "Ledger entry id required" });
+
+      const updated = await sql`
+        UPDATE entity_ledger SET
+          post_date = COALESCE(${post_date || null}, post_date),
+          document_no = COALESCE(${document_no || null}, document_no),
+          entry_type = COALESCE(${entry_type || null}, entry_type),
+          narration = COALESCE(${narration || null}, narration),
+          debit = ${parseFloat(debit || 0)},
+          credit = ${parseFloat(credit || 0)},
+          payment_mode = COALESCE(${payment_mode || null}, payment_mode),
+          bank_name = COALESCE(${bank_name || null}, bank_name),
+          attachments_json = COALESCE(${attachments_json || null}, attachments_json)
+        WHERE id = ${recId}
+        RETURNING *
+      `;
+
+      return res.status(200).json({ success: true, entry: updated[0], message: "Ledger entry updated successfully!" });
+    }
+
+    else if (action === "entity-ledger-delete") {
+      const recId = safeInt(req.query.id || req.body?.id);
+      if (!recId) return res.status(400).json({ error: "Ledger entry id required" });
+
+      await sql`DELETE FROM entity_ledger WHERE id = ${recId}`;
+      return res.status(200).json({ success: true, message: "Ledger entry deleted successfully!" });
+    }
+
+    else if (action === "entity-ledger-update-opening") {
+      const { entity_type, entity_id, opening_balance, opening_balance_type, opening_balance_date, account_code } = req.body;
+      const eType = (entity_type || "supplier").toLowerCase().trim();
+      const eId = safeInt(entity_id);
+      if (!eId) return res.status(400).json({ error: "entity_id required" });
+
+      const opBal = parseFloat(opening_balance || 0);
+      const opType = (opening_balance_type || (eType === "supplier" ? "Credit" : "Debit")).trim();
+      const opDate = opening_balance_date || '2025-04-01';
+      const accCode = (account_code || '').trim() || null;
+
+      if (eType === "supplier") {
+        await sql`
+          UPDATE suppliers SET
+            opening_balance = ${opBal},
+            opening_balance_type = ${opType},
+            opening_balance_date = ${opDate},
+            account_code = COALESCE(${accCode}, account_code)
+          WHERE id = ${eId}
+        `;
+      } else {
+        await sql`
+          UPDATE dealers SET
+            opening_balance = ${opBal},
+            opening_balance_type = ${opType},
+            opening_balance_date = ${opDate},
+            account_code = COALESCE(${accCode}, account_code)
+          WHERE id = ${eId}
+        `;
+      }
+
+      return res.status(200).json({ success: true, message: "Opening balance updated successfully!" });
     }
 
     // ═══════════════ HSN MASTER / GST RATES ═══════════════

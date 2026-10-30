@@ -1226,6 +1226,7 @@ async function loaddealersSubTab() {
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
       <h3 style="font-size:16px;font-weight:600;color:var(--text1);">Dealers Master</h3>
+      <button class="btn btn-outline" id="addDealerLedgerHeaderBtn" style="font-weight:600;"><i class="fas fa-book-open me-1"></i>+ Ledger Entry</button>
       ${canAddEditdealer ? `<button class="btn btn-primary" id="adddealerBtn">+ Add Dealer (with GST & Finance)</button>` : ''}
     </div>
 
@@ -1524,12 +1525,34 @@ async function loaddealersSubTab() {
               <td style="font-size:12px;">${obStr}</td>
               <td>${docBtn}</td>
               <td style="text-align:right;white-space:nowrap;">
-                ${canAddEditdealer ? `<button class="btn btn-xs btn-outline editdealerBtn" data-id="${v.id}" style="padding:2px 8px;" title="Edit Dealer">✏️ Edit</button>` : ''}
+                <button class="btn btn-xs viewDealerLedgerBtn" data-id="${v.id}" title="View Dealer Ledger Statement" style="background:rgba(126,34,206,0.1);color:#7e22ce;border:1px solid rgba(126,34,206,0.3);font-weight:600;padding:2px 8px;"><i class="fas fa-book-open me-1"></i>📜 Ledger</button>
+                <button class="btn btn-xs btn-outline addDealerLedgerBtn" data-id="${v.id}" title="Add Ledger Entry" style="font-weight:600;padding:2px 8px;margin-left:4px;"><i class="fas fa-plus"></i> Entry</button>
+                ${canAddEditdealer ? `<button class="btn btn-xs btn-outline editdealerBtn" data-id="${v.id}" style="padding:2px 8px;margin-left:4px;" title="Edit Dealer">✏️ Edit</button>` : ''}
                 ${canDeletedealer ? `<button class="btn btn-xs btn-danger deletedealerBtn" data-id="${v.id}" style="padding:2px 8px;margin-left:4px;" title="Delete Dealer">&times; Delete</button>` : ''}
               </td>
             </tr>
           `;
         }
+      });
+
+      document.querySelectorAll(".viewDealerLedgerBtn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (typeof window.openEntityLedgerModal === "function") {
+            window.openEntityLedgerModal('dealer', btn.dataset.id);
+          } else {
+            showToast("Ledger module loading...", "info");
+          }
+        });
+      });
+
+      document.querySelectorAll(".addDealerLedgerBtn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          if (typeof window.openEntityLedgerEntryModal === "function") {
+            window.openEntityLedgerEntryModal('dealer', btn.dataset.id, () => fetchdealers());
+          } else {
+            showToast("Ledger module loading...", "info");
+          }
+        });
       });
 
       document.querySelectorAll(".editdealerBtn").forEach(btn => {

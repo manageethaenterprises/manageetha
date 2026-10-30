@@ -1822,6 +1822,7 @@ async function loadSuppliersSubTab() {
           ${compOptionsHtml}
         </select>
         <input type="text" id="supSearchInp" class="form-input" placeholder="🔍 Search legal name, GSTIN, location, contact, email..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:280px;">
+        <button class="btn btn-outline" id="addSupLedgerHeaderBtn" style="font-weight:600;"><i class="fas fa-book-open me-1"></i>+ Ledger Entry</button>
         <button class="btn btn-primary" id="addSupMainBtn">+ Register New Supplier</button>
       </div>
     </div>
@@ -1967,6 +1968,8 @@ async function loadSuppliersSubTab() {
             <td style="font-size:12px;max-width:180px;white-space:normal;line-height:1.3;">${esc(item.address || '—')}</td>
             <td style="text-align:center;">
               <div style="display:inline-flex;gap:4px;justify-content:center;">
+                <button class="btn btn-xs viewSupLedgerBtn" data-id="${item.id}" title="View Supplier Ledger Statement" style="background:rgba(126,34,206,0.1);color:#7e22ce;border:1px solid rgba(126,34,206,0.3);font-weight:600;"><i class="fas fa-book-open me-1"></i>📜 Ledger</button>
+                <button class="btn btn-xs btn-outline addSupLedgerBtn" data-id="${item.id}" title="Add Ledger Entry (Payment, Bill, Discount, Note)" style="font-weight:600;"><i class="fas fa-plus"></i> Entry</button>
                 <button class="btn btn-xs btn-info viewSupBtn" data-id="${item.id}" title="View Details & Print Profile">👁️ View</button>
                 <button class="btn btn-xs btn-outline editSupBtn" data-id="${item.id}">✏️ Edit</button>
                 <button class="btn btn-xs btn-danger deleteSupBtn" data-id="${item.id}">🗑️ Delete</button>
@@ -1975,6 +1978,18 @@ async function loadSuppliersSubTab() {
           </tr>
         `;
       }
+    });
+
+    tbody.querySelectorAll(".viewSupLedgerBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        openEntityLedgerModal('supplier', btn.dataset.id);
+      });
+    });
+
+    tbody.querySelectorAll(".addSupLedgerBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        openEntityLedgerEntryModal('supplier', btn.dataset.id, () => fetchSuppliers());
+      });
     });
 
     tbody.querySelectorAll(".viewSupBtn").forEach(btn => {
@@ -2030,6 +2045,7 @@ async function loadSuppliersSubTab() {
 
   on("supSearchInp", "input", renderSuppliersTable);
   on("supCompanyFilter", "change", () => fetchSuppliers());
+  on("addSupLedgerHeaderBtn", "click", () => openEntityLedgerEntryModal("supplier", null, () => fetchSuppliers()));
   on("addSupMainBtn", "click", async function () {
     const btn = this;
     if (btn.disabled) return;
@@ -7990,3 +8006,725 @@ function printBarcodeStickersWindow({ prods, format, qty, showComp, showPrice, s
   printWin.document.close();
 }
 window.openBarcodePrintModal = openBarcodePrintModal;
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// 📜 ENTITY LEDGER (SUPPLIERS & DEALERS) MANAGEMENT SYSTEM
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── View Ledger Modal (Exact Sonalika Statement Format) ──
+async function openEntityLedgerModal(entityType = 'supplier', entityId, fromDate = null, toDate = null) {
+  const existingModal = document.getElementById("entityLedgerModalOverlay");
+  if (existingModal) existingModal.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "entityLedgerModalOverlay";
+  overlay.className = "modal-overlay";
+  overlay.style.display = "flex";
+  overlay.style.zIndex = "99999";
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:1300px;width:96vw;max-height:95vh;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-primary,#fff);border-radius:12px;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+      <div class="modal-header" style="background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;">
+            <span>📜</span>
+            <span id="elModalTitle">Loading Ledger Statement...</span>
+          </h3>
+          <div id="elModalSubtitle" style="font-size:12px;color:#c7d2fe;margin-top:2px;">
+            Fetching statement records and calculating running balance...
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button type="button" class="btn btn-sm btn-outline" id="elAddEntryBtn" style="color:#fff;border-color:#818cf8;background:rgba(255,255,255,0.1);font-weight:600;">
+            📝 + Add Entry
+          </button>
+          <button type="button" class="btn btn-sm btn-outline" id="elPrintStatementBtn" style="color:#fff;border-color:#818cf8;background:rgba(255,255,255,0.1);font-weight:600;">
+            🖨️ Print Statement
+          </button>
+          <button type="button" class="btn btn-sm btn-outline" id="elEditOpeningBtn" style="color:#fff;border-color:#818cf8;background:rgba(255,255,255,0.1);font-weight:600;">
+            ⚙️ Opening Balance
+          </button>
+          <button class="modal-close" id="closeEntityLedgerModal" style="color:#fff;font-size:24px;border:none;background:none;cursor:pointer;">&times;</button>
+        </div>
+      </div>
+
+      <div class="modal-body" style="padding:16px;overflow-y:auto;flex:1;background:var(--bg-secondary,#f8fafc);">
+        
+        <!-- Header Information Cards (Matching Sonalika Statement Header) -->
+        <div id="elStatementHeader" style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.05);display:grid;grid-template-columns:1.2fr 1fr;gap:20px;">
+          <div id="elPartyInfo" style="font-size:12px;line-height:1.4;">
+            <div class="spinner"></div> Loading party information...
+          </div>
+          <div id="elCompanyInfo" style="font-size:12px;line-height:1.4;text-align:right;">
+            <div class="spinner"></div> Loading company details...
+          </div>
+        </div>
+
+        <!-- Filter & Balance Bar -->
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span style="font-weight:700;font-size:12.5px;color:var(--text1,#0f172a);">Filter Date:</span>
+            <input type="date" id="elFromDate" class="form-input" style="padding:4px 8px;font-size:12px;width:130px;" value="${fromDate || ''}">
+            <span style="color:var(--text3);">to</span>
+            <input type="date" id="elToDate" class="form-input" style="padding:4px 8px;font-size:12px;width:130px;" value="${toDate || ''}">
+            <button type="button" class="btn btn-xs btn-primary" id="elApplyFilterBtn" style="padding:5px 12px;font-weight:600;">Apply</button>
+            <button type="button" class="btn btn-xs btn-secondary" id="elResetFilterBtn" style="padding:5px 10px;">Reset</button>
+          </div>
+          <div id="elOpeningBanner" style="font-family:monospace;font-size:13px;font-weight:700;color:#1e40af;background:#eff6ff;padding:4px 12px;border-radius:6px;border:1px solid #bfdbfe;">
+            Opening Balance: Loading...
+          </div>
+        </div>
+
+        <!-- Ledger Statement Table -->
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <table class="data-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:#f1f5f9;color:#0f172a;font-weight:700;border-bottom:2px solid #cbd5e1;">
+                <th style="padding:8px 12px;text-align:center;width:95px;">Post Date</th>
+                <th style="padding:8px 12px;text-align:left;width:140px;">Document No</th>
+                <th style="padding:8px 12px;text-align:left;">Text / Narration</th>
+                <th style="padding:8px 12px;text-align:right;width:130px;">Debit (₹)</th>
+                <th style="padding:8px 12px;text-align:right;width:130px;">Credit (₹)</th>
+                <th style="padding:8px 12px;text-align:right;width:140px;">Balance (₹)</th>
+                <th style="padding:8px 12px;text-align:center;width:75px;" class="no-print">Action</th>
+              </tr>
+            </thead>
+            <tbody id="elTableBody">
+              <tr><td colspan="7" style="text-align:center;padding:30px;"><div class="spinner"></div> Loading transactions...</td></tr>
+            </tbody>
+            <tfoot id="elTableFoot" style="background:#f8fafc;font-weight:700;border-top:2px solid #000;display:none;">
+              <tr>
+                <td colspan="3" style="padding:10px 12px;text-align:right;font-size:13px;">Totals:</td>
+                <td style="padding:10px 12px;text-align:right;font-size:13px;color:#b91c1c;" id="elTotalDebit">₹0.00</td>
+                <td style="padding:10px 12px;text-align:right;font-size:13px;color:#15803d;" id="elTotalCredit">₹0.00</td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Closing Balance Highlight Bar (Exact Sonalika Format) -->
+        <div id="elClosingBanner" style="margin-top:14px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;padding:12px 18px;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;">
+          <span style="color:#334155;">Closing Balance as on <span id="elClosingDate">—</span>:</span>
+          <span id="elClosingAmount" style="background:#99f6e4;color:#0f766e;padding:4px 14px;border-radius:6px;font-family:monospace;font-size:14px;border:1px solid #5eead4;">
+            ₹0.00
+          </span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#closeEntityLedgerModal").addEventListener("click", () => overlay.remove());
+
+  let currentLedgerData = null;
+
+  async function loadStatement() {
+    const fDate = document.getElementById("elFromDate")?.value || '';
+    const tDate = document.getElementById("elToDate")?.value || '';
+    let queryParams = `&entity_type=${entityType}&entity_id=${entityId}`;
+    if (fDate) queryParams += `&from_date=${fDate}`;
+    if (tDate) queryParams += `&to_date=${tDate}`;
+
+    try {
+      const res = await fetch(`${API_BASE}/inventory?action=entity-ledger-list${queryParams}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!data.success) {
+        document.getElementById("elTableBody").innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:20px;">${esc(data.error || 'Failed to fetch ledger')}</td></tr>`;
+        return;
+      }
+
+      currentLedgerData = data;
+      renderStatementUI(data);
+    } catch(err) {
+      document.getElementById("elTableBody").innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:20px;">Error: ${esc(err.message)}</td></tr>`;
+    }
+  }
+
+  function renderStatementUI(data) {
+    const { entity, company, entries, totals, opening_balance, opening_balance_type, opening_balance_date } = data;
+    const isSupplier = (entityType === 'supplier');
+
+    document.getElementById("elModalTitle").textContent = `${entity.legal_name || 'Party'} - Ledger Account Statement`;
+    document.getElementById("elModalSubtitle").textContent = `${isSupplier ? 'Supplier Account' : 'Dealer Account'} | Code: ${entity.account_code || entity.supplier_code || entity.dealer_code || 'N/A'} | GSTIN: ${entity.gstin || 'Unregistered'}`;
+
+    // Party Information Box (Left side of header, matching Sonalika)
+    document.getElementById("elPartyInfo").innerHTML = `
+      <div style="font-weight:800;font-size:13.5px;color:#0f172a;text-transform:uppercase;">${esc(entity.legal_name)}</div>
+      ${entity.trade_name ? `<div style="font-size:11px;color:#475569;font-weight:600;">Trade: ${esc(entity.trade_name)}</div>` : ''}
+      <div style="color:#334155;margin-top:3px;">${esc(entity.address || 'Address on record')}</div>
+      ${entity.phone ? `<div style="color:#475569;">Tel / Mob: ${esc(entity.phone)}</div>` : ''}
+      <div style="font-weight:700;color:#1e40af;margin-top:3px;">GSTIN - ${esc(entity.gstin || 'N/A')}</div>
+    `;
+
+    // Business Enterprise Box (Right side of header)
+    document.getElementById("elCompanyInfo").innerHTML = `
+      <div style="font-family:monospace;font-size:12px;color:#64748b;font-weight:700;">ACC #: ${esc(entity.account_code || ('ACC-' + entity.id))}</div>
+      <div style="font-weight:800;font-size:13.5px;color:#0f172a;text-transform:uppercase;">${esc(company.name || 'MANASWINI ENTERPRISES')}</div>
+      <div style="color:#334155;margin-top:3px;">${esc(company.address || '')}</div>
+      <div style="font-weight:700;color:#1e40af;margin-top:3px;">GSTIN - ${esc(company.gstin || 'N/A')}</div>
+    `;
+
+    // Opening Balance Line
+    const opFormatted = parseFloat(opening_balance).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById("elOpeningBanner").innerHTML = `Opening as on ${opening_balance_date || '01.04.2025'} ${opening_balance_type || 'Credit'} ${opFormatted}${opening_balance_type === 'Credit' ? '-' : ''}`;
+
+    // Table rows
+    const tbody = document.getElementById("elTableBody");
+    if (!entries || entries.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:#64748b;">No transaction entries found for the selected period. Click "+ Add Entry" to record a voucher.</td></tr>`;
+      document.getElementById("elTableFoot").style.display = "none";
+    } else {
+      tbody.innerHTML = entries.map(e => `
+        <tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:7px 12px;text-align:center;font-family:monospace;white-space:nowrap;">${formatDate(e.post_date)}</td>
+          <td style="padding:7px 12px;font-family:monospace;font-weight:600;color:#1e293b;">${esc(e.document_no || '—')}</td>
+          <td style="padding:7px 12px;color:#334155;">
+            <div style="font-weight:600;">${esc(e.narration || '')}</div>
+            ${e.payment_mode ? `<div style="font-size:10.5px;color:#64748b;">Mode: ${esc(e.payment_mode)} ${e.bank_name ? ' | ' + esc(e.bank_name) : ''}</div>` : ''}
+          </td>
+          <td style="padding:7px 12px;text-align:right;font-family:monospace;font-weight:600;color:${e.debit > 0 ? '#0f172a' : '#94a3b8'};">
+            ${e.debit > 0 ? parseFloat(e.debit).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}
+          </td>
+          <td style="padding:7px 12px;text-align:right;font-family:monospace;font-weight:600;color:${e.credit > 0 ? '#0f172a' : '#94a3b8'};">
+            ${e.credit > 0 ? parseFloat(e.credit).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}
+          </td>
+          <td style="padding:7px 12px;text-align:right;font-family:monospace;font-weight:700;color:#0f172a;">
+            ${esc(e.balance_formatted || '')}
+          </td>
+          <td style="padding:7px 12px;text-align:center;" class="no-print">
+            ${e.is_manual ? `
+              <div style="display:inline-flex;gap:4px;">
+                <button type="button" class="btn btn-xs btn-outline elEditRowBtn" data-id="${e.id}" title="Edit Entry" style="padding:1px 5px;">✏️</button>
+                <button type="button" class="btn btn-xs btn-danger elDeleteRowBtn" data-id="${e.id}" title="Delete Entry" style="padding:1px 5px;">🗑️</button>
+              </div>
+            ` : `<span class="badge badge-outline" style="font-size:10px;padding:1px 4px;">Auto ERP</span>`}
+          </td>
+        </tr>
+      `).join("");
+
+      document.getElementById("elTableFoot").style.display = "";
+      document.getElementById("elTotalDebit").textContent = totals.total_debit.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+      document.getElementById("elTotalCredit").textContent = totals.total_credit.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+      // Bind row actions
+      tbody.querySelectorAll(".elEditRowBtn").forEach(b => {
+        b.addEventListener("click", () => {
+          const entryObj = entries.find(x => x.id == b.dataset.id);
+          if (entryObj) openEntityLedgerEntryModal(entityType, entityId, () => loadStatement(), entryObj);
+        });
+      });
+
+      tbody.querySelectorAll(".elDeleteRowBtn").forEach(b => {
+        b.addEventListener("click", async () => {
+          if (!confirm("Are you sure you want to delete this ledger entry?")) return;
+          try {
+            const r = await fetch(`${API_BASE}/inventory?action=entity-ledger-delete&id=${b.dataset.id}`, { headers: authHeaders() });
+            const d = await r.json();
+            if (d.success) {
+              showToast("Entry deleted", "info");
+              loadStatement();
+            } else {
+              showToast(d.error || "Delete failed", "error");
+            }
+          } catch(e) { showToast("Error: " + e.message, "error"); }
+        });
+      });
+    }
+
+    // Closing Balance Highlight Box
+    const curToDate = document.getElementById("elToDate")?.value || new Date().toISOString().split('T')[0];
+    document.getElementById("elClosingDate").textContent = formatDate(curToDate);
+    document.getElementById("elClosingAmount").textContent = `${totals.closing_balance_type} : ${totals.closing_balance_formatted}`;
+  }
+
+  overlay.querySelector("#elApplyFilterBtn").addEventListener("click", () => loadStatement());
+  overlay.querySelector("#elResetFilterBtn").addEventListener("click", () => {
+    document.getElementById("elFromDate").value = '';
+    document.getElementById("elToDate").value = '';
+    loadStatement();
+  });
+
+  overlay.querySelector("#elAddEntryBtn").addEventListener("click", () => {
+    openEntityLedgerEntryModal(entityType, entityId, () => loadStatement());
+  });
+
+  overlay.querySelector("#elPrintStatementBtn").addEventListener("click", () => {
+    if (currentLedgerData) printEntityLedgerStatement(currentLedgerData);
+  });
+
+  overlay.querySelector("#elEditOpeningBtn").addEventListener("click", () => {
+    if (currentLedgerData) openEditOpeningBalanceModal(entityType, entityId, currentLedgerData.entity, () => loadStatement());
+  });
+
+  loadStatement();
+}
+
+// ── Wide Modal Popup: Record Ledger Entry & Voucher ──
+async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = null, onSuccessCallback = null, editEntry = null) {
+  const isEdit = !!(editEntry && editEntry.id);
+  const existingModal = document.getElementById("entityLedgerEntryModalOverlay");
+  if (existingModal) existingModal.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "entityLedgerEntryModalOverlay";
+  overlay.className = "modal-overlay";
+  overlay.style.display = "flex";
+  overlay.style.zIndex = "100000";
+
+  // Fetch list of entities if not supplied or for selection
+  let entitiesList = [];
+  try {
+    if (entityType === 'supplier') {
+      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list&company_id=all`, { headers: authHeaders() });
+      const d = await res.json();
+      if (d.success) entitiesList = d.suppliers || [];
+    } else {
+      const res = await fetch(`${API_BASE}/employees?action=dealers-list&company_id=all`, { headers: authHeaders() });
+      const d = await res.json();
+      if (d.success) entitiesList = d.dealers || [];
+    }
+  } catch(e){}
+
+  const selectedEntity = entitiesList.find(x => x.id == entityId) || entitiesList[0] || {};
+  const isSupplier = (entityType === 'supplier');
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:1150px;width:95vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;background:var(--bg-primary,#fff);box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+      <div class="modal-header" style="background:linear-gradient(135deg,#312e81,#4338ca);color:#fff;padding:14px 22px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:16.5px;font-weight:700;">
+            ${isEdit ? '✏️ Edit Ledger Entry & Voucher' : `📝 New ${isSupplier ? 'Supplier' : 'Dealer'} Ledger Entry & Voucher`}
+          </h3>
+          <div style="font-size:12px;color:#c7d2fe;margin-top:2px;">
+            Record bank transfers, purchase bills, discounts, credit/debit notes & reconcile balances.
+          </div>
+        </div>
+        <button class="modal-close" id="closeLedgerEntryModal" style="color:#fff;font-size:24px;border:none;background:none;cursor:pointer;">&times;</button>
+      </div>
+
+      <form id="ledgerEntryForm" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+        <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1;background:var(--bg-secondary,#f8fafc);">
+          
+          <!-- SECTION 1: Party & Posting Information -->
+          <div style="background:#fff;padding:16px;border-radius:10px;border:1px solid #cbd5e1;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+            <div style="font-size:12.5px;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:12px;letter-spacing:0.5px;">
+              🏢 1. Party & Voucher Details
+            </div>
+            <div class="form-grid" style="grid-template-columns:1.5fr 1fr 1fr;gap:14px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">${isSupplier ? 'Select Supplier' : 'Select Dealer'} *</label>
+                <select id="leEntityId" class="form-select" required>
+                  ${entitiesList.map(e => `<option value="${e.id}" ${e.id == (entityId || selectedEntity.id) ? 'selected' : ''}>${esc(e.legal_name)} ${e.trade_name ? `(${esc(e.trade_name)})` : ''}</option>`).join("")}
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">Posting Date *</label>
+                <input type="date" id="lePostDate" class="form-input" required value="${isEdit ? editEntry.post_date : new Date().toISOString().split('T')[0]}">
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">Document / Voucher No. *</label>
+                <input type="text" id="leDocNo" class="form-input" required placeholder="e.g. 1400407128 / 4800346958" value="${isEdit ? esc(editEntry.document_no || '') : ''}">
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 2: Transaction Classification & Amounts -->
+          <div style="background:#fff;padding:16px;border-radius:10px;border:1px solid #cbd5e1;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+            <div style="font-size:12.5px;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:12px;letter-spacing:0.5px;">
+              💰 2. Transaction Flow & Amounts
+            </div>
+
+            <div class="form-grid" style="grid-template-columns:1fr 1fr 1.2fr;gap:14px;margin-bottom:14px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">Transaction Category *</label>
+                <select id="leEntryType" class="form-select" required>
+                  <option value="bank_payment" ${isEdit && editEntry.entry_type === 'bank_payment' ? 'selected' : ''}>💳 Bank Transfer / Payment Made</option>
+                  <option value="purchase_invoice" ${isEdit && editEntry.entry_type === 'purchase_invoice' ? 'selected' : ''}>📥 Purchase Bill / Inward Invoice</option>
+                  <option value="discount" ${isEdit && editEntry.entry_type === 'discount' ? 'selected' : ''}>🏷️ SPD Discount / Trade Rebate</option>
+                  <option value="credit_note" ${isEdit && editEntry.entry_type === 'credit_note' ? 'selected' : ''}>📄 Credit Note</option>
+                  <option value="debit_note" ${isEdit && editEntry.entry_type === 'debit_note' ? 'selected' : ''}>📄 Debit Note</option>
+                  <option value="bank_receipt" ${isEdit && editEntry.entry_type === 'bank_receipt' ? 'selected' : ''}>🏦 Bank Receipt / Payment Received</option>
+                  <option value="adjustment" ${isEdit && editEntry.entry_type === 'adjustment' ? 'selected' : ''}>⚖️ Adjustment / Reconcile Entry</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">Amount Flow *</label>
+                <div style="display:flex;gap:16px;padding:6px 0;">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
+                    <input type="radio" name="leFlow" value="debit" ${(isEdit && editEntry.debit > 0) || (!isEdit && isSupplier) ? 'checked' : ''}> 
+                    <span style="color:#b91c1c;">Debit (Dr)</span>
+                  </label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
+                    <input type="radio" name="leFlow" value="credit" ${(isEdit && editEntry.credit > 0) || (!isEdit && !isSupplier) ? 'checked' : ''}> 
+                    <span style="color:#15803d;">Credit (Cr)</span>
+                  </label>
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px;">
+                  ${isSupplier ? 'Supplier: Debit = Payment/Discount. Credit = Invoice.' : 'Dealer: Debit = Sales Invoice. Credit = Payment/Receipt.'}
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:700;font-size:12px;color:#0f172a;">Amount (₹) *</label>
+                <input type="number" step="0.01" id="leAmount" class="form-input" required placeholder="e.g. 147000.00" style="font-size:15px;font-weight:700;" value="${isEdit ? (editEntry.debit || editEntry.credit || '') : ''}">
+              </div>
+            </div>
+
+            <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:14px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">Payment Mode / Channel</label>
+                <select id="lePaymentMode" class="form-select">
+                  <option value="Axis Bank">Axis Bank Transfer</option>
+                  <option value="Kotak Bank">Kotak Bank Transfer</option>
+                  <option value="HDFC Bank">HDFC Bank Transfer</option>
+                  <option value="State Bank of India">SBI Transfer</option>
+                  <option value="IMPS">IMPS / Fast Transfer</option>
+                  <option value="NEFT/RTGS">NEFT / RTGS</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Discount Adjustment">Discount Adjustment</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-weight:600;font-size:12px;">Bank Name / Reference Tag</label>
+                <input type="text" id="leBankName" class="form-input" placeholder="e.g. AXIS TRF / KOTAK AXIS" value="${isEdit ? esc(editEntry.bank_name || '') : ''}">
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION 3: Narration & Document Attachment -->
+          <div style="background:#fff;padding:16px;border-radius:10px;border:1px solid #cbd5e1;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+            <div style="font-size:12.5px;font-weight:700;color:#1e40af;text-transform:uppercase;margin-bottom:12px;letter-spacing:0.5px;">
+              📝 3. Text, Narration & Attachment
+            </div>
+
+            <div class="form-group" style="margin-bottom:10px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label class="form-label" style="font-weight:600;font-size:12px;margin:0;">Narration / Statement Text *</label>
+                <div style="display:flex;gap:4px;">
+                  <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="/516115492525/GEETHA ENTERPRISES AXIS">+ Axis Trf</button>
+                  <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="IMPS/P2A/+ GEETHAEN AXIS">+ IMPS</button>
+                  <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="SPD DISCOUNT FTM AUG TO NOV">+ Discount</button>
+                  <button type="button" class="btn btn-xs btn-outline leQuickTextBtn" data-text="NAGAR AGRO ECMS HDFC">+ ECMS</button>
+                </div>
+              </div>
+              <textarea id="leNarration" class="form-input" rows="2" required placeholder="e.g. /516115492525/GEETHA ENTERPRISES AXIS 10.06.25">${isEdit ? esc(editEntry.narration || '') : ''}</textarea>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-weight:600;font-size:12px;">Attach Document / Statement Proof (Optional)</label>
+              <input type="file" id="leFileInp" class="form-input" accept="image/*,.pdf" style="padding:5px;">
+              <input type="hidden" id="leFileBase64" value="">
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding:14px 20px;background:#fff;border-top:1px solid #cbd5e1;display:flex;justify-content:space-between;align-items:center;">
+          <button type="button" class="btn btn-secondary" id="cancelLedgerEntryBtn">Cancel</button>
+          <div style="display:flex;gap:10px;">
+            <button type="submit" class="btn btn-primary" id="saveLedgerEntryBtn" style="font-weight:700;padding:8px 20px;">
+              💾 ${isEdit ? 'Update Entry' : 'Save Ledger Entry'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#closeLedgerEntryModal").addEventListener("click", () => overlay.remove());
+  overlay.querySelector("#cancelLedgerEntryBtn").addEventListener("click", () => overlay.remove());
+
+  // Quick text template buttons
+  overlay.querySelectorAll(".leQuickTextBtn").forEach(b => {
+    b.addEventListener("click", () => {
+      const narEl = document.getElementById("leNarration");
+      narEl.value = b.dataset.text + ' ' + (document.getElementById("lePostDate")?.value || '');
+    });
+  });
+
+  // Auto-switch flow when category changes
+  overlay.querySelector("#leEntryType").addEventListener("change", (e) => {
+    const val = e.target.value;
+    const debitRadio = overlay.querySelector("input[name='leFlow'][value='debit']");
+    const creditRadio = overlay.querySelector("input[name='leFlow'][value='credit']");
+
+    if (val === 'bank_payment' || val === 'debit_note' || val === 'discount') {
+      if (isSupplier) debitRadio.checked = true;
+      else creditRadio.checked = true;
+    } else if (val === 'purchase_invoice' || val === 'credit_note') {
+      if (isSupplier) creditRadio.checked = true;
+      else debitRadio.checked = true;
+    }
+  });
+
+  // File to base64
+  const fileInp = overlay.querySelector("#leFileInp");
+  fileInp.addEventListener("change", () => {
+    const file = fileInp.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById("leFileBase64").value = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Submit Handler
+  overlay.querySelector("#ledgerEntryForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("saveLedgerEntryBtn");
+    setButtonLoading(btn, true, "Saving...");
+
+    const flow = overlay.querySelector("input[name='leFlow']:checked").value;
+    const amt = parseFloat(document.getElementById("leAmount").value || 0);
+
+    const payload = {
+      action: isEdit ? "entity-ledger-update" : "entity-ledger-create",
+      id: isEdit ? editEntry.id : undefined,
+      entity_type: entityType,
+      entity_id: parseInt(document.getElementById("leEntityId").value, 10),
+      post_date: document.getElementById("lePostDate").value,
+      document_no: document.getElementById("leDocNo").value.trim(),
+      entry_type: document.getElementById("leEntryType").value,
+      debit: flow === 'debit' ? amt : 0,
+      credit: flow === 'credit' ? amt : 0,
+      payment_mode: document.getElementById("lePaymentMode").value,
+      bank_name: document.getElementById("leBankName").value.trim(),
+      narration: document.getElementById("leNarration").value.trim(),
+      attachments_json: document.getElementById("leFileBase64").value || undefined
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/inventory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || "Ledger entry saved!", "success");
+        overlay.remove();
+        if (typeof onSuccessCallback === "function") onSuccessCallback();
+      } else {
+        showToast(data.error || "Save failed", "error");
+        setButtonLoading(btn, false);
+      }
+    } catch(err) {
+      showToast("Error: " + err.message, "error");
+      setButtonLoading(btn, false);
+    }
+  });
+}
+
+// ── Edit Opening Balance Modal ──
+function openEditOpeningBalanceModal(entityType, entityId, entityObj, onSuccessCallback) {
+  const existingModal = document.getElementById("editOpeningBalanceModalOverlay");
+  if (existingModal) existingModal.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "editOpeningBalanceModalOverlay";
+  overlay.className = "modal-overlay";
+  overlay.style.display = "flex";
+  overlay.style.zIndex = "100001";
+
+  const isSupplier = (entityType === 'supplier');
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:550px;width:92vw;">
+      <div class="modal-header">
+        <h3 style="margin:0;font-size:16px;">⚙️ Edit Opening Balance - ${esc(entityObj.legal_name)}</h3>
+        <button class="modal-close" id="closeOpeningModal">&times;</button>
+      </div>
+      <form id="editOpeningForm">
+        <div class="modal-body" style="padding:18px;">
+          <div class="form-group">
+            <label class="form-label" style="font-weight:600;">Account Code / Ref No.</label>
+            <input type="text" id="obAccountCode" class="form-input" placeholder="e.g. 2100000126" value="${esc(entityObj.account_code || '')}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight:600;">Opening Balance Date</label>
+            <input type="date" id="obDate" class="form-input" required value="${entityObj.opening_balance_date || '2025-04-01'}">
+          </div>
+          <div class="form-grid" style="grid-template-columns:1.5fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight:600;">Opening Balance Amount (₹)</label>
+              <input type="number" step="0.01" id="obAmount" class="form-input" required placeholder="e.g. 195660.89" value="${parseFloat(entityObj.opening_balance || 0)}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-weight:600;">Balance Type</label>
+              <select id="obType" class="form-select">
+                <option value="Credit" ${(entityObj.opening_balance_type || 'Credit').toLowerCase() === 'credit' ? 'selected' : ''}>Credit (Cr / -)</option>
+                <option value="Debit" ${(entityObj.opening_balance_type || '').toLowerCase() === 'debit' ? 'selected' : ''}>Debit (Dr)</option>
+              </select>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text3);line-height:1.4;margin-top:6px;">
+            ${isSupplier ? 'Note: For suppliers, Credit balance means you owe them money. Debit balance means you have advance credit.' : 'Note: For dealers, Debit balance means dealer owes you money. Credit balance means advance deposit.'}
+          </div>
+        </div>
+        <div class="modal-footer" style="padding:12px 18px;display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn btn-secondary" id="cancelOpeningBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveOpeningBtn">💾 Save Opening Balance</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#closeOpeningModal").addEventListener("click", () => overlay.remove());
+  overlay.querySelector("#cancelOpeningBtn").addEventListener("click", () => overlay.remove());
+
+  overlay.querySelector("#editOpeningForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("saveOpeningBtn");
+    setButtonLoading(btn, true, "Saving...");
+
+    try {
+      const res = await fetch(`${API_BASE}/inventory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({
+          action: "entity-ledger-update-opening",
+          entity_type: entityType,
+          entity_id: entityId,
+          opening_balance: parseFloat(document.getElementById("obAmount").value || 0),
+          opening_balance_type: document.getElementById("obType").value,
+          opening_balance_date: document.getElementById("obDate").value,
+          account_code: document.getElementById("obAccountCode").value.trim()
+        })
+      });
+      const d = await res.json();
+      if (d.success) {
+        showToast("Opening balance updated!", "success");
+        overlay.remove();
+        if (typeof onSuccessCallback === "function") onSuccessCallback();
+      } else {
+        showToast(d.error || "Save failed", "error");
+        setButtonLoading(btn, false);
+      }
+    } catch(err) {
+      showToast("Error: " + err.message, "error");
+      setButtonLoading(btn, false);
+    }
+  });
+}
+
+// ── Print Statement (Identical Layout to Sonalika Industries PDF) ──
+function printEntityLedgerStatement(data) {
+  const { entity, company, entries, totals, opening_balance, opening_balance_type, opening_balance_date, entity_type } = data;
+  const isSupplier = (entity_type === 'supplier');
+
+  const printWin = window.open("", "_blank", "width=950,height=1000");
+  if (!printWin) return alert("Please allow popups to print statement.");
+
+  const opFormatted = parseFloat(opening_balance).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const opStr = `Opening ${formatDate(opening_balance_date || '2025-04-01')} ${opening_balance_type || 'Credit'} ${opFormatted}${opening_balance_type === 'Credit' ? '-' : ''}`;
+
+  const rowsHtml = (entries || []).map(e => `
+    <tr>
+      <td style="padding:4px 6px;text-align:left;white-space:nowrap;">${formatDate(e.post_date)}</td>
+      <td style="padding:4px 6px;text-align:left;white-space:nowrap;">${esc(e.document_no || '')}</td>
+      <td style="padding:4px 6px;text-align:left;">${esc(e.narration || '')}</td>
+      <td style="padding:4px 6px;text-align:right;white-space:nowrap;">${e.debit > 0 ? parseFloat(e.debit).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}</td>
+      <td style="padding:4px 6px;text-align:right;white-space:nowrap;">${e.credit > 0 ? parseFloat(e.credit).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}</td>
+      <td style="padding:4px 6px;text-align:right;white-space:nowrap;">${esc(e.balance_formatted || '')}</td>
+    </tr>
+  `).join("");
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Statement - ${esc(entity.legal_name)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Courier New', Courier, monospace, Arial; font-size: 11px; margin: 15px; color: #000; background: #fff; line-height: 1.25; }
+    .header-box { text-align: center; margin-bottom: 12px; }
+    .header-box h2 { font-size: 13.5px; font-weight: bold; margin: 0 0 2px 0; text-transform: uppercase; }
+    .header-box p { margin: 1px 0; font-size: 10.5px; }
+    .acc-header { margin: 14px 0 10px 0; }
+    .acc-code { font-weight: bold; font-size: 11.5px; }
+    .acc-name { font-weight: bold; font-size: 12px; text-transform: uppercase; }
+    .op-line { margin: 10px 0 6px 0; font-weight: bold; font-size: 11px; display: flex; justify-content: space-between; border-top: 1px solid #000; padding-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    th { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 6px; font-size: 10.5px; font-weight: bold; }
+    td { padding: 3px 6px; font-size: 10.5px; }
+    .tfoot-tr td { border-top: 1px solid #000; border-bottom: 1px solid #000; font-weight: bold; }
+    .closing-box { margin-top: 14px; font-weight: bold; font-size: 11.5px; }
+    .highlight { background: #99f6e4; padding: 2px 8px; border-radius: 3px; display: inline-block; font-weight: bold; }
+    @media print {
+      body { margin: 8mm; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom:15px;text-align:right;">
+    <button onclick="window.print()" style="background:#2563eb;color:#fff;border:none;padding:8px 18px;font-weight:bold;cursor:pointer;border-radius:4px;">🖨️ Print Statement</button>
+  </div>
+
+  <div class="header-box">
+    <h2>${esc(entity.legal_name)} ${entity.trade_name ? '(' + esc(entity.trade_name) + ')' : ''}</h2>
+    <p>${esc(entity.address || '')}</p>
+    <p>Tel(O) - ${esc(entity.phone || '—')}</p>
+    <p>GSTIN - ${esc(entity.gstin || '—')}</p>
+  </div>
+
+  <div class="acc-header">
+    <div class="acc-code">${esc(entity.account_code || ('2100000' + entity.id))}</div>
+    <div class="acc-name">${esc(company.name || 'GEETHA ENTERPRISES RAMACHANDRAPURAM')}</div>
+    <div>${esc(company.address || '')}</div>
+  </div>
+
+  <div class="op-line">
+    <span>${esc(opStr)}</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:left;width:12%;">Post Date</th>
+        <th style="text-align:left;width:14%;">Document No</th>
+        <th style="text-align:left;width:44%;">Text</th>
+        <th style="text-align:right;width:10%;">Debit</th>
+        <th style="text-align:right;width:10%;">Credit</th>
+        <th style="text-align:right;width:10%;">Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+    <tfoot>
+      <tr class="tfoot-tr">
+        <td colspan="3"></td>
+        <td style="text-align:right;">${totals.total_debit.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        <td style="text-align:right;">${totals.total_credit.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="closing-box">
+    Closing Balance as on ${formatDate(new Date().toISOString().split('T')[0])} ${totals.closing_balance_type} : 
+    <span class="highlight">${totals.closing_balance_formatted}</span>
+  </div>
+</body>
+</html>`;
+
+  printWin.document.write(html);
+  printWin.document.close();
+}
+
+window.openEntityLedgerModal = openEntityLedgerModal;
+window.openEntityLedgerEntryModal = openEntityLedgerEntryModal;
+window.printEntityLedgerStatement = printEntityLedgerStatement;

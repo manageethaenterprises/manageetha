@@ -39,46 +39,88 @@ async function ensureExpensesColumns(sql) {
   }
 }
 
-async function getNextSkuNumber(sql, compId) {
+async function resequenceCompanySkus(sql, compId) {
+  const cid = safeInt(compId);
+  if (!cid) return;
   try {
+    const products = await sql`
+      SELECT id, sku, created_at FROM products
+      WHERE company_id = ${cid} AND is_active = true
+      ORDER BY id ASC
+    `;
+    if (!products || products.length === 0) return;
+
+    // Helper to extract numeric part from SKU-xxx
+    const parseNum = (sku) => {
+      if (!sku) return null;
+      const m = sku.toString().trim().match(/^SKU-(\d+)$/i);
+      return m ? parseInt(m[1], 10) : null;
+    };
+
+    // Sort products based on existing numeric SKU if present, else by created_at / id
+    products.sort((a, b) => {
+      const numA = parseNum(a.sku);
+      const numB = parseNum(b.sku);
+      if (numA !== null && numB !== null) return numA - numB;
+      if (numA !== null && numB === null) return -1;
+      if (numA === null && numB !== null) return 1;
+      return (new Date(a.created_at || 0) - new Date(b.created_at || 0)) || (a.id - b.id);
+    });
+
+    // Check if any product needs re-numbering
+    let needsUpdate = false;
+    for (let i = 0; i < products.length; i++) {
+      const expectedSku = `SKU-${String(i + 1).padStart(3, '0')}`;
+      if (products[i].sku !== expectedSku) {
+        needsUpdate = true;
+        break;
+      }
+    }
+    if (!needsUpdate) return;
+
+    // Pass 1: Set temporary unique SKUs to prevent collision
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      const expectedSku = `SKU-${String(i + 1).padStart(3, '0')}`;
+      if (p.sku !== expectedSku) {
+        await sql`UPDATE products SET sku = ${'TEMP-SKU-' + p.id} WHERE id = ${p.id}`;
+      }
+    }
+
+    // Pass 2: Set final sequential continuous SKUs starting from SKU-001
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      const expectedSku = `SKU-${String(i + 1).padStart(3, '0')}`;
+      await sql`UPDATE products SET sku = ${expectedSku} WHERE id = ${p.id}`;
+    }
+  } catch (err) {
+    console.error(`resequenceCompanySkus error for company ${cid}:`, err.message);
+  }
+}
+
+async function getNextSkuNumber(sql, compId) {
+  const cid = safeInt(compId) || 1;
+  try {
+    await resequenceCompanySkus(sql, cid);
+
     const activeProducts = await sql`
       SELECT id, sku FROM products 
-      WHERE is_active = true 
+      WHERE company_id = ${cid} AND is_active = true 
       ORDER BY id ASC
     `;
 
-    const invalidProducts = [];
-    const validNumbers = new Set();
-
-    for (const p of activeProducts) {
-      const skuStr = p.sku ? p.sku.toString().trim() : "";
-      if (/^SKU-\d{3,}$/i.test(skuStr)) {
-        const num = parseInt(skuStr.replace(/^SKU-/i, ""), 10);
-        if (!isNaN(num)) validNumbers.add(num);
-      } else {
-        invalidProducts.push(p);
-      }
-    }
-
-    if (invalidProducts.length > 0) {
-      let nextNum = 1;
-      for (const p of invalidProducts) {
-        while (validNumbers.has(nextNum)) {
-          nextNum++;
-        }
-        const assigned = `SKU-${String(nextNum).padStart(3, '0')}`;
-        await sql`UPDATE products SET sku = ${assigned} WHERE id = ${p.id}`;
-        validNumbers.add(nextNum);
-      }
-    }
-
     let maxNum = 0;
-    for (const num of validNumbers) {
-      if (num > maxNum) maxNum = num;
+    for (const p of activeProducts) {
+      const skuStr = p.sku ? p.sku.toString().trim() : '';
+      const m = skuStr.match(/^SKU-(\d+)$/i);
+      if (m) {
+        const num = parseInt(m[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
     }
     return maxNum;
   } catch (err) {
-    console.error("getNextSkuNumber error:", err.message);
+    console.error(`getNextSkuNumber error for company ${cid}:`, err.message);
     return 0;
   }
 }
@@ -659,7 +701,6 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ PRODUCTS ═══════════════
     else if (action === "products") {
-      await getNextSkuNumber(sql, null);
       const userRole = (user.role || "").toLowerCase();
       const isSuperAdmin = (userRole === "superadmin");
 
@@ -672,7 +713,6 @@ module.exports = async function handler(req, res) {
         const userCompId = safeInt(user.company_id) || 1;
         const requestedCompId = safeInt(compQuery);
         if (requestedCompId && requestedCompId !== userCompId) {
-          // Check if requestedCompId belongs to user's company family
           const uCompRows = await sql`SELECT id, parent_company_id, gstin FROM companies WHERE id = ${userCompId}`;
           const uComp = uCompRows[0];
           const rootId = uComp?.parent_company_id ? parseInt(uComp.parent_company_id) : (uComp ? parseInt(uComp.id) : userCompId);
@@ -702,6 +742,16 @@ module.exports = async function handler(req, res) {
           }
         } else {
           targetCompId = userCompId;
+        }
+      }
+
+      // Automatically re-sequence SKU numbers starting from SKU-001 with continuous sequence per company
+      if (targetCompId) {
+        await resequenceCompanySkus(sql, targetCompId);
+      } else {
+        const distinctComps = await sql`SELECT DISTINCT company_id FROM products WHERE is_active = true AND company_id IS NOT NULL`;
+        for (const dc of distinctComps) {
+          await resequenceCompanySkus(sql, dc.company_id);
         }
       }
 
@@ -735,13 +785,17 @@ module.exports = async function handler(req, res) {
         selling_rate, mrp, current_stock, min_stock, rack_no, weight, serial_no, supplier_id
       } = req.body;
 
-      const pId = safeInt(id);
+            const pId = safeInt(id);
       if (!pId || !name) return res.status(400).json({ error: "Product ID and Name required" });
 
+      const curProd = await sql`SELECT company_id, sku FROM products WHERE id = ${pId}`;
+      const oldCompId = curProd[0]?.company_id;
+      const targetCompId = safeInt(req.body.company_id) || oldCompId || 1;
+
       const supId = safeInt(supplier_id);
-      let finalSku = (sku && sku.toString().trim() !== "") ? sku.toString().trim() : null;
+      let finalSku = (sku && sku.toString().trim() !== "" && sku.toString().trim().toLowerCase() !== "auto") ? sku.toString().trim() : (curProd[0]?.sku || null);
       if (!finalSku) {
-        const maxNum = await getNextSkuNumber(sql, null);
+        const maxNum = await getNextSkuNumber(sql, targetCompId);
         finalSku = `SKU-${String(maxNum + 1).padStart(3, '0')}`;
       }
 
@@ -759,6 +813,7 @@ module.exports = async function handler(req, res) {
 
       const updated = await sql`
         UPDATE products SET
+          company_id = COALESCE(${targetCompId}, company_id),
           sku = ${finalSku},
           name = ${name},
           brand = ${brand || null},
@@ -782,15 +837,41 @@ module.exports = async function handler(req, res) {
         RETURNING *
       `;
 
+      if (oldCompId && targetCompId !== oldCompId) {
+        await resequenceCompanySkus(sql, oldCompId);
+        await resequenceCompanySkus(sql, targetCompId);
+      }
       return res.status(200).json({ success: true, product: updated[0], message: "Product updated successfully" });
     }
 
-    else if (action === "product-delete") {
+        else if (action === "product-delete") {
       const pId = safeInt(req.query.id || req.body?.id);
       if (!pId) return res.status(400).json({ error: "Product ID required" });
 
-      await sql`UPDATE products SET is_active = false WHERE id = ${pId}`;
-      return res.status(200).json({ success: true, message: "Product deleted successfully!" });
+      const prodRows = await sql`SELECT company_id, sku FROM products WHERE id = ${pId}`;
+      const compId = prodRows[0]?.company_id;
+      const oldSku = prodRows[0]?.sku || '';
+
+      await sql`UPDATE products SET is_active = false, sku = ${'DEL-' + pId + '-' + oldSku} WHERE id = ${pId}`;
+
+      if (compId) {
+        await resequenceCompanySkus(sql, compId);
+      }
+
+      return res.status(200).json({ success: true, message: "Product deleted and SKU sequence adjusted successfully!" });
+    }
+
+    else if (action === "realign-skus" || action === "resequence-skus") {
+      const compId = safeInt(req.query.company_id || req.body?.company_id);
+      if (compId) {
+        await resequenceCompanySkus(sql, compId);
+      } else {
+        const distinctComps = await sql`SELECT DISTINCT company_id FROM products WHERE is_active = true AND company_id IS NOT NULL`;
+        for (const dc of distinctComps) {
+          await resequenceCompanySkus(sql, dc.company_id);
+        }
+      }
+      return res.status(200).json({ success: true, message: "SKU codes successfully aligned and sequenced from SKU-001!" });
     }
 
     else if (action === "product-create" || action === "add-product") {
@@ -894,6 +975,10 @@ module.exports = async function handler(req, res) {
           if (resObj.isUpdated) updatedCount++;
           if (resObj.warning) warnings.push(`[${p.name}] ${resObj.warning}`);
         }
+      }
+
+      for (const cid of touchedCompIds) {
+        await resequenceCompanySkus(sql, cid);
       }
 
       let msg = `Bulk inventory import completed! ${createdCount} new product(s) created, ${updatedCount} existing product(s) updated.`;

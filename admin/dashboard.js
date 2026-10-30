@@ -336,11 +336,9 @@ window.sortDataArray = function(arr, sortKey, sortDir = "asc") {
       return (numA - numB) * multiplier;
     }
 
-    const strA = String(valA).toLowerCase();
-    const strB = String(valB).toLowerCase();
-    if (strA < strB) return -1 * multiplier;
-    if (strA > strB) return 1 * multiplier;
-    return 0;
+    const strA = String(valA);
+    const strB = String(valB);
+    return strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' }) * multiplier;
   });
 };
 

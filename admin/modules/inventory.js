@@ -1006,8 +1006,8 @@ async function loadProductsSubTab() {
 
   let allProductsList = [];
   let filteredProductsList = [];
-  let sortKey = 'created_at';
-  let sortDir = 'desc';
+  let sortKey = 'sku';
+  let sortDir = 'asc';
 
   function renderProductsTable() {
     const tbody = document.getElementById("prodTableBody");
@@ -1189,6 +1189,31 @@ async function loadProductsSubTab() {
     });
   });
 
+  
+  on("realignSkuBtn", "click", async () => {
+    const btn = document.getElementById("realignSkuBtn");
+    const selComp = document.getElementById("prodCompanyFilter")?.value || getActiveCompId();
+    const compParam = (selComp && selComp !== 'all') ? `&company_id=${selComp}` : '';
+    setButtonLoading(btn, true, "Adjusting SKUs...");
+    try {
+      const res = await fetch(`${API_BASE}/inventory?action=realign-skus${compParam}`, {
+        method: "POST",
+        headers: authHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || "SKUs adjusted successfully!", "success");
+        await fetchProducts();
+      } else {
+        showToast(data.error || "Failed to adjust SKUs", "error");
+      }
+    } catch (e) {
+      showToast("Error: " + e.message, "error");
+    } finally {
+      setButtonLoading(btn, false, "🔄 Adjust SKUs (From 1)");
+    }
+  });
+
   on("exportProdBtn", "click", async (e) => {
     const btn = e?.currentTarget || document.getElementById("exportProdBtn");
     if (!btn || btn.disabled) return;
@@ -1347,7 +1372,8 @@ async function loadProductsSubTab() {
     }
 
     const editingId = document.getElementById("pEditingId").value;
-    const targetCompId = (!selectedCompanyId || selectedCompanyId === "all") ? (typeof currentCompanies !== 'undefined' && currentCompanies[0]?.id ? currentCompanies[0].id : 1) : selectedCompanyId;
+    const chosenCompId = document.getElementById("pCompanyId")?.value;
+    const targetCompId = safeInt(chosenCompId) || (!selectedCompanyId || selectedCompanyId === "all" ? (typeof currentCompanies !== 'undefined' && currentCompanies[0]?.id ? currentCompanies[0].id : 1) : selectedCompanyId);
     const payload = {
       id: editingId || undefined,
       company_id: targetCompId,

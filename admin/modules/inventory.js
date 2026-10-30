@@ -8393,21 +8393,46 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
   overlay.style.display = "flex";
   overlay.style.zIndex = "100000";
 
-  // Fetch list of entities if not supplied or for selection
+  // Scoped company parameter: non-superadmin only sees user's company; superadmin sees activeCompId (or all if 'all')
+  const userObj = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
+  const isSuper = (userObj?.role || '').toLowerCase() === 'superadmin' || userObj?.username === 'superadmin';
+  const activeComp = (typeof getActiveCompId === 'function') ? getActiveCompId() : 'all';
+
+  let compParam = 'all';
+  if (!isSuper) {
+    compParam = userObj?.company_id || activeComp || 1;
+  } else if (activeComp && activeComp !== 'all') {
+    compParam = activeComp;
+  }
+
+  // Fetch list of entities scoped to company
   let entitiesList = [];
   try {
     if (entityType === 'supplier') {
-      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list&company_id=all`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/inventory?action=suppliers-list&company_id=${compParam}`, { headers: authHeaders() });
       const d = await res.json();
       if (d.success) entitiesList = d.suppliers || [];
     } else {
-      const res = await fetch(`${API_BASE}/employees?action=dealers-list&company_id=all`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE}/employees?action=dealers-list&company_id=${compParam}`, { headers: authHeaders() });
       const d = await res.json();
       if (d.success) entitiesList = d.dealers || [];
     }
   } catch(e){}
 
-  const selectedEntity = entitiesList.find(x => x.id == entityId) || entitiesList[0] || {};
+  let selectedEntity = entitiesList.find(x => x.id == entityId);
+  if (!selectedEntity && entityId) {
+    try {
+      const singleRes = await fetch(entityType === 'supplier' ? `${API_BASE}/inventory?action=suppliers-list&company_id=all` : `${API_BASE}/employees?action=dealers-list&company_id=all`, { headers: authHeaders() });
+      const singleData = await singleRes.json();
+      const allEnts = (entityType === 'supplier' ? singleData.suppliers : singleData.dealers) || [];
+      const found = allEnts.find(x => x.id == entityId);
+      if (found) {
+        entitiesList.unshift(found);
+        selectedEntity = found;
+      }
+    } catch(e) {}
+  }
+  if (!selectedEntity) selectedEntity = entitiesList[0] || {};
   const isSupplier = (entityType === 'supplier');
 
   overlay.innerHTML = `
@@ -8436,7 +8461,11 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
               <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label" style="font-weight:600;font-size:12px;">${isSupplier ? 'Select Supplier' : 'Select Dealer'} *</label>
                 <select id="leEntityId" class="form-select" required>
-                  ${entitiesList.map(e => `<option value="${e.id}" ${e.id == (entityId || selectedEntity.id) ? 'selected' : ''}>${esc(e.legal_name)} ${e.trade_name ? `(${esc(e.trade_name)})` : ''}</option>`).join("")}
+                  ${entitiesList.map(e => {
+                    const isSel = (e.id == (entityId || selectedEntity.id));
+                    const compTag = (compParam === 'all' && e.company_name) ? ` [${esc(e.company_name)}]` : '';
+                    return `<option value="${e.id}" ${isSel ? 'selected' : ''}>${esc(e.legal_name)} ${e.trade_name ? `(${esc(e.trade_name)})` : ''}${compTag}</option>`;
+                  }).join("")}
                 </select>
               </div>
 
@@ -8626,14 +8655,18 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
     const btn = document.getElementById("saveLedgerEntryBtn");
     setButtonLoading(btn, true, "Saving...");
 
-    const flow = overlay.querySelector("input[name='leFlow']:checked").value;
+    const flowRadio = overlay.querySelector("input[name='leFlow']:checked");
+    const flow = flowRadio ? flowRadio.value : (isSupplier ? 'debit' : 'credit');
     const amt = parseFloat(document.getElementById("leAmount").value || 0);
+    const chosenEntityId = parseInt(document.getElementById("leEntityId").value, 10);
+    const chosenEntity = entitiesList.find(x => x.id == chosenEntityId) || selectedEntity || {};
 
     const payload = {
       action: isEdit ? "entity-ledger-update" : "entity-ledger-create",
       id: isEdit ? editEntry.id : undefined,
       entity_type: entityType,
-      entity_id: parseInt(document.getElementById("leEntityId").value, 10),
+      entity_id: chosenEntityId,
+      company_id: chosenEntity.company_id || (activeComp !== 'all' ? activeComp : (userObj?.company_id || 1)),
       post_date: document.getElementById("lePostDate").value,
       document_no: document.getElementById("leDocNo").value.trim(),
       entry_type: document.getElementById("leEntryType").value,
@@ -8646,7 +8679,7 @@ async function openEntityLedgerEntryModal(entityType = 'supplier', entityId = nu
     };
 
     try {
-      const res = await fetch(`${API_BASE}/inventory`, {
+      const res = await fetch(`${API_BASE}/inventory?action=${payload.action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(payload)
@@ -8732,7 +8765,7 @@ function openEditOpeningBalanceModal(entityType, entityId, entityObj, onSuccessC
     setButtonLoading(btn, true, "Saving...");
 
     try {
-      const res = await fetch(`${API_BASE}/inventory`, {
+      const res = await fetch(`${API_BASE}/inventory?action=entity-ledger-update-opening`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({

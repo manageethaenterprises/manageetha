@@ -905,12 +905,23 @@ module.exports = async function handler(req, res) {
         entity_type, entity_id, company_id, post_date, document_no,
         entry_type, narration, debit, credit, payment_mode, bank_name,
         attachments_json
-      } = req.body;
+      } = body;
 
       const eType = (entity_type || "supplier").toLowerCase().trim();
       const eId = safeInt(entity_id);
       if (!eId) return res.status(400).json({ error: "entity_id required" });
-      const compId = safeInt(company_id) || safeInt(user.company_id) || 1;
+
+      let compId = safeInt(company_id) || safeInt(body.company_id);
+      if (!compId) {
+        if (eType === 'dealer') {
+          const dRow = await sql`SELECT company_id FROM dealers WHERE id = ${eId}`;
+          if (dRow.length > 0) compId = dRow[0].company_id;
+        } else {
+          const sRow = await sql`SELECT company_id FROM suppliers WHERE id = ${eId}`;
+          if (sRow.length > 0) compId = sRow[0].company_id;
+        }
+      }
+      if (!compId) compId = safeInt(user.company_id) || 1;
 
       const pDate = post_date || new Date().toISOString().split('T')[0];
       const docNo = (document_no || '').trim() || null;
@@ -927,7 +938,7 @@ module.exports = async function handler(req, res) {
           ${compId}, ${eType}, ${eId}, ${pDate}, ${docNo},
           ${entry_type || 'manual_entry'}, ${eNarration}, ${debAmt}, ${credAmt},
           ${payment_mode || null}, ${bank_name || null}, ${attachments_json || null},
-          ${user.userId || null}
+          ${user.id || user.userId || null}
         )
         RETURNING *
       `;
@@ -939,7 +950,7 @@ module.exports = async function handler(req, res) {
       const {
         id, post_date, document_no, entry_type, narration,
         debit, credit, payment_mode, bank_name, attachments_json
-      } = req.body;
+      } = body;
       const recId = safeInt(id);
       if (!recId) return res.status(400).json({ error: "Ledger entry id required" });
 
@@ -962,7 +973,7 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "entity-ledger-delete") {
-      const recId = safeInt(req.query.id || req.body?.id);
+      const recId = safeInt(req.query.id || body?.id);
       if (!recId) return res.status(400).json({ error: "Ledger entry id required" });
 
       await sql`DELETE FROM entity_ledger WHERE id = ${recId}`;
@@ -970,7 +981,7 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "entity-ledger-update-opening") {
-      const { entity_type, entity_id, opening_balance, opening_balance_type, opening_balance_date, account_code } = req.body;
+      const { entity_type, entity_id, opening_balance, opening_balance_type, opening_balance_date, account_code } = body;
       const eType = (entity_type || "supplier").toLowerCase().trim();
       const eId = safeInt(entity_id);
       if (!eId) return res.status(400).json({ error: "entity_id required" });

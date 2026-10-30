@@ -527,39 +527,82 @@ module.exports = async function handler(req, res) {
       // Auto-heal custom invoice items if gst_rate was saved as 0 or missing but sale has tax
       if (sale[0] && sale[0].is_custom && items && items.length > 0) {
         const sObj = sale[0];
-        const sGrand = parseFloat(sObj.grand_total || sObj.total_amount || 0);
-        const sTaxable = parseFloat(sObj.taxable_amount || 0);
-        const sTax = sGrand - sTaxable;
+        let sGrand = parseFloat(sObj.grand_total || sObj.total_amount || 0);
+        let sTaxable = parseFloat(sObj.taxable_amount || 0);
+        if (sTaxable <= 0) {
+          sTaxable = items.reduce((acc, it) => acc + parseFloat(it.taxable_value || (parseFloat(it.rate || 0) * (parseFloat(it.quantity) || 1)) || 0), 0);
+        }
+
+        let sTax = Math.max(0, sGrand - sTaxable);
+
+        // Check if invoices table has invoice grand_total or tax_total recorded
+        try {
+          const invRows = await sql`
+            SELECT grand_total, taxable_total, tax_total, cgst_total, sgst_total, igst_total
+            FROM invoices 
+            WHERE sale_id = ${sObj.id} OR (invoice_number IS NOT NULL AND invoice_number = ${sObj.invoice_number})
+            LIMIT 1
+          `;
+          if (invRows.length > 0) {
+            const invG = parseFloat(invRows[0].grand_total || 0);
+            if (invG > sGrand) {
+              sGrand = invG;
+              sObj.grand_total = invG;
+            }
+            const invTax = parseFloat(invRows[0].tax_total || 0);
+            if (invTax > sTax) {
+              sTax = invTax;
+            }
+          }
+        } catch (e) {}
+
+        const isIgst = Boolean(sObj.is_igst || (sObj.consignee_state && !['AP', 'ANDHRA PRADESH', '37'].includes(String(sObj.consignee_state).toUpperCase())));
 
         items.forEach(it => {
           let itGst = parseFloat(it.gst_rate || 0);
           let itCgst = parseFloat(it.cgst || 0);
           let itSgst = parseFloat(it.sgst || 0);
+          let itIgst = parseFloat(it.igst || 0);
           const itTaxable = parseFloat(it.taxable_value || it.rate || 0);
 
           if (itGst <= 0 && sTax > 0 && itTaxable > 0) {
-            itGst = Math.round((sTax / sTaxable) * 100);
+            itGst = Math.round((sTax / itTaxable) * 100);
             it.gst_rate = itGst;
-            it.cgst = (itTaxable * (itGst / 2)) / 100;
-            it.sgst = (itTaxable * (itGst / 2)) / 100;
-            it.total = itTaxable + it.cgst + it.sgst;
+            if (isIgst) {
+              it.igst = (itTaxable * itGst) / 100;
+              it.cgst = 0;
+              it.sgst = 0;
+            } else {
+              it.cgst = (itTaxable * (itGst / 2)) / 100;
+              it.sgst = (itTaxable * (itGst / 2)) / 100;
+              it.igst = 0;
+            }
+            it.total = itTaxable + (it.cgst || 0) + (it.sgst || 0) + (it.igst || 0);
 
             sql`
               UPDATE sale_items 
-              SET gst_rate = ${itGst}, cgst = ${it.cgst}, sgst = ${it.sgst}, total = ${it.total}
+              SET gst_rate = ${itGst}, cgst = ${it.cgst}, sgst = ${it.sgst}, igst = ${it.igst}, total = ${it.total}
               WHERE id = ${it.id}
             `.catch(e => console.warn("Auto-heal sale_item error:", e.message));
           }
         });
 
         if (parseFloat(sObj.tax_amount || 0) <= 0 && sTax > 0) {
-          const halfTax = sTax / 2;
-          sObj.cgst = halfTax;
-          sObj.sgst = halfTax;
           sObj.tax_amount = sTax;
+          if (isIgst) {
+            sObj.igst = sTax;
+            sObj.cgst = 0;
+            sObj.sgst = 0;
+          } else {
+            const halfTax = sTax / 2;
+            sObj.cgst = halfTax;
+            sObj.sgst = halfTax;
+            sObj.igst = 0;
+          }
+          sObj.grand_total = sGrand;
           sql`
             UPDATE sales 
-            SET cgst = ${halfTax}, sgst = ${halfTax}, tax_amount = ${sTax}
+            SET cgst = ${sObj.cgst}, sgst = ${sObj.sgst}, igst = ${sObj.igst}, tax_amount = ${sTax}, grand_total = ${sGrand}
             WHERE id = ${sObj.id}
           `.catch(e => console.warn("Auto-heal sales tax error:", e.message));
         }
@@ -1893,82 +1936,6 @@ module.exports = async function handler(req, res) {
         sale_data: sRows[0] || {},
         company_data: cRows[0] || {},
         product_data: pRows[0] || {}
-      });
-    }
-
-    // ═══════════════ CREATE CUSTOM INVOICE ═══════════════
-    else if (action === "create-custom-invoice") {
-      const {
-        company_id, custom_type, invoice_date,
-        receiver_name, receiver_address, receiver_state, receiver_state_code, receiver_gstin,
-        consignee_name, consignee_address, consignee_state, consignee_state_code, consignee_gstin,
-        items, grand_total, custom_meta
-      } = req.body;
-
-      const compId = company_id ? parseInt(company_id) : (user.company_id || 1);
-      const invDate = invoice_date || new Date().toISOString().split('T')[0];
-
-      const countRes = await sql`SELECT COUNT(*)::int as count FROM invoices WHERE company_id = ${compId}`;
-      const nextSeq = (countRes[0]?.count || 0) + 1;
-      
-      const compRows = await sql`SELECT * FROM companies WHERE id = ${compId}`;
-      const company = compRows[0] || {};
-      const compNameStr = (company.name || 'MANASWINI').replace(/[^a-zA-Z]/g, '').toUpperCase();
-      const comp4 = (compNameStr.slice(0, 4) || 'MANA').padEnd(4, 'X');
-      const invoice_number = `26-27/${String(nextSeq).padStart(2, '0')}`;
-
-      try {
-        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100);`;
-      } catch (e) {}
-
-      const saleResult = await sql`
-        INSERT INTO sales (
-          company_id, invoice_number, customer_name, customer_gstin, sale_date, total_amount, grand_total, paid_amount,
-          payment_status, created_by, is_custom, custom_type,
-          receiver_address, receiver_state, receiver_state_code,
-          consignee_name, consignee_address, consignee_state, consignee_state_code, consignee_gstin,
-          custom_meta_json
-        ) VALUES (
-          ${compId}, ${invoice_number}, ${receiver_name || 'Counter Customer'}, ${receiver_gstin || null}, ${invDate}, ${parseFloat(grand_total || 0)}, ${parseFloat(grand_total || 0)}, ${parseFloat(grand_total || 0)},
-          'paid', ${user.id}, true, ${custom_type || 'misc'},
-          ${receiver_address || null}, ${receiver_state || null}, ${receiver_state_code || null},
-          ${consignee_name || null}, ${consignee_address || null}, ${consignee_state || null}, ${consignee_state_code || null}, ${consignee_gstin || null},
-          ${custom_meta ? JSON.stringify(custom_meta) : null}
-        )
-        RETURNING *
-      `;
-      const sale = saleResult[0];
-
-      await sql`
-        INSERT INTO invoices (
-          sale_id, company_id, invoice_number, invoice_date, grand_total, status, created_by
-        ) VALUES (
-          ${sale.id}, ${compId}, ${invoice_number}, ${invDate}, ${parseFloat(grand_total || 0)}, 'generated', ${user.id}
-        )
-      `;
-
-      const insertedItems = [];
-      if (Array.isArray(items)) {
-        for (const item of items) {
-          const resItem = await sql`
-            INSERT INTO sale_items (
-              sale_id, product_name, hsn_code, quantity, unit, rate, taxable_value, gst_rate, total_amount
-            ) VALUES (
-              ${sale.id}, ${item.description || item.product_name || ''}, ${item.hsn_sac || item.hsn_code || null}, ${parseFloat(item.quantity || 1)}, ${item.unit || 'Nos'}, ${parseFloat(item.rate || 0)}, ${parseFloat(item.taxable_value || item.total_value || 0)}, ${parseFloat(item.gst_rate || 0)}, ${parseFloat(item.total || item.total_value || 0)}
-            )
-            RETURNING *
-          `;
-          insertedItems.push(resItem[0]);
-        }
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Custom invoice created successfully!",
-        sale_id: sale.id,
-        invoice_number: invoice_number,
-        sale: sale,
-        items: insertedItems
       });
     }
 

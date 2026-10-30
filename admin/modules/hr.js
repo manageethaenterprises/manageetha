@@ -1641,6 +1641,14 @@ async function loaddealersSubTab() {
     }
   }
 
+  on("addDealerLedgerHeaderBtn", "click", () => {
+    if (typeof window.openEntityLedgerEntryModal === 'function') {
+      window.openEntityLedgerEntryModal('dealer', null, () => fetchdealers());
+    } else {
+      showToast("Ledger module loading...", "info");
+    }
+  });
+
   on("adddealerBtn", "click", () => {
     document.getElementById("dealerForm").reset();
     document.getElementById("vEditId").value = "";

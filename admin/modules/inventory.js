@@ -1081,11 +1081,13 @@ async function loadProductsSubTab() {
           </td>
           <td>${p.weight ? `${parseFloat(p.weight)} kg` : '—'}</td>
           <td>${esc(p.rack_no || '—')}</td>
-          <td>
-            <div style="display:flex;gap:6px;">
-              <button class="btn btn-sm btn-outline printProdBarcodeBtn" data-id="${p.id}" title="Print Barcode Sticker">🏷️</button>
-              <button class="btn btn-sm btn-outline editProdBtn" data-id="${p.id}">✏️ Edit</button>
-              <button class="btn btn-sm btn-danger deleteProdBtn" data-id="${p.id}">🗑️ Delete</button>
+          <td class="prod-actions-cell" style="white-space:nowrap;min-width:215px;width:1%;">
+            <div class="prod-actions-group" style="display:inline-flex;gap:6px;align-items:center;white-space:nowrap;">
+              <button type="button" class="btn btn-sm btn-barcode printProdBarcodeBtn" data-id="${p.id}" title="Reprint Replacement Barcode Sticker" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-weight:600;font-size:11.5px;padding:4px 9px;border-radius:6px;border:1px solid #818cf8;color:#4f46e5;background:rgba(99,102,241,0.08);cursor:pointer;transition:all 0.15s ease;">
+                <span>🏷️</span><span class="btn-text">Reprint</span>
+              </button>
+              <button type="button" class="btn btn-sm btn-outline editProdBtn" data-id="${p.id}" title="Edit Product Details">✏️ Edit</button>
+              <button type="button" class="btn btn-sm btn-danger deleteProdBtn" data-id="${p.id}" title="Deactivate Product">🗑️ Delete</button>
             </div>
           </td>
         </tr>

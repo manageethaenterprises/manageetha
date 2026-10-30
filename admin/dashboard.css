@@ -969,6 +969,74 @@ tr:hover td {
   border-radius: 4px;
 }
 
+/* ── Barcode Action Buttons & Table Cell Responsiveness ── */
+.btn-barcode,
+.printProdBarcodeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(99, 102, 241, 0.08);
+  color: #4f46e5;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  font-weight: 600;
+  font-size: 11.5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-sm, 6px);
+  white-space: nowrap;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: all 0.18s ease-in-out;
+}
+
+.btn-barcode:hover,
+.printProdBarcodeBtn:hover {
+  background: #4f46e5 !important;
+  color: #ffffff !important;
+  border-color: #4f46e5 !important;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.28);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .btn-barcode,
+[data-theme="dark"] .printProdBarcodeBtn {
+  background: rgba(129, 140, 248, 0.15);
+  color: #a5b4fc;
+  border-color: rgba(129, 140, 248, 0.35);
+}
+
+[data-theme="dark"] .btn-barcode:hover,
+[data-theme="dark"] .printProdBarcodeBtn:hover {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #6366f1 !important;
+}
+
+.prod-actions-cell {
+  white-space: nowrap !important;
+  min-width: 215px;
+  width: 1%;
+}
+
+.prod-actions-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .printProdBarcodeBtn .btn-text {
+    display: none;
+  }
+  .printProdBarcodeBtn {
+    padding: 4px 6px;
+  }
+  .prod-actions-cell {
+    min-width: 150px;
+  }
+}
+
 /* ═══════════════ SUB TABS ═══════════════ */
 .sub-tabs-bar,
 .sub-tabs-container {

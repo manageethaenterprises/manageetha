@@ -1765,19 +1765,38 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
     const qty = parseFloat(it.quantity || 1);
     const rate = parseFloat(it.rate || 0);
     const taxableVal = parseFloat(it.taxable_value || (rate * qty));
-    const gstRate = parseFloat(it.gst_rate || 0);
+    let gstRate = parseFloat(it.gst_rate || 0);
     const isIgst = Boolean(it.is_igst || (consigneeState && consigneeState.toUpperCase() !== 'AP' && consigneeState.toUpperCase() !== 'ANDHRA PRADESH' && consigneeState.toUpperCase() !== '37'));
 
-    let cgstRate = 0, cgstAmt = 0, sgstRate = 0, sgstAmt = 0, igstRate = 0, igstAmt = 0;
+    let cgstRate = parseFloat(it.cgst_rate || 0);
+    let sgstRate = parseFloat(it.sgst_rate || 0);
+    let igstRate = parseFloat(it.igst_rate || 0);
+    let cgstAmt = parseFloat(it.cgst || it.cgst_amount || 0);
+    let sgstAmt = parseFloat(it.sgst || it.sgst_amount || 0);
+    let igstAmt = parseFloat(it.igst || it.igst_amount || 0);
+
+    // Auto-derive GST if gstRate is 0 or missing
+    if (gstRate <= 0) {
+      if (cgstRate > 0 || sgstRate > 0 || igstRate > 0) {
+        gstRate = cgstRate + sgstRate + igstRate;
+      } else if (cgstAmt > 0 || sgstAmt > 0 || igstAmt > 0) {
+        const totalTaxAmt = cgstAmt + sgstAmt + igstAmt;
+        if (taxableVal > 0) gstRate = Math.round((totalTaxAmt / taxableVal) * 100);
+      } else if (sale && parseFloat(sale.grand_total || sale.total_amount || 0) > taxableVal && taxableVal > 0) {
+        const diffTax = parseFloat(sale.grand_total || sale.total_amount) - taxableVal;
+        gstRate = Math.round((diffTax / taxableVal) * 100);
+      }
+    }
+
     if (gstRate > 0) {
       if (isIgst) {
         igstRate = gstRate;
-        igstAmt = (taxableVal * igstRate) / 100;
+        igstAmt = igstAmt > 0 ? igstAmt : (taxableVal * igstRate) / 100;
       } else {
         cgstRate = gstRate / 2;
-        cgstAmt = (taxableVal * cgstRate) / 100;
+        cgstAmt = cgstAmt > 0 ? cgstAmt : (taxableVal * cgstRate) / 100;
         sgstRate = gstRate / 2;
-        sgstAmt = (taxableVal * sgstRate) / 100;
+        sgstAmt = sgstAmt > 0 ? sgstAmt : (taxableVal * sgstRate) / 100;
       }
     }
     const lineTotal = taxableVal + cgstAmt + sgstAmt + igstAmt;
@@ -2940,8 +2959,14 @@ function openCustomInvoiceModal(onSuccess) {
         hsn_code: hsn,
         taxable_value: val,
         gst_rate: gst,
+        cgst_rate: gst / 2,
+        sgst_rate: gst / 2,
+        cgst_amount: cgstAmt,
+        sgst_amount: sgstAmt,
+        cgst: cgstAmt,
+        sgst: sgstAmt,
         quantity: 1,
-        unit: "",
+        unit: "NOS",
         rate: val,
         total_value: total,
         total: total

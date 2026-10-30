@@ -524,6 +524,47 @@ module.exports = async function handler(req, res) {
         WHERE si.sale_id = ${parseInt(saleId)}
       `;
 
+      // Auto-heal custom invoice items if gst_rate was saved as 0 or missing but sale has tax
+      if (sale[0] && sale[0].is_custom && items && items.length > 0) {
+        const sObj = sale[0];
+        const sGrand = parseFloat(sObj.grand_total || sObj.total_amount || 0);
+        const sTaxable = parseFloat(sObj.taxable_amount || 0);
+        const sTax = sGrand - sTaxable;
+
+        items.forEach(it => {
+          let itGst = parseFloat(it.gst_rate || 0);
+          let itCgst = parseFloat(it.cgst || 0);
+          let itSgst = parseFloat(it.sgst || 0);
+          const itTaxable = parseFloat(it.taxable_value || it.rate || 0);
+
+          if (itGst <= 0 && sTax > 0 && itTaxable > 0) {
+            itGst = Math.round((sTax / sTaxable) * 100);
+            it.gst_rate = itGst;
+            it.cgst = (itTaxable * (itGst / 2)) / 100;
+            it.sgst = (itTaxable * (itGst / 2)) / 100;
+            it.total = itTaxable + it.cgst + it.sgst;
+
+            sql`
+              UPDATE sale_items 
+              SET gst_rate = ${itGst}, cgst = ${it.cgst}, sgst = ${it.sgst}, total = ${it.total}
+              WHERE id = ${it.id}
+            `.catch(e => console.warn("Auto-heal sale_item error:", e.message));
+          }
+        });
+
+        if (parseFloat(sObj.tax_amount || 0) <= 0 && sTax > 0) {
+          const halfTax = sTax / 2;
+          sObj.cgst = halfTax;
+          sObj.sgst = halfTax;
+          sObj.tax_amount = sTax;
+          sql`
+            UPDATE sales 
+            SET cgst = ${halfTax}, sgst = ${halfTax}, tax_amount = ${sTax}
+            WHERE id = ${sObj.id}
+          `.catch(e => console.warn("Auto-heal sales tax error:", e.message));
+        }
+      }
+
       const payments = await sql`
         SELECT sp.*, u.username as cashier_name
         FROM sale_payments sp
@@ -858,9 +899,25 @@ module.exports = async function handler(req, res) {
 
       items.forEach(it => {
         const tVal = parseFloat(it.taxable_value || (parseFloat(it.rate || 0) * (parseInt(it.qty || it.quantity) || 1)));
-        const cAmt = parseFloat(it.cgst_amount || (tVal * (parseFloat(it.cgst_rate || 0) / 100)));
-        const sAmt = parseFloat(it.sgst_amount || (tVal * (parseFloat(it.sgst_rate || 0) / 100)));
-        const iAmt = parseFloat(it.igst_amount || (tVal * (parseFloat(it.igst_rate || 0) / 100)));
+        const gRate = parseFloat(it.gst_rate || 0);
+        const isIgst = Boolean(it.is_igst || (consignee_state && consignee_state.toUpperCase() !== 'AP' && consignee_state.toUpperCase() !== 'ANDHRA PRADESH' && consignee_state.toUpperCase() !== '37'));
+
+        let cRate = parseFloat(it.cgst_rate || 0);
+        let sRate = parseFloat(it.sgst_rate || 0);
+        let iRate = parseFloat(it.igst_rate || 0);
+
+        if (gRate > 0 && !cRate && !sRate && !iRate) {
+          if (isIgst) {
+            iRate = gRate;
+          } else {
+            cRate = gRate / 2;
+            sRate = gRate / 2;
+          }
+        }
+
+        const cAmt = parseFloat(it.cgst_amount || it.cgst || (tVal * cRate / 100));
+        const sAmt = parseFloat(it.sgst_amount || it.sgst || (tVal * sRate / 100));
+        const iAmt = parseFloat(it.igst_amount || it.igst || (tVal * iRate / 100));
 
         taxableSum += tVal;
         cgstSum += cAmt;
@@ -898,12 +955,26 @@ module.exports = async function handler(req, res) {
         const qty = parseInt(item.qty || item.quantity) || 1;
         const rate = parseFloat(item.rate || 0);
         const tVal = parseFloat(item.taxable_value || (rate * qty));
-        const cRate = parseFloat(item.cgst_rate || 0);
-        const sRate = parseFloat(item.sgst_rate || 0);
-        const iRate = parseFloat(item.igst_rate || 0);
-        const cAmt = parseFloat(item.cgst_amount || (tVal * cRate / 100));
-        const sAmt = parseFloat(item.sgst_amount || (tVal * sRate / 100));
-        const iAmt = parseFloat(item.igst_amount || (tVal * iRate / 100));
+        const gRate = parseFloat(item.gst_rate || 0);
+        const isIgst = Boolean(item.is_igst || (consignee_state && consignee_state.toUpperCase() !== 'AP' && consignee_state.toUpperCase() !== 'ANDHRA PRADESH' && consignee_state.toUpperCase() !== '37'));
+
+        let cRate = parseFloat(item.cgst_rate || 0);
+        let sRate = parseFloat(item.sgst_rate || 0);
+        let iRate = parseFloat(item.igst_rate || 0);
+
+        if (gRate > 0 && !cRate && !sRate && !iRate) {
+          if (isIgst) {
+            iRate = gRate;
+          } else {
+            cRate = gRate / 2;
+            sRate = gRate / 2;
+          }
+        }
+
+        const cAmt = parseFloat(item.cgst_amount || item.cgst || (tVal * cRate / 100));
+        const sAmt = parseFloat(item.sgst_amount || item.sgst || (tVal * sRate / 100));
+        const iAmt = parseFloat(item.igst_amount || item.igst || (tVal * iRate / 100));
+        const effectiveGstRate = gRate > 0 ? gRate : (cRate + sRate + iRate);
         const lineTotal = parseFloat(item.total || (tVal + cAmt + sAmt + iAmt));
 
         await sql`
@@ -912,7 +983,7 @@ module.exports = async function handler(req, res) {
             taxable_value, gst_rate, cgst, sgst, igst, total
           ) VALUES (
             ${saleId}, ${item.description || 'Service Charges'}, ${item.hsn_code || item.hsn_sac || null},
-            ${qty}, ${item.unit || 'NOS'}, ${rate}, ${tVal}, ${cRate + sRate + iRate},
+            ${qty}, ${item.unit || 'NOS'}, ${rate}, ${tVal}, ${effectiveGstRate},
             ${cAmt}, ${sAmt}, ${iAmt}, ${lineTotal}
           )
         `;

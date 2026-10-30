@@ -2952,7 +2952,7 @@ async function loadReorderSubTab() {
       </div>
     </div>
 
-    <div class="table-container" style="margin-bottom:28px;">
+    <div class="table-container" style="margin-bottom:12px;">
       <table class="data-table">
         <thead>
           <tr>
@@ -2969,6 +2969,10 @@ async function loadReorderSubTab() {
           <tr><td colspan="7" style="text-align:center;padding:20px;"><div class="spinner"></div> Checking inventory...</td></tr>
         </tbody>
       </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px 20px 4px;flex-wrap:wrap;gap:8px;">
+      <div id="reorderInfo"></div>
+      <div id="reorderPagination" class="pagination"></div>
     </div>
 
     <hr style="margin:28px 0;border:none;border-top:1px dashed var(--border);">
@@ -3024,56 +3028,63 @@ async function loadReorderSubTab() {
       return name.includes(query) || brand.includes(query) || model.includes(query) || sup.includes(query);
     }) : lowStockProductsList;
 
-    if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--success);font-weight:600;">${query ? 'No matching low stock products.' : '✅ All stock levels are sufficient! No reorders needed.'}</td></tr>`;
-      return;
-    }
+    window.renderPaginatedTable({
+      data: list,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "reorderTableBody",
+      paginationContainer: "reorderPagination",
+      infoContainer: "reorderInfo",
+      renderRow: (p) => {
+        const hasActivePO = !!p.active_po;
+        const poBadge = hasActivePO ? `
+          <span class="badge badge-info" style="font-size:11.5px;padding:5px 10px;font-weight:600;" title="PO ${esc(p.active_po.po_number)} generated on ${formatDate(p.active_po.order_date)}">
+            ⏳ PO Generated (${esc(p.active_po.po_number)})
+          </span>
+        ` : `
+          <button class="btn btn-sm btn-primary autoCreateSinglePOBtn" data-prodid="${p.id}">
+            ⚡ Reorder PO
+          </button>
+        `;
 
-    tbody.innerHTML = list.map(p => {
-      const hasActivePO = !!p.active_po;
-      const poBadge = hasActivePO ? `
-        <span class="badge badge-info" style="font-size:11.5px;padding:5px 10px;font-weight:600;" title="PO ${esc(p.active_po.po_number)} generated on ${formatDate(p.active_po.order_date)}">
-          ⏳ PO Generated (${esc(p.active_po.po_number)})
-        </span>
-      ` : `
-        <button class="btn btn-sm btn-primary autoCreateSinglePOBtn" data-prodid="${p.id}">
-          ⚡ Reorder PO
-        </button>
-      `;
+        return `
+          <tr>
+            <td style="font-weight:600;color:var(--text1);">${esc(p.name)}</td>
+            <td>${esc(p.brand || '—')} / ${esc(p.model || '—')}</td>
+            <td><span class="badge badge-danger" style="font-size:13px;">${p.current_stock}</span></td>
+            <td>${p.min_stock}</td>
+            <td>
+              <span class="badge ${p.supplier_name ? 'badge-outline' : 'badge-warning'}" style="font-weight:600;">
+                ${esc(p.supplier_name || '⚠️ Unassigned Supplier')}
+              </span>
+            </td>
+            <td>${esc(p.rack_no || '—')}</td>
+            <td>${poBadge}</td>
+          </tr>
+        `;
+      },
+      onRender: (pageItems, page) => {
+        const curTbody = document.getElementById("reorderTableBody");
+        if (!curTbody) return;
 
-      return `
-        <tr>
-          <td style="font-weight:600;color:var(--text1);">${esc(p.name)}</td>
-          <td>${esc(p.brand || '—')} / ${esc(p.model || '—')}</td>
-          <td><span class="badge badge-danger" style="font-size:13px;">${p.current_stock}</span></td>
-          <td>${p.min_stock}</td>
-          <td>
-            <span class="badge ${p.supplier_name ? 'badge-outline' : 'badge-warning'}" style="font-weight:600;">
-              ${esc(p.supplier_name || '⚠️ Unassigned Supplier')}
-            </span>
-          </td>
-          <td>${esc(p.rack_no || '—')}</td>
-          <td>${poBadge}</td>
-        </tr>
-      `;
-    }).join("");
-
-    tbody.querySelectorAll(".autoCreateSinglePOBtn").forEach(btn => {
-      btn.addEventListener("click", function () {
-        const btnEl = this;
-        if (btnEl.disabled) return;
-        setButtonLoading(btnEl, true, "Preparing PO...");
-        setTimeout(() => {
-          try {
-            const single = lowStockProductsList.filter(x => x.id == btnEl.dataset.prodid);
-            openReorderPOGeneratorModal(single);
-          } catch (err) {
-            showToast("Reorder error: " + err.message, "error");
-          } finally {
-            setTimeout(() => setButtonLoading(btnEl, false), 400);
-          }
-        }, 40);
-      });
+        curTbody.querySelectorAll(".autoCreateSinglePOBtn").forEach(btn => {
+          btn.addEventListener("click", function () {
+            const btnEl = this;
+            if (btnEl.disabled) return;
+            setButtonLoading(btnEl, true, "Preparing PO...");
+            setTimeout(() => {
+              try {
+                const single = lowStockProductsList.filter(x => x.id == btnEl.dataset.prodid);
+                openReorderPOGeneratorModal(single);
+              } catch (err) {
+                showToast("Reorder error: " + err.message, "error");
+              } finally {
+                setTimeout(() => setButtonLoading(btnEl, false), 400);
+              }
+            }, 40);
+          });
+        });
+      }
     });
   }
 
@@ -3104,72 +3115,79 @@ async function loadReorderSubTab() {
       return poNum.includes(query) || sup.includes(query) || comp.includes(query) || st.includes(query);
     }) : currentPOList;
 
-    if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3);">${query ? 'No matching purchase orders found.' : 'No purchase orders created yet.'}</td></tr>`;
-      return;
-    }
+    window.renderPaginatedTable({
+      data: list,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "poTableBody",
+      paginationContainer: "poPagination",
+      infoContainer: "poInfo",
+      renderRow: (po) => `
+        <tr>
+          <td><span class="badge badge-purple" style="font-size:12px;font-weight:700;">${esc(po.po_number)}</span></td>
+          <td>${formatDate(po.order_date)}</td>
+          <td style="font-weight:600;">${esc(po.company_name || 'All Companies')}</td>
+          <td style="font-weight:700;color:var(--text1);">${esc(po.supplier_name || 'Unassigned Supplier')}</td>
+          <td style="font-weight:600;">${po.item_count || 1} Items</td>
+          <td style="font-weight:700;color:var(--success);">${formatCurrency(po.total_amount)}</td>
+          <td><span class="badge badge-warning">${esc(po.status ? po.status.toUpperCase() : 'CREATED')}</span></td>
+          <td>
+            <div style="display:flex;gap:6px;justify-content:center;">
+              <button class="btn btn-sm btn-info viewPoBtn" data-id="${po.id}">👁️ View</button>
+              <button class="btn btn-sm btn-outline editPoBtn" data-id="${po.id}">✏️ Edit</button>
+              <button class="btn btn-sm btn-primary printPoBtn" data-id="${po.id}">🖨️ Print</button>
+              ${canDelete ? `<button class="btn btn-sm btn-danger deletePoBtn" data-id="${po.id}">🗑️ Delete</button>` : ''}
+            </div>
+          </td>
+        </tr>
+      `,
+      onRender: (pageItems, page) => {
+        const curTbody = document.getElementById("poTableBody");
+        if (!curTbody) return;
 
-    tbody.innerHTML = list.map(po => `
-      <tr>
-        <td><span class="badge badge-purple" style="font-size:12px;font-weight:700;">${esc(po.po_number)}</span></td>
-        <td>${formatDate(po.order_date)}</td>
-        <td style="font-weight:600;">${esc(po.company_name || 'All Companies')}</td>
-        <td style="font-weight:700;color:var(--text1);">${esc(po.supplier_name || 'Unassigned Supplier')}</td>
-        <td style="font-weight:600;">${po.item_count || 1} Items</td>
-        <td style="font-weight:700;color:var(--success);">${formatCurrency(po.total_amount)}</td>
-        <td><span class="badge badge-warning">${esc(po.status ? po.status.toUpperCase() : 'CREATED')}</span></td>
-        <td>
-          <div style="display:flex;gap:6px;justify-content:center;">
-            <button class="btn btn-sm btn-info viewPoBtn" data-id="${po.id}">👁️ View</button>
-            <button class="btn btn-sm btn-outline editPoBtn" data-id="${po.id}">✏️ Edit</button>
-            <button class="btn btn-sm btn-primary printPoBtn" data-id="${po.id}">🖨️ Print</button>
-            ${canDelete ? `<button class="btn btn-sm btn-danger deletePoBtn" data-id="${po.id}">🗑️ Delete</button>` : ''}
-          </div>
-        </td>
-      </tr>
-    `).join("");
+        curTbody.querySelectorAll(".viewPoBtn").forEach(btn => {
+          btn.addEventListener("click", () => openPODetailsModal(btn.dataset.id));
+        });
 
-    tbody.querySelectorAll(".viewPoBtn").forEach(btn => {
-      btn.addEventListener("click", () => openPODetailsModal(btn.dataset.id));
-    });
-
-    tbody.querySelectorAll(".printPoBtn").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        try {
-          const res = await fetch(`${API_BASE}/inventory?action=po-details&id=${btn.dataset.id}`, { headers: authHeaders() });
-          const data = await res.json();
-          if (data.success) printPurchaseOrder(data.po, data.items);
-          else showToast("Failed to fetch PO details for printing", "error");
-        } catch (e) { showToast("Print error: " + e.message, "error"); }
-      });
-    });
-
-    tbody.querySelectorAll(".editPoBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const po = currentPOList.find(x => x.id == btn.dataset.id);
-        if (po) openEditPOModal(po, () => { fetchPOList(); fetchReorderItems(); });
-      });
-    });
-
-    tbody.querySelectorAll(".deletePoBtn").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const po = currentPOList.find(x => x.id == btn.dataset.id);
-        if (!confirm(`Are you sure you want to delete Purchase Order #${po?.po_number || btn.dataset.id}?\nDeleting this PO will enable re-ordering for its items.`)) return;
-        try {
-          const r = await fetch(`${API_BASE}/inventory?action=po-delete&id=${btn.dataset.id}`, {
-            method: "POST",
-            headers: authHeaders()
+        curTbody.querySelectorAll(".printPoBtn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            try {
+              const res = await fetch(`${API_BASE}/inventory?action=po-details&id=${btn.dataset.id}`, { headers: authHeaders() });
+              const data = await res.json();
+              if (data.success) printPurchaseOrder(data.po, data.items);
+              else showToast("Failed to fetch PO details for printing", "error");
+            } catch (e) { showToast("Print error: " + e.message, "error"); }
           });
-          const d = await r.json();
-          if (d.success) {
-            showToast(d.message || "PO deleted successfully! Items can now be reordered.", "success");
-            fetchPOList();
-            fetchReorderItems();
-          } else showToast(d.error || "Failed to delete PO", "error");
-        } catch (err) {
-          showToast("Delete PO error: " + err.message, "error");
-        }
-      });
+        });
+
+        curTbody.querySelectorAll(".editPoBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const po = currentPOList.find(x => x.id == btn.dataset.id);
+            if (po) openEditPOModal(po, () => { fetchPOList(); fetchReorderItems(); });
+          });
+        });
+
+        curTbody.querySelectorAll(".deletePoBtn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const po = currentPOList.find(x => x.id == btn.dataset.id);
+            if (!confirm(`Are you sure you want to delete Purchase Order #${po?.po_number || btn.dataset.id}?\nDeleting this PO will enable re-ordering for its items.`)) return;
+            try {
+              const r = await fetch(`${API_BASE}/inventory?action=po-delete&id=${btn.dataset.id}`, {
+                method: "POST",
+                headers: authHeaders()
+              });
+              const d = await r.json();
+              if (d.success) {
+                showToast(d.message || "PO deleted successfully! Items can now be reordered.", "success");
+                fetchPOList();
+                fetchReorderItems();
+              } else showToast(d.error || "Failed to delete PO", "error");
+            } catch (err) {
+              showToast("Delete PO error: " + err.message, "error");
+            }
+          });
+        });
+      }
     });
   }
 
@@ -7028,6 +7046,10 @@ async function loadHsnMasterSubTab() {
           </tbody>
         </table>
       </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px;flex-wrap:gap:8px;">
+        <div id="hsnInfo"></div>
+        <div id="hsnPagination" class="pagination"></div>
+      </div>
     </div>
   `;
 
@@ -7067,73 +7089,80 @@ async function loadHsnMasterSubTab() {
       return matchQuery && matchRate;
     });
 
-    if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3);">No HSN / SAC codes found. Click <strong>+ Add New HSN Code</strong> to register one.</td></tr>`;
-      return;
-    }
+    window.renderPaginatedTable({
+      data: filtered,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "hsnTableBody",
+      paginationContainer: "hsnPagination",
+      infoContainer: "hsnInfo",
+      renderRow: (h) => {
+        const updatedStr = h.updated_at ? new Date(h.updated_at).toLocaleDateString() : '—';
+        return `
+          <tr style="border-bottom:1px solid var(--border,#e2e8f0);">
+            <td style="padding:12px 16px;font-weight:700;font-family:monospace;color:var(--text1,#0f172a);">
+              <span class="badge badge-purple" style="font-size:13px;padding:4px 8px;">${esc(h.code)}</span>
+            </td>
+            <td style="padding:12px 16px;color:var(--text2,#334155);max-width:300px;">
+              ${esc(h.description || 'Standard Goods/Services HSN Code')}
+            </td>
+            <td style="padding:12px 16px;text-align:center;">
+              <span class="badge badge-success" style="font-size:13px;font-weight:700;">${parseFloat(h.gst_rate || 0)}%</span>
+            </td>
+            <td style="padding:12px 16px;text-align:center;">
+              <span class="badge ${h.is_active ? 'badge-success' : 'badge-danger'}">
+                ${h.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </td>
+            <td style="padding:12px 16px;text-align:center;font-size:12px;color:var(--text3);">
+              ${updatedStr}
+            </td>
+            <td style="padding:12px 16px;text-align:right;">
+              <button class="btn btn-sm btn-secondary editHsnBtn" data-id="${h.id}" style="margin-right:6px;">✏️ Edit</button>
+              <button class="btn btn-sm btn-danger deleteHsnBtn" data-id="${h.id}">🗑️ Delete</button>
+            </td>
+          </tr>
+        `;
+      },
+      onRender: (pageItems, page) => {
+        const curTbody = document.getElementById("hsnTableBody");
+        if (!curTbody) return;
 
-    tbody.innerHTML = filtered.map(h => {
-      const updatedStr = h.updated_at ? new Date(h.updated_at).toLocaleDateString() : '—';
-      return `
-        <tr style="border-bottom:1px solid var(--border,#e2e8f0);">
-          <td style="padding:12px 16px;font-weight:700;font-family:monospace;color:var(--text1,#0f172a);">
-            <span class="badge badge-purple" style="font-size:13px;padding:4px 8px;">${esc(h.code)}</span>
-          </td>
-          <td style="padding:12px 16px;color:var(--text2,#334155);max-width:300px;">
-            ${esc(h.description || 'Standard Goods/Services HSN Code')}
-          </td>
-          <td style="padding:12px 16px;text-align:center;">
-            <span class="badge badge-success" style="font-size:13px;font-weight:700;">${parseFloat(h.gst_rate || 0)}%</span>
-          </td>
-          <td style="padding:12px 16px;text-align:center;">
-            <span class="badge ${h.is_active ? 'badge-success' : 'badge-danger'}">
-              ${h.is_active ? 'Active' : 'Inactive'}
-            </span>
-          </td>
-          <td style="padding:12px 16px;text-align:center;font-size:12px;color:var(--text3);">
-            ${updatedStr}
-          </td>
-          <td style="padding:12px 16px;text-align:right;">
-            <button class="btn btn-sm btn-secondary editHsnBtn" data-id="${h.id}" style="margin-right:6px;">✏️ Edit</button>
-            <button class="btn btn-sm btn-danger deleteHsnBtn" data-id="${h.id}">🗑️ Delete</button>
-          </td>
-        </tr>
-      `;
-    }).join("");
+        curTbody.querySelectorAll(".editHsnBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const item = hsnList.find(h => h.id == btn.dataset.id);
+            if (item) showHsnModal(item);
+          });
+        });
 
-    tbody.querySelectorAll(".editHsnBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const item = hsnList.find(h => h.id == btn.dataset.id);
-        if (item) showHsnModal(item);
-      });
-    });
-
-    tbody.querySelectorAll(".deleteHsnBtn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const item = hsnList.find(h => h.id == btn.dataset.id);
-        if (item) {
-          showConfirmModal({
-            title: "Delete HSN Code",
-            message: `Are you sure you want to delete HSN Code "${item.code}"?`,
-            confirmText: "Delete HSN",
-            onConfirm: async () => {
-              try {
-                const res = await fetch(`${API_BASE}/inventory?action=delete-hsn&id=${item.id}`, {
-                  method: "POST",
-                  headers: authHeaders()
-                });
-                const data = await res.json();
-                if (data.success) {
-                  showToast("HSN Code deleted!", "success");
-                  fetchHsnList();
-                } else throw new Error(data.error);
-              } catch (err) {
-                showToast(err.message, "error");
-              }
+        curTbody.querySelectorAll(".deleteHsnBtn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const item = hsnList.find(h => h.id == btn.dataset.id);
+            if (item) {
+              showConfirmModal({
+                title: "Delete HSN Code",
+                message: `Are you sure you want to delete HSN Code "${item.code}"?`,
+                confirmText: "Delete HSN",
+                onConfirm: async () => {
+                  try {
+                    const res = await fetch(`${API_BASE}/inventory?action=delete-hsn&id=${item.id}`, {
+                      method: "POST",
+                      headers: authHeaders()
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      showToast("HSN Code deleted!", "success");
+                      fetchHsnList();
+                    } else throw new Error(data.error);
+                  } catch (err) {
+                    showToast(err.message, "error");
+                  }
+                }
+              });
             }
           });
-        }
-      });
+        });
+      }
     });
   }
 
@@ -7338,6 +7367,10 @@ async function loadPayablesSubTab() {
           <tr><td colspan="11" style="text-align:center;padding:20px;"><div class="spinner"></div> Fetching supplier payables...</td></tr>
         </tbody>
       </table>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 4px;flex-wrap:wrap;gap:8px;">
+      <div id="payablesInfo"></div>
+      <div id="payablesPagination" class="pagination"></div>
     </div>
   `;
 

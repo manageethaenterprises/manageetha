@@ -4435,18 +4435,25 @@ async function loadSalesPOSSubTab() {
               <!-- Quick Actions -->
               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);">
                 <span style="font-size:11px;font-weight:700;color:var(--text3);">⚡ Quick Fill Balance:</span>
-                <button type="button" id="posFillRemainingCash" class="btn btn-xs" style="background:#dcfce7;color:#15803d;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #86efac;cursor:pointer;">
+                <button type="button" id="posFillRemainingCash" class="btn btn-xs" style="background:#dcfce7;color:#15803d;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #86efac;cursor:pointer;" title="Set Cash to remaining balance">
                   💵 Rest to Cash
                 </button>
-                <button type="button" id="posFillRemainingUpi" class="btn btn-xs" style="background:#e0e7ff;color:#4338ca;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #a5b4fc;cursor:pointer;">
+                <button type="button" id="posFillRemainingUpi" class="btn btn-xs" style="background:#e0e7ff;color:#4338ca;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #a5b4fc;cursor:pointer;" title="Set UPI to remaining balance">
                   📱 Rest to UPI
                 </button>
-                <button type="button" id="posFillRemainingBank" class="btn btn-xs" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #fde68a;cursor:pointer;">
+                <button type="button" id="posFillRemainingBank" class="btn btn-xs" style="background:#fef3c7;color:#b45309;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #fde68a;cursor:pointer;" title="Set Bank to remaining balance">
                   🏦 Rest to Bank
+                </button>
+                <button type="button" id="posFillRemainingCard" class="btn btn-xs" style="background:#fce7f3;color:#9d174d;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #fbcfe8;cursor:pointer;" title="Set Card to remaining balance">
+                  💳 Rest to Card
                 </button>
                 <button type="button" id="posSplit5050Btn" class="btn btn-xs" style="background:#f1f5f9;color:#334155;font-weight:700;font-size:10.5px;padding:3px 8px;border:1px solid #cbd5e1;cursor:pointer;">
                   ⚖️ Split 50/50
                 </button>
+                <label style="font-size:11px;font-weight:700;color:#6d28d9;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-left:auto;background:#ede9fe;padding:2px 8px;border-radius:4px;border:1px solid #c4b5fd;" title="Automatically update the remaining mode amount when typing amounts">
+                  <input type="checkbox" id="posSplitAutoBalanceToggle" checked style="cursor:pointer;accent-color:#7c3aed;">
+                  <span>⚡ Auto-balance</span>
+                </label>
               </div>
 
               <!-- Split Live Status Bar -->
@@ -5731,9 +5738,10 @@ async function loadSalesPOSSubTab() {
           <option value="cheque" ${r.mode === 'cheque' ? 'selected' : ''}>📝 Cheque</option>
         </select>
 
-        <div style="position:relative;display:flex;align-items:center;width:120px;">
+        <div style="position:relative;display:flex;align-items:center;width:138px;">
           <span style="position:absolute;left:8px;font-weight:700;color:var(--text3);font-size:12px;pointer-events:none;">₹</span>
-          <input type="number" step="0.01" min="0" class="form-input split-amt-inp" data-idx="${idx}" data-mode="${r.mode}" value="${r.amount > 0 ? r.amount : ''}" placeholder="0.00" style="padding-left:20px;height:34px;font-weight:800;font-size:13px;color:var(--primary);width:100%;box-sizing:border-box;">
+          <input type="number" step="0.01" min="0" class="form-input split-amt-inp" data-idx="${idx}" data-mode="${r.mode}" value="${r.amount > 0 ? r.amount : ''}" placeholder="0.00" style="padding-left:20px;padding-right:44px;height:34px;font-weight:800;font-size:13px;color:var(--primary);width:100%;box-sizing:border-box;">
+          <button type="button" class="btn btn-xs split-rest-btn" data-idx="${idx}" style="position:absolute;right:3px;height:24px;padding:1px 6px;font-size:10px;font-weight:800;background:#ede9fe;color:#6d28d9;border:1px solid #c4b5fd;border-radius:4px;cursor:pointer;" title="Fill remaining balance to this row">Rest</button>
         </div>
 
         <input type="text" class="form-input split-ref-inp" data-idx="${idx}" value="${esc(r.ref || '')}" placeholder="${r.mode === 'upi' ? 'UTR / Txn Ref #' : (r.mode === 'bank' ? 'NEFT / RTGS / Ref #' : (r.mode === 'cheque' ? 'Cheque / DD #' : 'Ref / Remarks (Optional)'))}" style="flex:1;min-width:120px;height:34px;font-size:11.5px;box-sizing:border-box;">
@@ -5758,10 +5766,33 @@ async function loadSalesPOSSubTab() {
     listEl.querySelectorAll(".split-amt-inp").forEach(inp => {
       inp.addEventListener("input", (e) => {
         const i = parseInt(e.target.dataset.idx);
-        if (splitRowsData[i]) {
-          splitRowsData[i].amount = parseFloat(e.target.value) || 0;
-          updateSplitUI();
+        if (!splitRowsData[i]) return;
+        const val = parseFloat(e.target.value) || 0;
+        splitRowsData[i].amount = val;
+
+        const autoBalToggle = document.getElementById("posSplitAutoBalanceToggle");
+        const isAutoBal = autoBalToggle ? autoBalToggle.checked : true;
+
+        if (isAutoBal && splitRowsData.length === 2) {
+          const otherIdx = (i === 0 ? 1 : 0);
+          const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
+          const rem = Math.max(0, Math.round((grandVal - val) * 100) / 100);
+          splitRowsData[otherIdx].amount = rem;
+
+          const otherInp = listEl.querySelector(`.split-amt-inp[data-idx="${otherIdx}"]`);
+          if (otherInp) {
+            otherInp.value = rem > 0 ? rem : '';
+          }
         }
+
+        updateSplitUI();
+      });
+    });
+
+    listEl.querySelectorAll(".split-rest-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = parseInt(btn.dataset.idx);
+        fillRestForRowIndex(i);
       });
     });
 
@@ -5775,12 +5806,18 @@ async function loadSalesPOSSubTab() {
     });
 
     listEl.querySelectorAll(".split-del-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", () => {
         const i = parseInt(btn.dataset.idx);
         if (splitRowsData[i]) {
           splitRowsData.splice(i, 1);
+          const autoBalToggle = document.getElementById("posSplitAutoBalanceToggle");
+          const isAutoBal = autoBalToggle ? autoBalToggle.checked : true;
+          const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
+          if (isAutoBal && splitRowsData.length === 1) {
+            splitRowsData[0].amount = grandVal;
+          }
           renderSplitRows();
-          updateSplitUI();
+          updateSplitUI(grandVal);
         }
       });
     });
@@ -5832,47 +5869,39 @@ async function loadSalesPOSSubTab() {
     }
   }
 
-  document.getElementById("posFillRemainingCash")?.addEventListener("click", () => {
+  function fillRestForMode(targetMode) {
     const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
-    const curTotal = splitRowsData.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const rem = Math.max(0, Math.round((grandVal - curTotal) * 100) / 100);
-    let cashRow = splitRowsData.find(r => r.mode === 'cash');
-    if (cashRow) {
-      cashRow.amount = Math.round(((parseFloat(cashRow.amount) || 0) + rem) * 100) / 100;
+    let targetRow = splitRowsData.find(r => r.mode === targetMode);
+    if (targetRow) {
+      const otherTotal = splitRowsData
+        .filter(r => r !== targetRow)
+        .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+      targetRow.amount = Math.max(0, Math.round((grandVal - otherTotal) * 100) / 100);
     } else {
-      splitRowsData.push({ mode: 'cash', amount: rem, ref: '' });
+      const otherTotal = splitRowsData.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+      const rem = Math.max(0, Math.round((grandVal - otherTotal) * 100) / 100);
+      splitRowsData.push({ mode: targetMode, amount: rem, ref: '' });
     }
     renderSplitRows();
     updateSplitUI(grandVal);
-  });
+  }
 
-  document.getElementById("posFillRemainingUpi")?.addEventListener("click", () => {
+  function fillRestForRowIndex(targetIdx) {
     const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
-    const curTotal = splitRowsData.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const rem = Math.max(0, Math.round((grandVal - curTotal) * 100) / 100);
-    let upiRow = splitRowsData.find(r => r.mode === 'upi');
-    if (upiRow) {
-      upiRow.amount = Math.round(((parseFloat(upiRow.amount) || 0) + rem) * 100) / 100;
-    } else {
-      splitRowsData.push({ mode: 'upi', amount: rem, ref: '' });
-    }
+    const targetRow = splitRowsData[targetIdx];
+    if (!targetRow) return;
+    const otherTotal = splitRowsData
+      .filter((r, idx) => idx !== targetIdx)
+      .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+    targetRow.amount = Math.max(0, Math.round((grandVal - otherTotal) * 100) / 100);
     renderSplitRows();
     updateSplitUI(grandVal);
-  });
+  }
 
-  document.getElementById("posFillRemainingBank")?.addEventListener("click", () => {
-    const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
-    const curTotal = splitRowsData.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const rem = Math.max(0, Math.round((grandVal - curTotal) * 100) / 100);
-    let bankRow = splitRowsData.find(r => r.mode === 'bank');
-    if (bankRow) {
-      bankRow.amount = Math.round(((parseFloat(bankRow.amount) || 0) + rem) * 100) / 100;
-    } else {
-      splitRowsData.push({ mode: 'bank', amount: rem, ref: '' });
-    }
-    renderSplitRows();
-    updateSplitUI(grandVal);
-  });
+  document.getElementById("posFillRemainingCash")?.addEventListener("click", () => fillRestForMode('cash'));
+  document.getElementById("posFillRemainingUpi")?.addEventListener("click", () => fillRestForMode('upi'));
+  document.getElementById("posFillRemainingBank")?.addEventListener("click", () => fillRestForMode('bank'));
+  document.getElementById("posFillRemainingCard")?.addEventListener("click", () => fillRestForMode('card'));
 
   document.getElementById("posSplit5050Btn")?.addEventListener("click", () => {
     const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
@@ -5885,8 +5914,21 @@ async function loadSalesPOSSubTab() {
     const half = Math.round((grandVal / 2) * 100) / 100;
     splitRowsData[0].amount = half;
     splitRowsData[1].amount = Math.round((grandVal - half) * 100) / 100;
+    for (let k = 2; k < splitRowsData.length; k++) {
+      splitRowsData[k].amount = 0;
+    }
     renderSplitRows();
     updateSplitUI(grandVal);
+  });
+
+  document.getElementById("posSplitAutoBalanceToggle")?.addEventListener("change", (e) => {
+    if (e.target.checked && splitRowsData.length === 2) {
+      const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
+      const rem = Math.max(0, Math.round((grandVal - (parseFloat(splitRowsData[0].amount) || 0)) * 100) / 100);
+      splitRowsData[1].amount = rem;
+      renderSplitRows();
+      updateSplitUI(grandVal);
+    }
   });
 
   document.getElementById("posAddSplitRowBtn")?.addEventListener("click", () => {
@@ -5937,12 +5979,23 @@ async function loadSalesPOSSubTab() {
         if (!cashRow) {
           cashRow = { mode: 'cash', amount: totalNotesAmt, ref: '' };
           splitRowsData.unshift(cashRow);
-          renderSplitRows();
         } else {
           cashRow.amount = totalNotesAmt;
-          renderSplitRows();
         }
-        updateSplitUI();
+
+        const autoBalToggle = document.getElementById("posSplitAutoBalanceToggle");
+        const isAutoBal = autoBalToggle ? autoBalToggle.checked : true;
+        const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || 0);
+
+        if (isAutoBal && splitRowsData.length === 2) {
+          const otherRow = splitRowsData.find(r => r !== cashRow);
+          if (otherRow) {
+            otherRow.amount = Math.max(0, Math.round((grandVal - totalNotesAmt) * 100) / 100);
+          }
+        }
+
+        renderSplitRows();
+        updateSplitUI(grandVal);
       } else {
         const paidInp = document.getElementById("posPaidAmtInput");
         const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || document.getElementById("posGrandText")?.textContent || "0");

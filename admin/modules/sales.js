@@ -408,9 +408,13 @@ function openAddCustomCartItemModal(onSuccess) {
       name: name,
       model: model,
       hsn_code: hsn,
+      selling_rate: rate,
+      mrp: Math.round(rate * (1 + gstRate / 100) * 100) / 100,
+      price_mode: 'selling_price',
+      discount_percent: 0,
       rate: rate,
       purchase_rate: rate,
-      purchase_rate_incl_tax: rate,
+      purchase_rate_incl_tax: rate * (1 + gstRate / 100),
       transport_expenses: 0,
       gst_rate: gstRate,
       quantity: qty,
@@ -568,6 +572,10 @@ function openAddUnrecognizedBarcodeModal(scannedCode, onSuccess) {
       name: name,
       model: model || "",
       hsn_code: hsn || code,
+      selling_rate: rate,
+      mrp: Math.round(rate * (1 + gstRate / 100) * 100) / 100,
+      price_mode: 'selling_price',
+      discount_percent: 0,
       rate: rate,
       purchase_rate: purRate > 0 ? purRate : rate,
       purchase_rate_incl_tax: (purRate > 0 ? purRate : rate) * (1 + gstRate / 100),
@@ -619,22 +627,31 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
     const rate = parseFloat(it.rate || 0);
     const qty = parseInt(it.quantity || 1, 10);
     const gstRate = parseFloat(it.gst_rate || 18);
-    const lineTaxable = rate * qty;
-    const lineGst = (lineTaxable * gstRate) / 100;
-    const lineTotal = lineTaxable + lineGst;
+    const lineTaxable = it.taxable_value !== undefined ? parseFloat(it.taxable_value) : (rate * qty);
+    const lineGst = it.gst_amount !== undefined ? parseFloat(it.gst_amount) : ((lineTaxable * gstRate) / 100);
+    const lineTotal = it.total !== undefined ? parseFloat(it.total) : (lineTaxable + lineGst);
 
     totalTaxable += lineTaxable;
     totalGst += lineGst;
 
     const prod = (typeof productsList !== 'undefined' && Array.isArray(productsList)) ? productsList.find(p => p.id == it.product_id) : null;
     const modelStr = it.model || it.model_name || (prod && prod.model) || '';
+    const discPct = parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0));
+
+    let pricingBadge = "";
+    if (it.price_mode === 'mrp') {
+      pricingBadge += ` <span style="font-size:10px;background:#fef3c7;color:#b45309;padding:1px 5px;border-radius:3px;font-weight:700;">MRP</span>`;
+    }
+    if (discPct > 0) {
+      pricingBadge += ` <span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-weight:700;">${discPct}% OFF</span>`;
+    }
 
     return `
       <tr>
         <td style="text-align:center;padding:6px;border:1px solid #cbd5e1;">${idx + 1}</td>
         <td style="padding:6px;border:1px solid #cbd5e1;">
           <div style="font-weight:bold;font-size:12px;">
-            ${esc(it.name)}${modelStr ? ` <span style="font-weight:700;color:#1e40af;">[Model: ${esc(modelStr)}]</span>` : ''}
+            ${esc(it.name)}${modelStr ? ` <span style="font-weight:700;color:#1e40af;">[Model: ${esc(modelStr)}]</span>` : ''}${pricingBadge}
           </div>
           ${it.serial_number ? `<div style="font-size:10px;color:#15803d;margin-top:2px;">Chassis/Serial: ${esc(it.serial_number)}</div>` : ''}
         </td>
@@ -1343,12 +1360,12 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
   const totalTaxable = items.reduce((acc, i) => acc + (parseFloat(i.taxable_value || (parseFloat(i.rate || 0) * (parseInt(i.quantity) || 1))) * taxRatio), 0);
   const totalTax = items.reduce((acc, i) => acc + (((parseFloat(i.taxable_value || (parseFloat(i.rate || 0) * (parseInt(i.quantity) || 1))) * taxRatio) * (i.gst_rate || 18)) / 100), 0);
 
-  const hasDiscount = items.some(it => parseFloat(it.discount || 0) > 0);
+  const hasDiscount = items.some(it => parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0)) > 0);
   const curUserObj = (typeof getUser === 'function' ? getUser() : null) || (typeof currentUser !== 'undefined' && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem('erp_user') || '{}');
   const loggedInUserName = curUserObj.name || curUserObj.full_name || curUserObj.username || 'manaswini';
 
   const itemRowsHtml = items.map((it, idx) => {
-    const rawTaxable = parseFloat(it.taxable_value || (parseFloat(it.rate || 0) * (parseInt(it.quantity) || 1)));
+    const rawTaxable = parseFloat(it.taxable_value !== undefined ? it.taxable_value : (parseFloat(it.rate || 0) * (parseInt(it.quantity) || 1)));
     const lineTaxable = Math.round((rawTaxable * taxRatio) * 100) / 100;
     const gstRate = parseFloat(it.gst_rate || 18);
     const lineTax = (lineTaxable * gstRate) / 100;
@@ -1359,7 +1376,9 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
     const prodNameStr = esc(it.description || it.product_name || 'Item');
     const modelStr = (it.model || it.model_name) ? ` / ${esc(it.model || it.model_name)}` : '';
     const unitStr = esc(it.unit || 'NOS');
-    const discVal = parseFloat(it.discount || 0);
+    const discVal = parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0));
+    const isMrp = it.price_mode === 'mrp';
+    const mrpBadge = isMrp ? ` <span style="font-size:10px;background:#fef3c7;color:#b45309;padding:1px 4px;border-radius:2px;font-weight:700;">[MRP]</span>` : '';
 
     const subRowColspan = hasDiscount ? 7 : 6;
 
@@ -1367,7 +1386,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
       <tr>
         <td style="text-align:center;">${idx + 1}</td>
         <td>
-          <div style="font-weight:bold;font-size:12px;">${prodNameStr}${modelStr}</div>
+          <div style="font-weight:bold;font-size:12px;">${prodNameStr}${modelStr}${mrpBadge}</div>
           <div style="font-size:10.5px;color:#0369a1;margin-top:2px;font-weight:bold;">
             ⚙️ Chassis / Serial No: <span style="font-family:monospace;background:#f1f5f9;padding:0 4px;border-radius:2px;">${esc(sn || '—')}</span>
           </div>
@@ -3130,11 +3149,16 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
     const modelName = it.model || it.model_name || it.product_model || '';
     const fullProdTitle = modelName ? `${prodName} / ${modelName}` : prodName;
     const lineDcVal = parseFloat(it.dc_total || it.total || (parseFloat(it.rate || 0) * (parseInt(it.quantity || 1))));
+    const discPct = parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0));
+    let pricingTag = "";
+    if (it.price_mode === 'mrp') pricingTag += ` <span style="font-size:10px;color:#b45309;font-weight:700;">[MRP]</span>`;
+    if (discPct > 0) pricingTag += ` <span style="font-size:10px;color:#15803d;font-weight:700;">[${discPct}% OFF]</span>`;
+
     return `
       <tr>
         <td style="text-align:center;">${idx + 1}</td>
         <td>
-          <div style="font-weight:bold;font-size:13px;">${esc(fullProdTitle)}</div>
+          <div style="font-weight:bold;font-size:13px;">${esc(fullProdTitle)}${pricingTag}</div>
           <div style="font-size:11px;color:#15803d;margin-top:3px;font-weight:bold;">
             ⚙️ Chassis / Serial No: <span style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:3px;font-family:monospace;font-size:12px;">${esc(sn || '—')}</span>
           </div>
@@ -4047,16 +4071,18 @@ async function loadSalesPOSSubTab() {
           <table class="data-table">
             <thead>
               <tr>
-                <th>Product & Serial No</th>
-                <th>Qty</th>
-                <th>Rate</th>
-                <th>GST %</th>
-                <th>Total</th>
-                <th>Remove</th>
+                <th style="min-width:160px;">Product & Serial No</th>
+                <th style="width:80px;text-align:center;">Qty</th>
+                <th style="min-width:145px;">Price Option</th>
+                <th style="width:85px;text-align:center;">Discount</th>
+                <th style="width:90px;text-align:right;">Rate (Excl)</th>
+                <th style="width:60px;text-align:center;">GST %</th>
+                <th style="width:95px;text-align:right;">Total</th>
+                <th style="width:40px;text-align:center;">Act</th>
               </tr>
             </thead>
             <tbody id="cartTableBody">
-              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>
+              <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>
             </tbody>
           </table>
         </div>
@@ -4884,7 +4910,7 @@ async function loadSalesPOSSubTab() {
 
     if (!tbody) return;
     if (cart.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>`;
       const btnSubmit = document.getElementById("posSubmitBtn");
       if (btnSubmit) {
         btnSubmit.disabled = true;
@@ -4949,20 +4975,109 @@ async function loadSalesPOSSubTab() {
 
     let taxable = 0;
     let gst = 0;
+    let totalMinCost = 0;
 
     tbody.innerHTML = cart.map((item, idx) => {
-      const gstRate = Math.round(parseFloat(item.gst_rate || 18));
-      const lineTaxable = item.rate * item.quantity;
-      const lineTax = (lineTaxable * gstRate) / 100;
+      const gRate = Math.round(parseFloat(item.gst_rate || 18));
+      const q = parseInt(item.quantity, 10) || 1;
+
+      // Selling Price (Excl Tax)
+      let sRate = parseFloat(item.selling_rate !== undefined ? item.selling_rate : (item.rate || 0));
+      if (isNaN(sRate)) sRate = 0;
+      item.selling_rate = sRate;
+
+      // MRP (Incl Tax)
+      let mrpVal = parseFloat(item.mrp || 0);
+      if (isNaN(mrpVal) || mrpVal <= 0) {
+        mrpVal = Math.round(sRate * (1 + gRate / 100) * 100) / 100;
+      }
+      item.mrp = mrpVal;
+
+      // Price Mode: 'selling_price' (Excl Tax) | 'mrp' (Incl Tax)
+      const priceMode = item.price_mode || 'selling_price';
+      item.price_mode = priceMode;
+
+      // Cost Floor per unit (Purchase Rate Incl Tax + Transport Expenses) to prevent loss
+      const purRateExcl = parseFloat(item.purchase_rate || 0);
+      const purRateIncl = (item.purchase_rate_incl_tax && parseFloat(item.purchase_rate_incl_tax) > 0)
+        ? parseFloat(item.purchase_rate_incl_tax)
+        : (purRateExcl * (1 + gRate / 100));
+      const transportExp = parseFloat(item.transport_expenses || 0);
+      const unitCostFloor = Math.round((purRateIncl + transportExp) * 100) / 100;
+      item.unit_cost_floor = unitCostFloor;
+
+      // Base Undiscounted Price per unit (Incl Tax) based on selected price mode
+      const unitFullInclTax = priceMode === 'mrp'
+        ? mrpVal
+        : (sRate * (1 + gRate / 100));
+
+      // Calculate safe max discount percentage (0% to 20%) to avoid falling below unitCostFloor
+      let maxDiscount = 20;
+      if (unitCostFloor > 0 && unitFullInclTax > 0) {
+        if (unitFullInclTax <= unitCostFloor) {
+          maxDiscount = 0;
+        } else {
+          maxDiscount = Math.floor(((unitFullInclTax - unitCostFloor) / unitFullInclTax) * 100);
+          maxDiscount = Math.min(20, Math.max(0, maxDiscount));
+        }
+      }
+      item.max_discount = maxDiscount;
+
+      // Current discount percentage: clamped to maxDiscount
+      let discPct = parseInt(item.discount_percent || 0, 10);
+      if (isNaN(discPct) || discPct < 0) discPct = 0;
+      if (discPct > maxDiscount) {
+        discPct = maxDiscount;
+      }
+      item.discount_percent = discPct;
+      item.discount = discPct;
+
+      // Calculations based on selected price mode and discount
+      let unitRateExcl = 0;
+      let lineTaxable = 0;
+      let lineTax = 0;
+      let lineTotal = 0;
+      let baseTaxableUnit = 0;
+
+      if (priceMode === 'mrp') {
+        // MRP Incl Tax: Total is derived from MRP with discount applied
+        const unitTotalIncl = Math.round((mrpVal * (1 - discPct / 100)) * 100) / 100;
+        lineTotal = Math.round((unitTotalIncl * q) * 100) / 100;
+        lineTaxable = Math.round((lineTotal / (1 + gRate / 100)) * 100) / 100;
+        lineTax = Math.round((lineTotal - lineTaxable) * 100) / 100;
+        unitRateExcl = Math.round((lineTaxable / q) * 100) / 100;
+        baseTaxableUnit = Math.round((mrpVal / (1 + gRate / 100)) * 100) / 100;
+      } else {
+        // Selling Price Excl Tax: Taxable unit rate is sRate with discount applied, then GST added on top
+        unitRateExcl = Math.round((sRate * (1 - discPct / 100)) * 100) / 100;
+        lineTaxable = Math.round((unitRateExcl * q) * 100) / 100;
+        lineTax = Math.round((lineTaxable * (gRate / 100)) * 100) / 100;
+        lineTotal = Math.round((lineTaxable + lineTax) * 100) / 100;
+        baseTaxableUnit = sRate;
+      }
+
+      item.rate = unitRateExcl;
+      item.taxable_value = lineTaxable;
+      item.gst_amount = lineTax;
+      item.total = lineTotal;
+
       taxable += lineTaxable;
       gst += lineTax;
+      totalMinCost += (unitCostFloor * q);
 
-      const isHighValue = parseFloat(item.rate || 0) > 10000;
+      const isHighValue = (unitRateExcl > 10000 || sRate > 10000);
+
+      // Build safe options for Discount dropdown: 0% up to maxDiscount%
+      let discOptionsHtml = `<option value="0" ${discPct === 0 ? 'selected' : ''}>0%</option>`;
+      for (let d = 1; d <= maxDiscount; d++) {
+        discOptionsHtml += `<option value="${d}" ${discPct === d ? 'selected' : ''}>${d}%</option>`;
+      }
 
       return `
         <tr>
           <td>
-            <div style="font-weight:600;color:var(--text1);margin-bottom:4px;">${esc(item.name)}${item.model ? ` <span style="font-size:12px;color:var(--primary);font-weight:700;">[Model: ${esc(item.model)}]</span>` : ''}</div>
+            <div style="font-weight:600;color:var(--text1);margin-bottom:2px;">${esc(item.name)}${item.model ? ` <span style="font-size:12px;color:var(--primary);font-weight:700;">[Model: ${esc(item.model)}]</span>` : ''}</div>
+            <div style="font-size:11px;color:var(--text3);">HSN: ${esc(item.hsn_code || '—')}</div>
             ${isHighValue ? `
               <div style="margin-top:4px;">
                 <label style="font-size:11px;color:var(--primary);font-weight:700;display:block;margin-bottom:2px;">
@@ -4973,38 +5088,41 @@ async function loadSalesPOSSubTab() {
                        data-idx="${idx}" 
                        value="${esc(item.serial_number || '')}" 
                        placeholder="Enter Chassis / Machine Serial No" 
-                       style="padding:4px 8px;font-size:12px;font-family:monospace;width:100%;max-width:260px;border-color:var(--primary);" 
+                       style="padding:4px 8px;font-size:12px;font-family:monospace;width:100%;max-width:240px;border-color:var(--primary);" 
                        required form="posCheckoutForm">
               </div>
             ` : ''}
           </td>
-          <td>
+          <td style="text-align:center;">
             <div style="display:inline-flex;align-items:center;gap:3px;background:var(--bg-secondary);padding:3px;border-radius:6px;border:1px solid var(--border);">
               <button type="button" class="btn btn-sm btn-outline-danger decreaseCartQty" data-idx="${idx}" style="padding:2px 8px;font-size:13px;font-weight:800;line-height:1;border-radius:4px;" title="Decrease quantity">-</button>
-              <input type="number" min="1" class="form-input cart-qty-input" data-idx="${idx}" value="${item.quantity}" style="width:48px;text-align:center;padding:2px 4px;font-weight:700;font-size:13px;border:1px solid var(--border);border-radius:4px;" ${isHighValue ? 'readonly title="High-value items (>₹10k) tracked 1-by-1 per serial number"' : ''}>
+              <input type="number" min="1" class="form-input cart-qty-input" data-idx="${idx}" value="${item.quantity}" style="width:44px;text-align:center;padding:2px 4px;font-weight:700;font-size:13px;border:1px solid var(--border);border-radius:4px;" ${isHighValue ? 'readonly title="High-value items (>₹10k) tracked 1-by-1 per serial number"' : ''}>
               <button type="button" class="btn btn-sm btn-outline-success increaseCartQty" data-idx="${idx}" style="padding:2px 8px;font-size:13px;font-weight:800;line-height:1;border-radius:4px;" title="Increase quantity">+</button>
             </div>
           </td>
-          <td>${formatCurrency(item.rate)}</td>
-          <td>${gstRate}%</td>
-          <td style="font-weight:600;">${formatCurrency(lineTaxable + lineTax)}</td>
-          <td><button class="btn btn-sm btn-danger removeCartItem" data-idx="${idx}">&times;</button></td>
+          <td>
+            <select class="form-select cart-price-mode-sel" data-idx="${idx}" style="font-size:11px;font-weight:600;padding:4px 6px;width:100%;border-radius:5px;border:1px solid var(--border);background:var(--bg-secondary);">
+              <option value="selling_price" ${priceMode === 'selling_price' ? 'selected' : ''}>Selling Excl: ${formatCurrency(sRate)}</option>
+              <option value="mrp" ${priceMode === 'mrp' ? 'selected' : ''}>MRP Incl: ${formatCurrency(mrpVal)}</option>
+            </select>
+          </td>
+          <td style="text-align:center;">
+            <select class="form-select cart-item-discount-sel" data-idx="${idx}" style="font-size:12px;font-weight:700;padding:4px 6px;width:100%;min-width:68px;border-radius:5px;border:1px solid ${discPct > 0 ? '#10b981' : 'var(--border)'};color:${discPct > 0 ? '#047857' : 'inherit'};">
+              ${discOptionsHtml}
+            </select>
+            ${maxDiscount < 20 ? `<span style="font-size:9.5px;color:#d97706;font-weight:700;display:block;margin-top:2px;" title="Discounts higher than ${maxDiscount}% are blocked to protect purchase cost">Max ${maxDiscount}% safe</span>` : ''}
+          </td>
+          <td style="text-align:right;">
+            <div style="font-weight:700;font-size:12.5px;">${formatCurrency(unitRateExcl)}</div>
+            ${discPct > 0 ? `<div style="font-size:10px;color:var(--text3);text-decoration:line-through;">${formatCurrency(baseTaxableUnit)}</div>` : ''}
+          </td>
+          <td style="text-align:center;font-weight:600;font-size:12px;">${gRate}%</td>
+          <td style="text-align:right;font-weight:700;color:var(--success);font-size:13px;">${formatCurrency(lineTotal)}</td>
+          <td style="text-align:center;"><button class="btn btn-sm btn-danger removeCartItem" data-idx="${idx}" style="padding:2px 7px;font-size:14px;line-height:1;border-radius:4px;" title="Remove item">&times;</button></td>
         </tr>
       `;
     }).join("");
 
-    // Calculate Minimum Cost Price (Purchase Rate Incl Tax + Transport Expenses) to prevent company loss
-    let totalMinCost = 0;
-    cart.forEach(item => {
-      const purRateExcl = parseFloat(item.purchase_rate || 0);
-      const gstR = parseFloat(item.gst_rate || 18);
-      const purRateIncl = (item.purchase_rate_incl_tax && parseFloat(item.purchase_rate_incl_tax) > 0)
-        ? parseFloat(item.purchase_rate_incl_tax)
-        : (purRateExcl * (1 + gstR / 100));
-      const transportExp = parseFloat(item.transport_expenses || 0);
-      const itemMinCost = (purRateIncl + transportExp) * (parseInt(item.quantity, 10) || 1);
-      totalMinCost += itemMinCost;
-    });
     totalMinCost = Math.round(totalMinCost * 100) / 100;
 
     // Calculate discount
@@ -5061,8 +5179,8 @@ async function loadSalesPOSSubTab() {
     const slabBreakdown = {};
     cart.forEach(item => {
       const gRate = Math.round(parseFloat(item.gst_rate || 18));
-      const lineTaxable = item.rate * item.quantity;
-      const lineTax = (lineTaxable * gRate) / 100;
+      const lineTaxable = parseFloat(item.taxable_value !== undefined ? item.taxable_value : (item.rate * item.quantity));
+      const lineTax = parseFloat(item.gst_amount !== undefined ? item.gst_amount : ((lineTaxable * gRate) / 100));
       if (!slabBreakdown[gRate]) slabBreakdown[gRate] = { taxable: 0, gst: 0 };
       slabBreakdown[gRate].taxable += lineTaxable;
       slabBreakdown[gRate].gst += lineTax;
@@ -5312,6 +5430,26 @@ async function loadSalesPOSSubTab() {
       });
     });
 
+    document.querySelectorAll(".cart-price-mode-sel").forEach(sel => {
+      sel.addEventListener("change", (e) => {
+        const itemIdx = parseInt(e.target.dataset.idx, 10);
+        const item = cart[itemIdx];
+        if (!item) return;
+        item.price_mode = e.target.value;
+        updateCartUI();
+      });
+    });
+
+    document.querySelectorAll(".cart-item-discount-sel").forEach(sel => {
+      sel.addEventListener("change", (e) => {
+        const itemIdx = parseInt(e.target.dataset.idx, 10);
+        const item = cart[itemIdx];
+        if (!item) return;
+        item.discount_percent = parseInt(e.target.value, 10) || 0;
+        updateCartUI();
+      });
+    });
+
     document.querySelectorAll(".removeCartItem").forEach(btn => {
       btn.addEventListener("click", () => {
         cart.splice(parseInt(btn.dataset.idx), 1);
@@ -5504,7 +5642,7 @@ async function loadSalesPOSSubTab() {
       }
 
       const purRateExcl = parseFloat(matchedProd.purchase_rate || 0);
-      const gstR = parseFloat(matchedProd.gst_rate || 18);
+      const gstR = Math.round(parseFloat(matchedProd.gst_rate || 18));
       const purRateIncl = (matchedProd.purchase_rate_incl_tax && parseFloat(matchedProd.purchase_rate_incl_tax) > 0)
         ? parseFloat(matchedProd.purchase_rate_incl_tax)
         : (purRateExcl * (1 + gstR / 100));
@@ -5515,6 +5653,9 @@ async function loadSalesPOSSubTab() {
         ? Math.round(((purRateExcl + transportExp) * (1 + sellPct / 100)) * 100) / 100
         : parseFloat(matchedProd.selling_rate || 0);
       const rate = calculatedSellingExcl > 0 ? calculatedSellingExcl : parseFloat(matchedProd.selling_rate || 0);
+      const mrp = parseFloat(matchedProd.mrp || 0) > 0
+        ? parseFloat(matchedProd.mrp)
+        : Math.round((rate * (1 + gstR / 100)) * 100) / 100;
 
       const isHighValue = rate > 10000;
       if (isHighValue) {
@@ -5524,18 +5665,22 @@ async function loadSalesPOSSubTab() {
           model: matchedProd.model || '',
           brand: matchedProd.brand || '',
           hsn_code: matchedProd.hsn_sac || matchedProd.hsn_code,
+          selling_rate: rate,
+          mrp: mrp,
+          price_mode: 'selling_price',
+          discount_percent: 0,
           rate: rate,
           purchase_rate: purRateExcl,
           purchase_rate_incl_tax: purRateIncl,
           transport_expenses: transportExp,
-          gst_rate: Math.round(parseFloat(matchedProd.gst_rate || 18)),
+          gst_rate: gstR,
           quantity: 1,
           serial_number: detectedSerialNo
         });
         playPosScanBeep(true);
         showToast(`⚡ Scanned high-value "${matchedProd.name}" - Added 1 unit (Serial: ${detectedSerialNo || '—'})`, "info");
       } else {
-        const existing = cart.find(c => c.product_id == matchedProd.id && parseFloat(c.rate) <= 10000);
+        const existing = cart.find(c => c.product_id == matchedProd.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && parseFloat(c.rate) <= 10000);
         if (existing) {
           existing.quantity += 1;
           if (!existing.serial_number && detectedSerialNo) existing.serial_number = detectedSerialNo;
@@ -5548,11 +5693,15 @@ async function loadSalesPOSSubTab() {
             model: matchedProd.model || '',
             brand: matchedProd.brand || '',
             hsn_code: matchedProd.hsn_sac || matchedProd.hsn_code,
+            selling_rate: rate,
+            mrp: mrp,
+            price_mode: 'selling_price',
+            discount_percent: 0,
             rate: rate,
             purchase_rate: purRateExcl,
             purchase_rate_incl_tax: purRateIncl,
             transport_expenses: transportExp,
-            gst_rate: Math.round(parseFloat(matchedProd.gst_rate || 18)),
+            gst_rate: gstR,
             quantity: 1,
             serial_number: detectedSerialNo
           });
@@ -5758,7 +5907,7 @@ async function loadSalesPOSSubTab() {
     }
 
     const purRateExcl = parseFloat(prod.purchase_rate || 0);
-    const gstR = parseFloat(prod.gst_rate || 18);
+    const gstR = Math.round(parseFloat(prod.gst_rate || 18));
     const purRateIncl = (prod.purchase_rate_incl_tax && parseFloat(prod.purchase_rate_incl_tax) > 0)
       ? parseFloat(prod.purchase_rate_incl_tax)
       : (purRateExcl * (1 + gstR / 100));
@@ -5769,6 +5918,9 @@ async function loadSalesPOSSubTab() {
       ? Math.round(((purRateExcl + transportExp) * (1 + sellPct / 100)) * 100) / 100
       : parseFloat(prod.selling_rate || 0);
     const rate = calculatedSellingExcl > 0 ? calculatedSellingExcl : parseFloat(prod.selling_rate || 0);
+    const mrp = parseFloat(prod.mrp || 0) > 0
+      ? parseFloat(prod.mrp)
+      : Math.round((rate * (1 + gstR / 100)) * 100) / 100;
 
     const isHighValue = rate > 10000;
     if (isHighValue) {
@@ -5780,18 +5932,22 @@ async function loadSalesPOSSubTab() {
           model: prod.model || '',
           brand: prod.brand || '',
           hsn_code: prod.hsn_sac || prod.hsn_code,
+          selling_rate: rate,
+          mrp: mrp,
+          price_mode: 'selling_price',
+          discount_percent: 0,
           rate: rate,
           purchase_rate: purRateExcl,
           purchase_rate_incl_tax: purRateIncl,
           transport_expenses: transportExp,
-          gst_rate: Math.round(parseFloat(prod.gst_rate || 18)),
+          gst_rate: gstR,
           quantity: 1,
           serial_number: ""
         });
       }
       showToast(`Added ${qty} unit(s) of '${prod.name}' separately (1 by 1) for individual Chassis/Serial No tracking`, "info");
     } else {
-      const existing = cart.find(c => c.product_id == prod.id && parseFloat(c.rate) <= 10000);
+      const existing = cart.find(c => c.product_id == prod.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && parseFloat(c.rate) <= 10000);
       if (existing) {
         existing.quantity += qty;
       } else {
@@ -5801,11 +5957,15 @@ async function loadSalesPOSSubTab() {
           model: prod.model || '',
           brand: prod.brand || '',
           hsn_code: prod.hsn_sac || prod.hsn_code,
+          selling_rate: rate,
+          mrp: mrp,
+          price_mode: 'selling_price',
+          discount_percent: 0,
           rate: rate,
           purchase_rate: purRateExcl,
           purchase_rate_incl_tax: purRateIncl,
           transport_expenses: transportExp,
-          gst_rate: Math.round(parseFloat(prod.gst_rate || 18)),
+          gst_rate: gstR,
           quantity: qty,
           serial_number: ""
         });
@@ -5872,14 +6032,17 @@ async function loadSalesPOSSubTab() {
       const taxableVal = parseFloat(taxableText.replace(/[^0-9.]/g, "") || 0);
       const gstVal = Math.round((finalGrand - taxableVal) * 100) / 100;
 
-      let standardTaxable = cart.reduce((a, b) => a + (b.rate * b.quantity), 0);
-      let standardGst = cart.reduce((a, b) => a + ((b.rate * b.quantity * (b.gst_rate || 18)) / 100), 0);
+      let standardTaxable = cart.reduce((a, b) => a + (parseFloat(b.taxable_value !== undefined ? b.taxable_value : (b.rate * b.quantity))), 0);
+      let standardGst = cart.reduce((a, b) => a + (parseFloat(b.gst_amount !== undefined ? b.gst_amount : ((b.rate * b.quantity * (b.gst_rate || 18)) / 100))), 0);
       let standardGrand = standardTaxable + standardGst;
       let ratio = standardGrand > 0 ? (finalGrand / standardGrand) : 1;
 
       const adjustedCart = cart.map(it => ({
         ...it,
-        rate: Math.round((it.rate * ratio) * 100) / 100
+        rate: Math.round((parseFloat(it.rate) * ratio) * 100) / 100,
+        taxable_value: Math.round(((parseFloat(it.taxable_value !== undefined ? it.taxable_value : (it.rate * it.quantity))) * ratio) * 100) / 100,
+        gst_amount: Math.round(((parseFloat(it.gst_amount !== undefined ? it.gst_amount : 0)) * ratio) * 100) / 100,
+        total: Math.round(((parseFloat(it.total !== undefined ? it.total : 0)) * ratio) * 100) / 100
       }));
 
       customTotals = {
@@ -5955,9 +6118,10 @@ async function loadSalesPOSSubTab() {
     let cartGstSum = 0;
     let totalMinCost = 0;
     cart.forEach(i => {
-      const lTaxable = parseFloat(i.rate) * parseInt(i.quantity);
+      const lTaxable = parseFloat(i.taxable_value !== undefined ? i.taxable_value : (parseFloat(i.rate) * parseInt(i.quantity)));
+      const lGst = parseFloat(i.gst_amount !== undefined ? i.gst_amount : ((lTaxable * Math.round(parseFloat(i.gst_rate || 18))) / 100));
       cartTaxableSum += lTaxable;
-      cartGstSum += (lTaxable * Math.round(parseFloat(i.gst_rate || 18))) / 100;
+      cartGstSum += lGst;
 
       const purRateExcl = parseFloat(i.purchase_rate || 0);
       const gstR = parseFloat(i.gst_rate || 18);

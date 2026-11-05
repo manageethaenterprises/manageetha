@@ -648,6 +648,8 @@ module.exports = async function handler(req, res) {
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice_date DATE`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_term VARCHAR(50) DEFAULT '1_year'`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_months INT DEFAULT NULL`;
+        await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS price_mode VARCHAR(50) DEFAULT 'selling_price'`;
+        await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount NUMERIC(15,2) DEFAULT 0`;
         await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS is_finalized BOOLEAN DEFAULT true;`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'generated';`;
@@ -685,9 +687,9 @@ module.exports = async function handler(req, res) {
       let taxSum = 0;
 
       items.forEach(i => {
-        const lineTotal = parseFloat(i.rate) * parseInt(i.quantity);
+        const lineTotal = parseFloat(i.taxable_value !== undefined ? i.taxable_value : (parseFloat(i.rate) * parseInt(i.quantity)));
         const gstRate = parseFloat(i.gst_rate || 18);
-        const lineTax = (lineTotal * gstRate) / 100;
+        const lineTax = parseFloat(i.gst_amount !== undefined ? i.gst_amount : ((lineTotal * gstRate) / 100));
         taxableSum += lineTotal;
         taxSum += lineTax;
       });
@@ -839,9 +841,10 @@ module.exports = async function handler(req, res) {
 
       // Save items and deduct stock
       for (const item of items) {
-        const lineTotal = parseFloat(item.rate) * parseInt(item.quantity);
+        const lineTotal = parseFloat(item.taxable_value !== undefined ? item.taxable_value : (parseFloat(item.rate) * parseInt(item.quantity)));
         const gstRate = parseFloat(item.gst_rate || 18);
-        const lineTax = (lineTotal * gstRate) / 100;
+        const lineTax = parseFloat(item.gst_amount !== undefined ? item.gst_amount : ((lineTotal * gstRate) / 100));
+        const itemTotal = parseFloat(item.total !== undefined ? item.total : (lineTotal + lineTax));
         const validProdId = (item.product_id && !isNaN(parseInt(item.product_id))) ? parseInt(item.product_id) : null;
 
         const itemDesc = (!validProdId && item.model)
@@ -850,13 +853,14 @@ module.exports = async function handler(req, res) {
 
         await sql`
           INSERT INTO sale_items (
-            sale_id, product_id, description, hsn_code, quantity, rate, taxable_value,
-            gst_rate, cgst, sgst, igst, total, serial_number
+            sale_id, product_id, description, hsn_code, quantity, rate, discount, taxable_value,
+            gst_rate, cgst, sgst, igst, total, serial_number, price_mode
           ) VALUES (
             ${newSale[0].id}, ${validProdId}, ${itemDesc},
             ${item.hsn_code || item.hsn_sac || null}, ${parseInt(item.quantity)}, ${parseFloat(item.rate)},
-            ${lineTotal}, ${gstRate}, ${lineTax / 2}, ${lineTax / 2}, 0, ${lineTotal + lineTax},
-            ${item.serial_number || null}
+            ${parseFloat(item.discount !== undefined ? item.discount : (item.discount_percent || 0))},
+            ${lineTotal}, ${gstRate}, ${isInterstate ? 0 : lineTax / 2}, ${isInterstate ? 0 : lineTax / 2}, ${isInterstate ? lineTax : 0}, ${itemTotal},
+            ${item.serial_number || null}, ${item.price_mode || 'selling_price'}
           )
         `;
 

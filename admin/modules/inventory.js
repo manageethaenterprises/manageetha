@@ -7496,21 +7496,23 @@ async function loadHsnMasterSubTab() {
           btn.addEventListener("click", () => {
             const item = hsnList.find(h => h.id == btn.dataset.id);
             if (item) {
+              const displayRate = parseFloat(item.gst_rate || 0);
               showConfirmModal({
                 title: "Delete HSN Code",
-                message: `Are you sure you want to delete HSN Code "${item.code}"?`,
+                message: `Are you sure you want to delete HSN Code "${item.code}" (${displayRate}%)?`,
                 confirmText: "Delete HSN",
                 onConfirm: async () => {
                   try {
                     const res = await fetch(`${API_BASE}/inventory?action=delete-hsn&id=${item.id}`, {
                       method: "POST",
-                      headers: authHeaders()
+                      headers: authHeaders(),
+                      body: JSON.stringify({ id: item.id })
                     });
                     const data = await res.json();
                     if (data.success) {
-                      showToast("HSN Code deleted!", "success");
-                      fetchHsnList();
-                    } else throw new Error(data.error);
+                      showToast(data.message || "HSN Code deleted!", "success");
+                      await fetchHsnList();
+                    } else throw new Error(data.error || "Failed to delete HSN Code");
                   } catch (err) {
                     showToast(err.message, "error");
                   }
@@ -7544,6 +7546,11 @@ async function loadHsnMasterSubTab() {
 
   function showHsnModal(hsnObj) {
     const isEdit = !!hsnObj;
+    const rawRate = hsnObj ? parseFloat(hsnObj.gst_rate || 0) : 18;
+    const currentRate = (rawRate > 0 && rawRate < 1) ? Math.round(rawRate * 100) : rawRate;
+    const standardRates = [0, 5, 12, 18, 28];
+    const isCustomRate = !standardRates.includes(currentRate);
+
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
     overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(3px);";
@@ -7564,13 +7571,18 @@ async function loadHsnMasterSubTab() {
           </div>
           <div class="form-group" style="margin-bottom:14px;">
             <label class="form-label" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">GST Rate (%) *</label>
-            <select id="hsnGstRateInput" class="form-select" style="width:100%;font-weight:700;">
-              <option value="0" ${hsnObj?.gst_rate == 0 ? 'selected' : ''}>0% (Exempt)</option>
-              <option value="5" ${hsnObj?.gst_rate == 5 ? 'selected' : ''}>5% GST</option>
-              <option value="12" ${hsnObj?.gst_rate == 12 ? 'selected' : ''}>12% GST</option>
-              <option value="18" ${!hsnObj || hsnObj?.gst_rate == 18 ? 'selected' : ''}>18% GST (Standard)</option>
-              <option value="28" ${hsnObj?.gst_rate == 28 ? 'selected' : ''}>28% GST (Luxury / High)</option>
-            </select>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select id="hsnGstRateInput" class="form-select" style="flex:1;font-weight:700;">
+                <option value="0" ${currentRate === 0 ? 'selected' : ''}>0% (Exempt)</option>
+                <option value="5" ${currentRate === 5 ? 'selected' : ''}>5% GST</option>
+                <option value="12" ${currentRate === 12 ? 'selected' : ''}>12% GST</option>
+                <option value="18" ${currentRate === 18 ? 'selected' : ''}>18% GST (Standard)</option>
+                <option value="28" ${currentRate === 28 ? 'selected' : ''}>28% GST (Luxury / High)</option>
+                ${isCustomRate ? `<option value="${currentRate}" selected>${currentRate}% (Current)</option>` : ''}
+                <option value="custom">Other / Custom Rate...</option>
+              </select>
+              <input type="number" step="0.01" min="0" max="100" id="hsnCustomGstRate" class="form-input" style="width:95px;font-weight:700;display:${isCustomRate ? 'block' : 'none'};" placeholder="GST %" value="${currentRate}">
+            </div>
             <div style="font-size:11.5px;color:var(--text3,#64748b);margin-top:4px;">💡 An HSN code can support multiple rates (e.g. 5% machinery vs. 18% parts). Adding a new rate preserves existing rates for this HSN code.</div>
           </div>
           <div class="form-group" style="margin-bottom:14px;">
@@ -7595,6 +7607,18 @@ async function loadHsnMasterSubTab() {
     overlay.querySelector("#hsnModalClose").addEventListener("click", closeModal);
     overlay.querySelector("#hsnModalCancel").addEventListener("click", closeModal);
 
+    const sel = overlay.querySelector("#hsnGstRateInput");
+    const customInp = overlay.querySelector("#hsnCustomGstRate");
+    sel.addEventListener("change", () => {
+      if (sel.value === "custom") {
+        customInp.style.display = "block";
+        customInp.focus();
+      } else {
+        customInp.style.display = "none";
+        customInp.value = sel.value;
+      }
+    });
+
     overlay.querySelector("#hsnForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const submitBtn = e.target.querySelector("button[type='submit']");
@@ -7605,10 +7629,20 @@ async function loadHsnMasterSubTab() {
         submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Saving...`;
       }
 
+      let gstVal = 0;
+      if (sel.value === "custom" || customInp.style.display !== "none") {
+        gstVal = parseFloat(customInp.value) || 0;
+      } else {
+        gstVal = parseFloat(sel.value) || 0;
+      }
+      if (gstVal > 0 && gstVal < 1) {
+        gstVal = Math.round(gstVal * 100);
+      }
+
       const payload = {
         id: document.getElementById("hsnId").value || null,
         code: document.getElementById("hsnCodeInput").value.trim(),
-        gst_rate: parseFloat(document.getElementById("hsnGstRateInput").value),
+        gst_rate: gstVal,
         description: document.getElementById("hsnDescInput").value.trim(),
         is_active: document.getElementById("hsnActiveInput").checked
       };
@@ -7623,7 +7657,7 @@ async function loadHsnMasterSubTab() {
         if (data.success) {
           showToast(data.message || "HSN Code saved!", "success");
           closeModal();
-          fetchHsnList();
+          await fetchHsnList();
         } else {
           showToast(data.error || "Failed to save HSN Code", "error");
         }

@@ -175,6 +175,19 @@ async function ensureHsnConstraints(sql) {
     await sql`ALTER TABLE hsn_codes DROP CONSTRAINT IF EXISTS hsn_codes_code_key;`;
     await sql`DROP INDEX IF EXISTS hsn_codes_code_key;`;
     await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_hsn_codes_code_gst ON hsn_codes (LOWER(TRIM(code)), gst_rate);`;
+
+    // Fix corrupt fractional rates from legacy Excel import (e.g. 0.18 -> 18, 0.05 -> 5, 0.12 -> 12)
+    try {
+      await sql`
+        UPDATE products 
+        SET gst_rate = ROUND(gst_rate * 100) 
+        WHERE gst_rate > 0 AND gst_rate < 1;
+      `;
+      await sql`
+        DELETE FROM hsn_codes WHERE gst_rate > 0 AND gst_rate < 1;
+      `;
+    } catch (cleanErr) { }
+
     hsnConstraintsMigrated = true;
   } catch (e) {
     console.warn("ensureHsnConstraints non-critical:", e.message);
@@ -1088,75 +1101,106 @@ module.exports = async function handler(req, res) {
     else if (action === "hsn-list") {
       await ensureHsnConstraints(sql);
 
-      // Auto-sync missing HSN codes from products into hsn_codes table (supports multiple rates per code)
-      try {
-        await sql`
-          INSERT INTO hsn_codes (code, gst_rate, is_active)
-          SELECT DISTINCT TRIM(p.hsn_sac), p.gst_rate, true
-          FROM products p
-          WHERE p.hsn_sac IS NOT NULL AND TRIM(p.hsn_sac) != ''
-            AND NOT EXISTS (
-              SELECT 1 FROM hsn_codes h 
-              WHERE LOWER(TRIM(h.code)) = LOWER(TRIM(p.hsn_sac))
-                AND ABS(h.gst_rate - p.gst_rate) < 0.01
-            )
-          GROUP BY TRIM(p.hsn_sac), p.gst_rate
-        `;
-      } catch (syncErr) {
-        console.warn("hsn_codes auto-sync info:", syncErr.message);
-      }
-
       const rows = await sql`SELECT * FROM hsn_codes ORDER BY is_active DESC, code ASC, gst_rate ASC`;
       return res.status(200).json({ success: true, hsn_codes: rows });
     }
 
     else if (action === "save-hsn") {
       const userRole = (user?.role || '').toLowerCase();
-      if (userRole !== 'superadmin') {
-        return res.status(403).json({ error: "Access denied. Only Superadmin can create or edit HSN Master GST rates." });
+      const isPrivileged = userRole === 'superadmin' || userRole === 'super_admin' || userRole === 'admin' || userRole === 'storeadmin' || user?.username === 'superadmin';
+      if (!isPrivileged) {
+        return res.status(403).json({ error: "Access denied. Only Superadmin / Admin can create or edit HSN Master GST rates." });
       }
 
       await ensureHsnConstraints(sql);
 
-      const { id, code, description, gst_rate, is_active } = req.body;
+      const { id, code, description, gst_rate, is_active } = body;
       if (!code || !code.toString().trim()) return res.status(400).json({ error: "HSN / SAC Code is required" });
 
       const cleanCode = code.toString().trim();
-      const rate = parseFloat(gst_rate || 0);
+      let rate = parseFloat(gst_rate || 0);
+      // Auto-normalize fractional percentage (e.g. 0.18 -> 18) if user or Excel imports raw decimal
+      if (rate > 0 && rate < 1) {
+        rate = Math.round(rate * 100);
+      }
       const activeStatus = is_active !== undefined ? Boolean(is_active) : true;
 
       let savedRecord;
       if (id) {
-        const updated = await sql`
-          UPDATE hsn_codes SET
-            code = ${cleanCode},
-            description = ${description || null},
-            gst_rate = ${rate},
-            is_active = ${activeStatus},
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ${safeInt(id)}
-          RETURNING *
+        const targetId = safeInt(id);
+
+        // Fetch old record details for product sync
+        const oldRows = await sql`SELECT * FROM hsn_codes WHERE id = ${targetId}`;
+        const oldRow = oldRows[0];
+
+        // Check if another row already exists with this exact (code, rate)
+        const duplicateRows = await sql`
+          SELECT id FROM hsn_codes 
+          WHERE LOWER(TRIM(code)) = LOWER(TRIM(${cleanCode})) 
+            AND ABS(gst_rate - ${rate}) < 0.01 
+            AND id != ${targetId}
+          LIMIT 1
         `;
-        savedRecord = updated[0];
+
+        if (duplicateRows.length > 0) {
+          // Merge: update the existing matching record, and remove this duplicate entry
+          const mergeTargetId = duplicateRows[0].id;
+          const updated = await sql`
+            UPDATE hsn_codes SET
+              description = COALESCE(${description || null}, description),
+              is_active = ${activeStatus},
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ${mergeTargetId}
+            RETURNING *
+          `;
+          await sql`DELETE FROM hsn_codes WHERE id = ${targetId}`;
+          savedRecord = updated[0];
+        } else {
+          const updated = await sql`
+            UPDATE hsn_codes SET
+              code = ${cleanCode},
+              description = ${description || null},
+              gst_rate = ${rate},
+              is_active = ${activeStatus},
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ${targetId}
+            RETURNING *
+          `;
+          savedRecord = updated[0];
+        }
+
+        // If oldRow was modified, cascade update to any matching products with the old HSN/rate
+        if (oldRow) {
+          const oldCode = (oldRow.code || '').trim();
+          const oldRate = parseFloat(oldRow.gst_rate || 0);
+          if (oldCode) {
+            await sql`
+              UPDATE products 
+              SET hsn_sac = ${cleanCode},
+                  gst_rate = ${rate}
+              WHERE LOWER(TRIM(hsn_sac)) = LOWER(TRIM(${oldCode})) 
+                AND (ABS(gst_rate - ${oldRate}) < 0.01 OR (oldRate < 1 AND ABS(gst_rate - ${oldRate}) < 0.005))
+            `;
+          }
+        }
       } else {
-        // Multi-rate check: look for exact same code and rate combination
-        const existingWithSameRate = await sql`
+        // Creating new HSN code
+        const existing = await sql`
           SELECT id FROM hsn_codes 
           WHERE LOWER(TRIM(code)) = LOWER(TRIM(${cleanCode})) AND ABS(gst_rate - ${rate}) < 0.01 
           LIMIT 1
         `;
-        if (existingWithSameRate.length > 0) {
+        if (existing.length > 0) {
           const updated = await sql`
             UPDATE hsn_codes SET
-              description = ${description || null},
+              description = COALESCE(${description || null}, description),
               is_active = ${activeStatus},
               updated_at = CURRENT_TIMESTAMP
-            WHERE id = ${existingWithSameRate[0].id}
+            WHERE id = ${existing[0].id}
             RETURNING *
           `;
           savedRecord = updated[0];
         } else {
-          // Add as new rate configuration for this HSN code (preserving any other rates)
           const inserted = await sql`
             INSERT INTO hsn_codes (code, description, gst_rate, is_active)
             VALUES (${cleanCode}, ${description || null}, ${rate}, ${activeStatus})
@@ -1171,14 +1215,33 @@ module.exports = async function handler(req, res) {
 
     else if (action === "delete-hsn") {
       const userRole = (user?.role || '').toLowerCase();
-      if (userRole !== 'superadmin') {
-        return res.status(403).json({ error: "Access denied. Only Superadmin can delete HSN Master codes." });
+      const isPrivileged = userRole === 'superadmin' || userRole === 'super_admin' || userRole === 'admin' || userRole === 'storeadmin' || user?.username === 'superadmin';
+      if (!isPrivileged) {
+        return res.status(403).json({ error: "Access denied. Only Superadmin / Admin can delete HSN Master codes." });
       }
 
-      const hsnId = safeInt(req.query.id || req.body?.id);
+      const hsnId = safeInt(req.query.id || body?.id || body?.hsn_id);
       if (!hsnId) return res.status(400).json({ error: "HSN Code ID required" });
 
-      await sql`DELETE FROM hsn_codes WHERE id = ${hsnId}`;
+      const toDelete = await sql`SELECT * FROM hsn_codes WHERE id = ${hsnId}`;
+      if (toDelete.length > 0) {
+        const delCode = (toDelete[0].code || '').trim();
+        const delRate = parseFloat(toDelete[0].gst_rate || 0);
+
+        // Delete from hsn_codes
+        await sql`DELETE FROM hsn_codes WHERE id = ${hsnId}`;
+
+        // If delRate was a corrupt decimal rate from Excel import (< 1, e.g. 0.18), normalize products to 18%
+        if (delRate > 0 && delRate < 1) {
+          const normalizedRate = Math.round(delRate * 100);
+          await sql`
+            UPDATE products 
+            SET gst_rate = ${normalizedRate} 
+            WHERE LOWER(TRIM(hsn_sac)) = LOWER(TRIM(${delCode})) AND ABS(gst_rate - ${delRate}) < 0.005
+          `;
+        }
+      }
+
       return res.status(200).json({ success: true, message: "HSN Code deleted successfully!" });
     }
 

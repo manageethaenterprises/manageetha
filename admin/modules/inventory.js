@@ -8169,44 +8169,42 @@ function openInterestConfigModal(purchase, onSuccess) {
 
 
 // ── Pure JS Barcode Generator (Code 39 SVG) ──
-if (!window.generateBarcodeSVG) {
-  window.generateBarcodeSVG = function (text, height = 30, showText = true) {
-    if (!text) return '';
-    const raw = String(text).toUpperCase().replace(/[^A-Z0-9\-\.\ \$\+\%]/g, '-');
-    const str = '*' + raw + '*';
-    const patterns = {
-      '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
-      '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
-      '8': '100100100', '9': '001100100', 'A': '100001001', 'B': '001001001',
-      'C': '101001000', 'D': '000011001', 'E': '100011000', 'F': '001011000',
-      'G': '000001101', 'H': '100001100', 'I': '001001100', 'J': '000011100',
-      'K': '100000011', 'L': '001000011', 'M': '101000010', 'N': '000010011',
-      'O': '100010010', 'P': '001010010', 'Q': '000000111', 'R': '100000110',
-      'S': '001000110', 'T': '000010110', 'U': '110000001', 'V': '011000001',
-      'W': '111000000', 'X': '010010001', 'Y': '110010000', 'Z': '011010000',
-      '-': '010000101', '.': '110000100', ' ': '011000100', '*': '010010100',
-      '$': '010101000', '/': '010100010', '+': '010001010', '%': '000101010'
-    };
-    const narrow = 1.2, wide = 2.8, gap = 1.4, quietZone = 8;
-    let x = quietZone;
-    let rectsHtml = '';
-    for (let c = 0; c < str.length; c++) {
-      const pat = patterns[str[c]] || patterns['-'];
-      for (let i = 0; i < 9; i++) {
-        const isBar = (i % 2 === 0);
-        const w = (pat[i] === '1') ? wide : narrow;
-        if (isBar) rectsHtml += `<rect x="${x.toFixed(1)}" y="2" width="${w.toFixed(1)}" height="${height}" fill="#000000" />`;
-        x += w;
-      }
-      x += gap;
-    }
-    const svgWidth = Math.ceil(x + quietZone);
-    const svgHeight = height + (showText ? 15 : 4);
-    const bgHtml = `<rect width="${svgWidth}" height="${svgHeight}" fill="#ffffff" />`;
-    const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 12}" font-family="Consolas, monospace" font-size="10" font-weight="bold" text-anchor="middle" fill="#000000">${raw}</text>` : '';
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" style="display:block;margin:0 auto;background:#fff;">${bgHtml}${rectsHtml}${textHtml}</svg>`;
+window.generateBarcodeSVG = function (text, height = 36, showText = true, textColor = '#dc2626') {
+  if (!text) return '';
+  const raw = String(text).toUpperCase().replace(/[^A-Z0-9\-\.\ \$\+\%]/g, '-');
+  const str = '*' + raw + '*';
+  const patterns = {
+    '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000',
+    '4': '000110001', '5': '100110000', '6': '001110000', '7': '000100101',
+    '8': '100100100', '9': '001100100', 'A': '100001001', 'B': '001001001',
+    'C': '101001000', 'D': '000011001', 'E': '100011000', 'F': '001011000',
+    'G': '000001101', 'H': '100001100', 'I': '001001100', 'J': '000011100',
+    'K': '100000011', 'L': '001000011', 'M': '101000010', 'N': '000010011',
+    'O': '100010010', 'P': '001010010', 'Q': '000000111', 'R': '100000110',
+    'S': '001000110', 'T': '000010110', 'U': '110000001', 'V': '011000001',
+    'W': '111000000', 'X': '010010001', 'Y': '110010000', 'Z': '011010000',
+    '-': '010000101', '.': '110000100', ' ': '011000100', '*': '010010100',
+    '$': '010101000', '/': '010100010', '+': '010001010', '%': '000101010'
   };
-}
+  const narrow = 1.35, wide = 3.1, gap = 1.45, quietZone = 6;
+  let x = quietZone;
+  let rectsHtml = '';
+  for (let c = 0; c < str.length; c++) {
+    const pat = patterns[str[c]] || patterns['-'];
+    for (let i = 0; i < 9; i++) {
+      const isBar = (i % 2 === 0);
+      const w = (pat[i] === '1') ? wide : narrow;
+      if (isBar) rectsHtml += `<rect x="${x.toFixed(1)}" y="2" width="${w.toFixed(1)}" height="${height}" fill="#000000" />`;
+      x += w;
+    }
+    x += gap;
+  }
+  const svgWidth = Math.ceil(x + quietZone);
+  const svgHeight = height + (showText ? 16 : 4);
+  const bgHtml = `<rect width="${svgWidth}" height="${svgHeight}" fill="#ffffff" />`;
+  const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 13}" font-family="Consolas, monospace" font-size="11" font-weight="900" letter-spacing="1.2" text-anchor="middle" fill="${textColor || '#dc2626'}">${raw}</text>` : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" style="display:block;margin:0 auto;background:#fff;">${bgHtml}${rectsHtml}${textHtml}</svg>`;
+};
 
 // ── Modal & Print Handler for Barcode Labels ──
 function openBarcodePrintModal(products) {
@@ -8242,7 +8240,7 @@ function openBarcodePrintModal(products) {
   };
 
   // Compute bulk print breakdown (quantities up to 35; > 35 excluded for separate printing)
-  const computeBulkPrintItems = (list, maxStockLimit = 35) => {
+  const computeBulkPrintItems = (list, maxStockLimit = 40) => {
     const included = [];
     const excludedHighStock = [];
     const excludedZeroStock = [];
@@ -8264,7 +8262,7 @@ function openBarcodePrintModal(products) {
 
   const initialStock = pSingle ? getProductStock(pSingle) : 0;
   const initialQty = pSingle ? (initialStock > 0 ? initialStock : 1) : 1;
-  const initialBulk = computeBulkPrintItems(availableProducts, 35);
+  const initialBulk = computeBulkPrintItems(availableProducts, 40);
 
   const overlay = document.createElement("div");
   overlay.id = "barcodePrintModalOverlay";
@@ -8300,7 +8298,7 @@ function openBarcodePrintModal(products) {
               </span>
             </div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.4;">
-              Printing each product's <strong>full in-stock quantity</strong> (1 to 35 units per item).
+              Printing each product's <strong>full in-stock quantity</strong> (1 to 40 units per item).
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;">
               <span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:4px;font-weight:600;">
@@ -8308,7 +8306,7 @@ function openBarcodePrintModal(products) {
               </span>
               ${initialBulk.excludedHighStock.length > 0 ? `
                 <span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:4px;font-weight:600;" title="${initialBulk.excludedHighStock.map(x => x.product.name + ' (' + x.stock + ')').join(', ')}">
-                  ⚠️ ${initialBulk.excludedHighStock.length} Products with Stock &gt; 35 Excluded (Print Separately)
+                  ⚠️ ${initialBulk.excludedHighStock.length} Products with Stock &gt; 40 Excluded (Print Separately)
                 </span>
               ` : ''}
               ${initialBulk.excludedZeroStock.length > 0 ? `
@@ -8333,7 +8331,7 @@ function openBarcodePrintModal(products) {
           </div>
           <select id="bcProductSelect" class="form-select" style="font-weight:600;width:100%;">
             <option value="all" ${!pSingle ? 'selected' : ''}>
-              📦 All Products (${initialBulk.included.length} in-stock items ready &bull; ${initialBulk.totalLabels} labels; Stock 1-35)
+              📦 All Products (${initialBulk.included.length} in-stock items ready &bull; ${initialBulk.totalLabels} labels; Stock 1-40)
             </option>
             ${availableProducts.map(p => {
               const stk = getProductStock(p);
@@ -8342,8 +8340,8 @@ function openBarcodePrintModal(products) {
               const modelStr = p.model ? ' (Model: ' + p.model + ')' : '';
               const rackStr = p.rack_no ? ' • Rack: ' + p.rack_no : '';
               let stockTag = 'In Stock: ' + stk + ' ' + (p.unit_of_measure || 'NOS');
-              if (stk > 35) {
-                stockTag += ' ⚠️ [Stock > 35: Select to print separately]';
+              if (stk > 40) {
+                stockTag += ' ⚠️ [Stock > 40: Select to print separately]';
               } else if (stk <= 0) {
                 stockTag += ' (Out of Stock)';
               }
@@ -8373,7 +8371,7 @@ function openBarcodePrintModal(products) {
                 <span style="font-size:11px;color:var(--text3);">(Bulk Print)</span>
               </div>
               <select id="bcQtyModeSelect" class="form-select" style="font-weight:600;margin-bottom:4px;">
-                <option value="stock_qty" selected>📦 Each Product's In-Stock Qty (1 to 35)</option>
+                <option value="stock_qty" selected>📦 Each Product's In-Stock Qty (1 to 40)</option>
                 <option value="fixed_qty">🔢 Fixed Copies per Product</option>
               </select>
               <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="1" style="font-weight:600;display:none;" placeholder="Copies per product">
@@ -8440,7 +8438,7 @@ function openBarcodePrintModal(products) {
     const compName = sample.company_name || 'MANASWINI ENTERPRISES';
     const skuCode = sample.sku || sample.display_sku || ('SKU-' + sample.id);
     const priceVal = sample.mrp ? '₹' + parseFloat(sample.mrp).toLocaleString('en-IN') : (sample.selling_rate ? '₹' + parseFloat(sample.selling_rate).toLocaleString('en-IN') : '');
-    const svgCode = window.generateBarcodeSVG(skuCode, 28, true);
+    const svgCode = window.generateBarcodeSVG(skuCode, 32, true, '#dc2626');
     const rackVal = (sample.rack_no && sample.rack_no.trim()) ? getRackText(sample) : 'RACK: A-01';
     const modelText = sample.model ? String(sample.model).trim() : '';
 
@@ -8463,12 +8461,12 @@ function openBarcodePrintModal(products) {
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:700;color:#0f172a;margin-top:2px;padding:0 2px;width:100%;">
             <span>${showHsn && sample.hsn_sac ? 'HSN: ' + esc(sample.hsn_sac) : ''}</span>
-            <span style="font-size:11px;color:#16a34a;">${showPrice && priceVal ? 'MRP: ' + priceVal : ''}</span>
+            <span style="font-size:11px;color:#0f172a;font-weight:700;">${showPrice && priceVal ? 'MRP: ' + priceVal : ''}</span>
           </div>
         </div>
         ${showRack ? `
-          <div style="border-left:1.5px dashed #94a3b8;margin-left:8px;padding-left:6px;display:flex;align-items:center;justify-content:center;background:#f8fafc;border-radius:0 4px 4px 0;">
-            <span style="writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);font-size:9px;font-weight:800;letter-spacing:0.8px;text-transform:uppercase;color:#1e293b;white-space:nowrap;">
+          <div style="border-left:1.5px dashed #ef4444;margin-left:8px;padding-left:6px;display:flex;align-items:center;justify-content:center;background:#fff5f5;border-radius:0 4px 4px 0;">
+            <span style="writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);font-size:9.5px;font-weight:900;letter-spacing:0.8px;text-transform:uppercase;color:#dc2626;white-space:nowrap;">
               ${esc(rackVal)}
             </span>
           </div>
@@ -8486,7 +8484,7 @@ function openBarcodePrintModal(products) {
     if (selVal === "all") {
       currentSelectedProduct = null;
       stockNotice.innerHTML = "";
-      const bulk = computeBulkPrintItems(availableProducts, 35);
+      const bulk = computeBulkPrintItems(availableProducts, 40);
 
       infoBanner.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -8498,7 +8496,7 @@ function openBarcodePrintModal(products) {
           </span>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.4;">
-          Printing each product's <strong>full in-stock quantity</strong> (1 to 35 units per item).
+          Printing each product's <strong>full in-stock quantity</strong> (1 to 40 units per item).
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;">
           <span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:4px;font-weight:600;">
@@ -8506,7 +8504,7 @@ function openBarcodePrintModal(products) {
           </span>
           ${bulk.excludedHighStock.length > 0 ? `
             <span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:4px;font-weight:600;" title="${bulk.excludedHighStock.map(x => x.product.name + ' (' + x.stock + ')').join(', ')}">
-              ⚠️ ${bulk.excludedHighStock.length} Products with Stock &gt; 35 Excluded (Print Separately)
+              ⚠️ ${bulk.excludedHighStock.length} Products with Stock &gt; 40 Excluded (Print Separately)
             </span>
           ` : ''}
           ${bulk.excludedZeroStock.length > 0 ? `
@@ -8523,7 +8521,7 @@ function openBarcodePrintModal(products) {
           <span style="font-size:11px;color:var(--text3);">(Bulk Print)</span>
         </div>
         <select id="bcQtyModeSelect" class="form-select" style="font-weight:600;margin-bottom:4px;">
-          <option value="stock_qty" selected>📦 Each Product's In-Stock Qty (1 to 35; Total: ${bulk.totalLabels} labels)</option>
+          <option value="stock_qty" selected>📦 Each Product's In-Stock Qty (1 to 40; Total: ${bulk.totalLabels} labels)</option>
           <option value="fixed_qty">🔢 Fixed Copies per Product</option>
         </select>
         <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="1" style="font-weight:600;display:none;" placeholder="Copies per product">
@@ -8628,11 +8626,11 @@ function openBarcodePrintModal(products) {
     if (selVal === "all") {
       const mode = document.getElementById("bcQtyModeSelect")?.value || "stock_qty";
       if (mode === "stock_qty") {
-        const bulk = computeBulkPrintItems(availableProducts, 35);
+        const bulk = computeBulkPrintItems(availableProducts, 40);
         itemsToPrint = bulk.included;
         excludedList = bulk.excludedHighStock;
         if (!itemsToPrint.length) {
-          return showToast("No products found with in-stock quantity between 1 and 35. Please select an individual product to print.", "warning");
+          return showToast("No products found with in-stock quantity between 1 and 40. Please select an individual product to print.", "warning");
         }
       } else {
         const fixedQty = parseInt(document.getElementById("bcQtyInput")?.value, 10) || 1;
@@ -8705,7 +8703,7 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
     const compName = p.company_name || 'MANASWINI ENTERPRISES';
     const skuCode = p.sku || p.display_sku || ('SKU-' + p.id);
     const priceVal = p.mrp ? '₹' + parseFloat(p.mrp).toLocaleString('en-IN') : (p.selling_rate ? '₹' + parseFloat(p.selling_rate).toLocaleString('en-IN') : '');
-    const svgCode = window.generateBarcodeSVG ? window.generateBarcodeSVG(skuCode, 24, true) : `<div style="font-family:monospace;font-weight:bold;font-size:12px;letter-spacing:2px;padding:2px 0;">*${esc(skuCode)}*</div>`;
+    const svgCode = window.generateBarcodeSVG ? window.generateBarcodeSVG(skuCode, 32, true, '#dc2626') :  `<div style="font-family:monospace;font-weight:bold;font-size:12px;letter-spacing:2px;padding:2px 0;">*${esc(skuCode)}*</div>`;
     const modelText = p.model ? String(p.model).trim() : '';
     const rackLabel = (p.rack_no && p.rack_no.trim()) ? getRackText(p) : 'RACK: —';
     const hasRack = Boolean(showRack && (p.rack_no || showRack));
@@ -8891,11 +8889,13 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       justify-content: center;
       margin-left: 1.5mm;
       padding-left: 1mm;
-      border-left: 1px dashed #94a3b8;
+      border-left: 1px dashed #ef4444;
       flex-shrink: 0;
       box-sizing: border-box;
-      background: #f8fafc;
+      background: #fff5f5;
       border-radius: 0 2px 2px 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
 
     .rack-vertical-text {
@@ -8904,13 +8904,15 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       transform: rotate(180deg);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
       font-size: 6.5px;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: 0.5px;
       text-transform: uppercase;
-      color: #0f172a;
+      color: #dc2626 !important;
       white-space: nowrap;
       line-height: 1;
       display: inline-block;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
 
     body.hide-borders .barcode-sticker {
@@ -8955,7 +8957,15 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       padding-left: 0.8mm;
     }
     body.mode-a4_40 .rack-vertical-text {
-      font-size: 5.5px;
+      font-size: 6px;
+      font-weight: 900;
+      color: #dc2626 !important;
+    }
+    body.mode-a4_40 .barcode-svg-container svg {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 13.5mm !important;
+      max-height: 14mm !important;
     }
 
     body.mode-thermal .barcode-sticker {
@@ -9064,6 +9074,19 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
         background: #ffffff !important;
         margin: 0 !important;
         padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .rack-vertical-text {
+        color: #dc2626 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body.mode-a4_40 .barcode-svg-container svg {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 13.5mm !important;
+        max-height: 14mm !important;
       }
       .print-actions {
         display: none !important;
@@ -9224,7 +9247,7 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
 
     ${excludedHighStock && excludedHighStock.length > 0 ? `
       <div style="margin-top:6px;padding:6px 12px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:4px;font-size:11.5px;color:#92400e;display:flex;justify-content:space-between;align-items:center;">
-        <span>⚠️ <strong>Note:</strong> ${excludedHighStock.length} products with stock &gt; 35 were excluded from bulk printing. Select them individually in the modal to print their labels separately.</span>
+        <span>⚠️ <strong>Note:</strong> ${excludedHighStock.length} products with stock &gt; 40 were excluded from bulk printing. Select them individually in the modal to print their labels separately.</span>
       </div>
     ` : ''}
   </div>

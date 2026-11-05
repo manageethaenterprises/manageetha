@@ -711,7 +711,7 @@ module.exports = async function handler(req, res) {
         transporter_name, transporter_vehicle_no, sale_date, items, payment_mode, bank_sub_type,
         utr_number, transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, advance_amount,
         paid_amount, financer_id, finance_amount, discount_amount, vip_perk_notes,
-        customer_gstin, party_type, dealer_id, split_payments
+        customer_gstin, party_type, dealer_id, split_payments, denominations
       } = req.body;
 
       // Auto-migrate columns if missing
@@ -1271,7 +1271,7 @@ module.exports = async function handler(req, res) {
       const {
         sale_id, payment_date, payment_mode, bank_sub_type, transaction_ref,
         cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, amount, notes,
-        split_payments
+        split_payments, denominations
       } = req.body;
 
       const splitList = (Array.isArray(split_payments) ? split_payments : [])

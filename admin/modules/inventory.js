@@ -8273,20 +8273,22 @@ function openBarcodePrintModal(products) {
   overlay.style.zIndex = "99999";
 
   overlay.innerHTML = `
-    <div class="modal-box" style="max-width:680px;width:95%;">
+    <div class="modal-box" style="max-width:820px;width:95%;">
       <div class="modal-header">
         <h3 style="margin:0;font-size:16px;font-weight:700;">🏷️ Print Barcode Sticker Labels</h3>
         <button class="modal-close" id="closeBarcodePrintModal">&times;</button>
       </div>
-      <div class="modal-body" style="padding:16px;">
+      <div class="modal-body" style="padding:18px;">
         <!-- Dynamic Header Notice Banner -->
-        <div id="bcInfoBanner" style="background:var(--bg-secondary);padding:12px 14px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border-color);">
+        <div id="bcInfoBanner" style="background:var(--bg-secondary);padding:12px 16px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border-color);">
           ${pSingle ? `
             <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
               Target Product: ${esc(pSingle.name)} (${esc(pSingle.sku || pSingle.display_sku || 'SKU-' + pSingle.id)})
             </div>
             <div style="font-size:12px;color:var(--text3);">
               In Stock: <strong style="color:var(--text1);">${initialStock} ${esc(pSingle.unit_of_measure || 'NOS')}</strong> &bull; Defaulted labels count to in-stock count. You can adjust it anytime.
+              ${pSingle.model ? ` &bull; Model: <strong>${esc(pSingle.model)}</strong>` : ''}
+              ${pSingle.rack_no ? ` &bull; Rack: <strong>${esc(pSingle.rack_no)}</strong>` : ''}
             </div>
           ` : `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -8327,7 +8329,7 @@ function openBarcodePrintModal(products) {
             </span>
           </div>
           <div style="margin-bottom:6px;">
-            <input type="text" id="bcProductSearch" class="form-input" placeholder="🔍 Quick search product name, SKU, brand, model, rack..." style="font-size:12px;padding:6px 10px;">
+            <input type="text" id="bcProductSearch" class="form-input" placeholder="🔍 Quick search product name, SKU, model, rack..." style="font-size:12px;padding:7px 12px;">
           </div>
           <select id="bcProductSelect" class="form-select" style="font-weight:600;width:100%;">
             <option value="all" ${!pSingle ? 'selected' : ''}>
@@ -8337,7 +8339,7 @@ function openBarcodePrintModal(products) {
               const stk = getProductStock(p);
               const sku = p.sku || p.display_sku || ('SKU-' + p.id);
               const isSel = pSingle && String(pSingle.id) === String(p.id);
-              const brandModel = [p.brand, p.model].filter(Boolean).join(' / ');
+              const modelStr = p.model ? ' (Model: ' + p.model + ')' : '';
               const rackStr = p.rack_no ? ' • Rack: ' + p.rack_no : '';
               let stockTag = 'In Stock: ' + stk + ' ' + (p.unit_of_measure || 'NOS');
               if (stk > 35) {
@@ -8346,13 +8348,13 @@ function openBarcodePrintModal(products) {
                 stockTag += ' (Out of Stock)';
               }
               return `<option value="${p.id}" ${isSel ? 'selected' : ''} data-stock="${stk}">
-                ${esc(p.name)} ${brandModel ? '(' + esc(brandModel) + ')' : ''} [${esc(sku)}] — ${esc(stockTag)}${esc(rackStr)}
+                ${esc(p.name)}${esc(modelStr)} [${esc(sku)}] — ${esc(stockTag)}${esc(rackStr)}
               </option>`;
             }).join('')}
           </select>
         </div>
 
-        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div class="form-grid" style="grid-template-columns:1.2fr 1fr;gap:14px;margin-bottom:14px;">
           <div class="form-group">
             <label class="form-label" style="font-weight:600;">Printer / Format Type</label>
             <select id="bcFormatSelect" class="form-select" style="font-weight:600;">
@@ -8385,10 +8387,13 @@ function openBarcodePrintModal(products) {
           </div>
         </div>
 
-        <!-- Customization Checkboxes -->
-        <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-color);">
+        <!-- Customization Checkboxes Row -->
+        <div style="display:flex;gap:18px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;padding:10px 14px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-color);align-items:center;">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
             <input type="checkbox" id="bcShowComp" checked> Show Company Name
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:#0f172a;">
+            <input type="checkbox" id="bcShowModel" checked> 🏷️ Show Model
           </label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
             <input type="checkbox" id="bcShowPrice" checked> Show MRP / Price
@@ -8397,7 +8402,7 @@ function openBarcodePrintModal(products) {
             <input type="checkbox" id="bcShowHsn" checked> Show HSN Code
           </label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:#2563eb;">
-            <input type="checkbox" id="bcShowRack" checked> 🏷️ Show Rack No (Vertical)
+            <input type="checkbox" id="bcShowRack" checked> 📍 Show Rack No (Vertical)
           </label>
         </div>
 
@@ -8407,11 +8412,11 @@ function openBarcodePrintModal(products) {
             <label class="form-label" style="font-weight:600;margin:0;">Preview of Sticker</label>
             <span style="font-size:11.5px;color:var(--text3);">Right strip displays Rack Number vertically</span>
           </div>
-          <div id="bcLivePreview" style="background:#fff;color:#000;border:2px dashed #94a3b8;border-radius:6px;padding:12px;text-align:center;max-width:320px;margin:0 auto;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+          <div id="bcLivePreview" style="background:#fff;color:#000;border:2px dashed #94a3b8;border-radius:6px;padding:14px;text-align:center;max-width:340px;margin:0 auto;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
           </div>
         </div>
       </div>
-      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:12px 16px;background:var(--bg-secondary);border-top:1px solid var(--border-color);">
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;background:var(--bg-secondary);border-top:1px solid var(--border-color);">
         <button type="button" class="btn btn-secondary" id="cancelBarcodePrint">Cancel</button>
         <button type="button" class="btn btn-primary" id="doPrintBarcodeBtn" style="font-weight:700;">🖨️ Open Print Preview</button>
       </div>
@@ -8427,6 +8432,7 @@ function openBarcodePrintModal(products) {
     if (!sample) return;
 
     const showComp = document.getElementById("bcShowComp")?.checked ?? true;
+    const showModel = document.getElementById("bcShowModel")?.checked ?? true;
     const showPrice = document.getElementById("bcShowPrice")?.checked ?? true;
     const showHsn = document.getElementById("bcShowHsn")?.checked ?? true;
     const showRack = document.getElementById("bcShowRack")?.checked ?? true;
@@ -8436,6 +8442,7 @@ function openBarcodePrintModal(products) {
     const priceVal = sample.mrp ? '₹' + parseFloat(sample.mrp).toLocaleString('en-IN') : (sample.selling_rate ? '₹' + parseFloat(sample.selling_rate).toLocaleString('en-IN') : '');
     const svgCode = window.generateBarcodeSVG(skuCode, 28, true);
     const rackVal = (sample.rack_no && sample.rack_no.trim()) ? getRackText(sample) : 'RACK: A-01';
+    const modelText = sample.model ? String(sample.model).trim() : '';
 
     previewEl.innerHTML = `
       <div style="display:flex;flex-direction:row;align-items:stretch;width:100%;min-height:92px;">
@@ -8446,9 +8453,11 @@ function openBarcodePrintModal(products) {
           <div style="font-size:12px;font-weight:700;color:#0f172a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
             ${esc(sample.name)}
           </div>
-          <div style="font-size:10px;color:#475569;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
-            ${esc(sample.brand || '')} ${esc(sample.model || '')}
-          </div>
+          ${(showModel && modelText) ? `
+            <div style="font-size:10px;font-weight:600;color:#475569;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">
+              ${esc(modelText)}
+            </div>
+          ` : ''}
           <div style="margin:3px 0;width:100%;display:flex;justify-content:center;">
             ${svgCode}
           </div>
@@ -8552,6 +8561,7 @@ function openBarcodePrintModal(products) {
           </div>
           <div style="font-size:12px;color:var(--text3);">
             In Stock: <strong style="color:var(--text1);">${inStock} ${esc(unit)}</strong> &bull; Defaulted to In-Stock count (${defaultQty}). You can adjust it anytime.
+            ${chosen.model ? ` &bull; Model: <strong>${esc(chosen.model)}</strong>` : ''}
             ${chosen.rack_no ? ` &bull; Rack: <strong style="color:#2563eb;">${esc(chosen.rack_no)}</strong>` : ''}
           </div>
         `;
@@ -8601,11 +8611,12 @@ function openBarcodePrintModal(products) {
 
   overlay.querySelector("#closeBarcodePrintModal").addEventListener("click", () => overlay.remove());
   overlay.querySelector("#cancelBarcodePrint").addEventListener("click", () => overlay.remove());
-  overlay.querySelectorAll("#bcShowComp, #bcShowPrice, #bcShowHsn, #bcShowRack").forEach(el => el.addEventListener("change", () => updatePreview()));
+  overlay.querySelectorAll("#bcShowComp, #bcShowModel, #bcShowPrice, #bcShowHsn, #bcShowRack").forEach(el => el.addEventListener("change", () => updatePreview()));
 
   overlay.querySelector("#doPrintBarcodeBtn").addEventListener("click", () => {
     const format = document.getElementById("bcFormatSelect").value;
     const showComp = document.getElementById("bcShowComp")?.checked ?? true;
+    const showModel = document.getElementById("bcShowModel")?.checked ?? true;
     const showPrice = document.getElementById("bcShowPrice")?.checked ?? true;
     const showHsn = document.getElementById("bcShowHsn")?.checked ?? true;
     const showRack = document.getElementById("bcShowRack")?.checked ?? true;
@@ -8638,6 +8649,7 @@ function openBarcodePrintModal(products) {
       items: itemsToPrint,
       format,
       showComp,
+      showModel,
       showPrice,
       showHsn,
       showRack,
@@ -8648,7 +8660,7 @@ function openBarcodePrintModal(products) {
   updatePreview(pSingle || availableProducts[0]);
 }
 
-function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showPrice, showHsn, showRack = true, excludedHighStock = [] }) {
+function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showModel = true, showPrice, showHsn, showRack = true, excludedHighStock = [] }) {
   const printWin = window.open("", "_blank", "width=940,height=960");
   if (!printWin) return alert("Please allow popups to print barcode stickers.");
 
@@ -8694,7 +8706,7 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
     const skuCode = p.sku || p.display_sku || ('SKU-' + p.id);
     const priceVal = p.mrp ? '₹' + parseFloat(p.mrp).toLocaleString('en-IN') : (p.selling_rate ? '₹' + parseFloat(p.selling_rate).toLocaleString('en-IN') : '');
     const svgCode = window.generateBarcodeSVG ? window.generateBarcodeSVG(skuCode, 24, true) : `<div style="font-family:monospace;font-weight:bold;font-size:12px;letter-spacing:2px;padding:2px 0;">*${esc(skuCode)}*</div>`;
-    const subText = [p.brand, p.model].filter(Boolean).join(' ');
+    const modelText = p.model ? String(p.model).trim() : '';
     const rackLabel = (p.rack_no && p.rack_no.trim()) ? getRackText(p) : 'RACK: —';
     const hasRack = Boolean(showRack && (p.rack_no || showRack));
 
@@ -8703,7 +8715,7 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
         <div class="sticker-body">
           ${showComp ? `<div class="comp-title">${esc(compName)}</div>` : ''}
           <div class="prod-name" title="${esc(p.name || '')}">${esc(p.name || '')}</div>
-          ${subText ? `<div class="prod-sub" title="${esc(subText)}">${esc(subText)}</div>` : ''}
+          ${(showModel && modelText) ? `<div class="prod-sub" title="${esc(modelText)}">${esc(modelText)}</div>` : ''}
           <div class="barcode-svg-container">${svgCode}</div>
           <div class="sticker-footer">
             <span class="hsn-tag">${showHsn && p.hsn_sac ? 'HSN: ' + esc(p.hsn_sac) : ''}</span>
@@ -8911,6 +8923,9 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
     body.hide-rack .sticker-rack-col {
       display: none !important;
     }
+    body.hide-model .prod-sub {
+      display: none !important;
+    }
 
     /* Exact dimensions per mode */
     body.mode-a4_sheet .barcode-sticker,
@@ -8998,7 +9013,8 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
       line-height: 1.15;
     }
     .prod-sub {
-      font-size: 7px;
+      font-size: 7.5px;
+      font-weight: 600;
       color: #475569;
       white-space: nowrap;
       overflow: hidden;
@@ -9187,6 +9203,10 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
           <input type="checkbox" id="chkCutBorders" checked onchange="toggleBorders(this.checked)"> Cut Guides
         </label>
 
+        <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px;font-weight:600;">
+          <input type="checkbox" id="chkShowModel" ${showModel ? 'checked' : ''} onchange="toggleModel(this.checked)"> Model
+        </label>
+
         <label style="font-size:12px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px;font-weight:600;color:#2563eb;">
           <input type="checkbox" id="chkShowRack" ${showRack ? 'checked' : ''} onchange="toggleRack(this.checked)"> Rack No
         </label>
@@ -9256,6 +9276,9 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
       if (!document.getElementById('chkShowRack').checked) {
         document.body.classList.add('hide-rack');
       }
+      if (!document.getElementById('chkShowModel').checked) {
+        document.body.classList.add('hide-model');
+      }
       document.getElementById('pageStyle').textContent = getPageCss(newFormat);
       updatePageEstimate(newFormat);
     }
@@ -9273,6 +9296,14 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showP
         document.body.classList.remove('hide-rack');
       } else {
         document.body.classList.add('hide-rack');
+      }
+    }
+
+    function toggleModel(show) {
+      if (show) {
+        document.body.classList.remove('hide-model');
+      } else {
+        document.body.classList.add('hide-model');
       }
     }
 

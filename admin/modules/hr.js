@@ -1779,6 +1779,15 @@ async function loaddealersSubTab() {
 async function loadAttendanceSubTab() {
   const subContent = document.getElementById("hrSubContent");
   const compId = getActiveCompId();
+  const loggedUser = getUser() || {};
+  const isSuperAdmin = loggedUser.role === "superadmin" || loggedUser.username === "superadmin";
+
+  const compIdToUse = compId !== "all" ? parseInt(compId) : (currentCompanies[0]?.id || 1);
+  const compList = (window.currentCompanies && window.currentCompanies.length > 0)
+    ? window.currentCompanies
+    : (typeof currentCompanies !== "undefined" ? currentCompanies : []);
+  const userCompObj = compList.find(c => c.id == compIdToUse) || compList[0] || { name: "Main Company" };
+  const userCompName = userCompObj.name || "Main Company";
 
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
@@ -1789,7 +1798,7 @@ async function loadAttendanceSubTab() {
       </div>
     </div>
 
-    <div class="table-container">
+    <div class="table-container" style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
       <table class="data-table">
         <thead>
           <tr>
@@ -1811,9 +1820,274 @@ async function loadAttendanceSubTab() {
       <div id="attInfo"></div>
       <div id="attPagination" class="pagination"></div>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- MONTHLY EMPLOYEE ATTENDANCE & ABSENTEEISM SUMMARY -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="card" style="margin-top:32px; border:1px solid var(--border); border-radius:12px; padding:18px; background:var(--card-bg, #fff); box-shadow:0 2px 10px rgba(0,0,0,0.03);">
+      
+      <!-- Section Title & Filter Controls -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+        <div>
+          <h3 style="font-size:16px; font-weight:700; color:var(--text1); margin:0; display:flex; align-items:center; gap:8px;">
+            <span>📊</span> Monthly Employee Attendance & Absenteeism Summary
+          </h3>
+          <p style="font-size:12px; color:var(--text3); margin:3px 0 0 0;">
+            Comprehensive monthly staff attendance, present days, absent days, leaves count, and specific absent dates.
+          </p>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <!-- Month Selector -->
+          <div style="display:flex; align-items:center; gap:6px;">
+            <label for="attSummaryMonthSelect" style="font-size:12px; font-weight:600; color:var(--text2); white-space:nowrap;">Month:</label>
+            <input type="month" id="attSummaryMonthSelect" class="form-input" value="${today().slice(0, 7)}" style="width:150px; font-weight:600;">
+          </div>
+
+          <!-- Company Filter (Superadmin only) -->
+          ${isSuperAdmin ? `
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="attSummaryCompanyFilter" style="font-size:12px; font-weight:600; color:var(--text2); white-space:nowrap;">Company:</label>
+              <select id="attSummaryCompanyFilter" class="form-select" style="min-width:180px; font-weight:600;">
+                <option value="all">🌐 All Companies</option>
+                ${compList.map(c => `
+                  <option value="${c.id}" ${compId != 'all' && compId == c.id ? 'selected' : ''}>${esc(c.name)}</option>
+                `).join('')}
+              </select>
+            </div>
+          ` : `
+            <div class="badge badge-neutral" style="font-size:12px; padding:6px 12px; display:inline-flex; align-items:center; gap:6px;">
+              🏢 ${esc(userCompName)}
+            </div>
+          `}
+
+          <!-- Live Search Filter -->
+          <div style="display:flex; align-items:center; position:relative;">
+            <input type="text" id="attSummarySearchInput" class="form-input" placeholder="🔍 Search employee, code, dept..." style="width:210px;">
+          </div>
+
+          <button class="btn btn-secondary btn-sm" id="attSummaryRefreshBtn" title="Refresh monthly summary" style="display:flex; align-items:center; gap:6px;">
+            <i class="fas fa-sync-alt"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick KPI Stats Cards Grid -->
+      <div id="attSummaryKpiGrid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:12px; margin-bottom:16px;">
+      </div>
+
+      <!-- Responsive Table Container -->
+      <div class="table-container" style="overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius:8px;">
+        <table class="data-table" style="min-width:880px; width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="min-width:170px;">Employee</th>
+              <th style="min-width:120px;">Department</th>
+              ${isSuperAdmin ? `<th style="min-width:140px;">Company</th>` : ''}
+              <th style="text-align:center; min-width:105px;">Present Days</th>
+              <th style="text-align:center; min-width:105px;">Absent Days</th>
+              <th style="text-align:center; min-width:105px;">Leaves Count</th>
+              <th style="text-align:center; min-width:105px;">Attendance %</th>
+              <th style="min-width:220px;">Absent Dates</th>
+            </tr>
+          </thead>
+          <tbody id="attSummaryTableBody">
+            <tr><td colspan="${isSuperAdmin ? 8 : 7}" style="text-align:center; padding:24px;"><div class="spinner"></div> Calculating monthly attendance summary...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Paged Pagination Controls -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:8px;">
+        <div id="attSummaryInfo"></div>
+        <div id="attSummaryPagination" class="pagination"></div>
+      </div>
+
+    </div>
   `;
 
   let attEmployees = [];
+  let attSummaryAllData = [];
+  let attSummaryFilteredData = [];
+
+  function formatAbsentDatesBadges(dates, totalMarkedDays) {
+    if (!dates || !Array.isArray(dates) || dates.length === 0) {
+      if (totalMarkedDays === 0) {
+        return `<span style="color:var(--text3); font-size:12px; font-style:italic;">No logs recorded</span>`;
+      }
+      return `<span class="badge badge-success" style="font-size:11px; padding:3px 8px; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+        <i class="fas fa-check-circle" style="color:#10b981;"></i> None (100% Attendance)
+      </span>`;
+    }
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `<div style="display:flex; flex-wrap:wrap; gap:4px; max-width:320px;">` +
+      dates.map(dStr => {
+        const parts = String(dStr).split("-");
+        const d = parts[2] || dStr;
+        const mIdx = parseInt(parts[1], 10) - 1;
+        const mName = monthNames[mIdx] || "";
+        return `<span class="badge badge-danger" style="display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:600; padding:2px 7px; border-radius:4px; background:#fee2e2; color:#991b1b; border:1px solid #f87171;">
+          <i class="fas fa-calendar-times" style="font-size:10px;"></i> ${d} ${mName}
+        </span>`;
+      }).join("") +
+      `</div>`;
+  }
+
+  function renderSummaryStats(stats) {
+    const kpiEl = document.getElementById("attSummaryKpiGrid");
+    if (!kpiEl) return;
+    if (!stats) { kpiEl.innerHTML = ""; return; }
+
+    kpiEl.innerHTML = `
+      <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:10px 14px; text-align:center;">
+        <div style="font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase;">Active Staff</div>
+        <div style="font-size:20px; font-weight:700; color:var(--text1); margin-top:2px;">${stats.total_employees || 0}</div>
+      </div>
+      <div style="background:rgba(16, 185, 129, 0.08); border:1px solid rgba(16, 185, 129, 0.2); border-radius:8px; padding:10px 14px; text-align:center;">
+        <div style="font-size:11px; font-weight:600; color:#059669; text-transform:uppercase;">Total Present</div>
+        <div style="font-size:20px; font-weight:700; color:#059669; margin-top:2px;">${stats.total_present_days || 0} <span style="font-size:11px;font-weight:normal;">Days</span></div>
+      </div>
+      <div style="background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.2); border-radius:8px; padding:10px 14px; text-align:center;">
+        <div style="font-size:11px; font-weight:600; color:#dc2626; text-transform:uppercase;">Total Absences</div>
+        <div style="font-size:20px; font-weight:700; color:#dc2626; margin-top:2px;">${stats.total_absent_days || 0} <span style="font-size:11px;font-weight:normal;">Days</span></div>
+      </div>
+      <div style="background:rgba(245, 158, 11, 0.08); border:1px solid rgba(245, 158, 11, 0.2); border-radius:8px; padding:10px 14px; text-align:center;">
+        <div style="font-size:11px; font-weight:600; color:#d97706; text-transform:uppercase;">Total Leaves</div>
+        <div style="font-size:20px; font-weight:700; color:#d97706; margin-top:2px;">${stats.total_leave_days || 0} <span style="font-size:11px;font-weight:normal;">Days</span></div>
+      </div>
+      <div style="background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.2); border-radius:8px; padding:10px 14px; text-align:center;">
+        <div style="font-size:11px; font-weight:600; color:#2563eb; text-transform:uppercase;">Avg Attendance Rate</div>
+        <div style="font-size:20px; font-weight:700; color:#2563eb; margin-top:2px;">${stats.avg_attendance_pct != null ? stats.avg_attendance_pct + '%' : '100%'}</div>
+      </div>
+    `;
+  }
+
+  function renderSummaryTable() {
+    const tbody = document.getElementById("attSummaryTableBody");
+    if (!tbody) return;
+
+    if (attSummaryFilteredData.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="${isSuperAdmin ? 8 : 7}" style="text-align:center; padding:24px; color:var(--text3);">No employee records found matching your filters.</td></tr>`;
+      const pag = document.getElementById("attSummaryPagination");
+      if (pag) pag.innerHTML = "";
+      const info = document.getElementById("attSummaryInfo");
+      if (info) info.innerHTML = "";
+      return;
+    }
+
+    window.renderPaginatedTable({
+      data: attSummaryFilteredData,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "attSummaryTableBody",
+      paginationContainer: "attSummaryPagination",
+      infoContainer: "attSummaryInfo",
+      renderRow: (item) => {
+        const empId = item.employee_id;
+        const empName = item.employee_name || "Employee";
+        const isSelfRow = (
+          (loggedUser.employee_id && (empId == loggedUser.employee_id)) ||
+          (item.user_id && (item.user_id == loggedUser.id)) ||
+          (loggedUser.username && empName && empName.toLowerCase().trim() === loggedUser.username.toLowerCase().trim())
+        );
+
+        let pctBadge = `<span class="badge badge-neutral" style="font-size:12px; padding:4px 8px; color:var(--text3);">No logs</span>`;
+        if (item.total_marked_days > 0 && item.attendance_percentage !== null) {
+          const pct = item.attendance_percentage;
+          const bg = pct >= 90 ? 'rgba(16, 185, 129, 0.12)' : (pct >= 75 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)');
+          const col = pct >= 90 ? '#059669' : (pct >= 75 ? '#d97706' : '#dc2626');
+          const bdr = pct >= 90 ? 'rgba(16, 185, 129, 0.3)' : (pct >= 75 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(239, 68, 68, 0.3)');
+          pctBadge = `<span class="badge" style="font-weight:700; font-size:12px; padding:4px 8px; background:${bg}; color:${col}; border:1px solid ${bdr};">${pct}%</span>`;
+        }
+
+        return `
+          <tr>
+            <td style="font-weight:600; color:var(--text1);">
+              <div>${esc(empName)}</div>
+              <div style="font-size:11px; color:var(--text3); font-weight:normal;">${esc(item.employee_code || '')}</div>
+              ${isSelfRow ? `<span class="badge badge-neutral" style="font-size:10px; margin-top:2px; padding:1px 6px;">🔒 You</span>` : ''}
+            </td>
+            <td>
+              <span class="badge badge-neutral" style="font-weight:500;">${esc(item.department || 'General')}</span>
+            </td>
+            ${isSuperAdmin ? `
+              <td>
+                <span class="badge badge-outline" style="font-size:11px;">${esc(item.company_name || 'Main')}</span>
+              </td>
+            ` : ''}
+            <td style="text-align:center;">
+              <span class="badge badge-success" style="font-weight:700; font-size:12px; padding:4px 8px;">
+                ${item.present_days} Days
+              </span>
+              ${item.late_days > 0 ? `<div style="font-size:10px; color:var(--text3); margin-top:2px;">(${item.late_days} late)</div>` : ''}
+            </td>
+            <td style="text-align:center;">
+              <span class="badge ${item.absent_days > 0 ? 'badge-danger' : 'badge-neutral'}" style="font-weight:700; font-size:12px; padding:4px 8px;">
+                ${item.absent_days} Days
+              </span>
+            </td>
+            <td style="text-align:center;">
+              <span class="badge ${item.leaves_count > 0 ? 'badge-warning' : 'badge-neutral'}" style="font-weight:700; font-size:12px; padding:4px 8px;">
+                ${item.leaves_count} Days
+              </span>
+            </td>
+            <td style="text-align:center;">
+              ${pctBadge}
+            </td>
+            <td>
+              ${formatAbsentDatesBadges(item.absent_dates, item.total_marked_days)}
+            </td>
+          </tr>
+        `;
+      }
+    });
+  }
+
+  function applySummaryFilter() {
+    const q = (document.getElementById("attSummarySearchInput")?.value || "").toLowerCase().trim();
+    if (!q) {
+      attSummaryFilteredData = [...attSummaryAllData];
+    } else {
+      attSummaryFilteredData = attSummaryAllData.filter(s => {
+        const name = (s.employee_name || "").toLowerCase();
+        const code = (s.employee_code || "").toLowerCase();
+        const dept = (s.department || "").toLowerCase();
+        const comp = (s.company_name || "").toLowerCase();
+        return name.includes(q) || code.includes(q) || dept.includes(q) || comp.includes(q);
+      });
+    }
+    renderSummaryTable();
+  }
+
+  async function fetchAttMonthlySummary() {
+    const monthEl = document.getElementById("attSummaryMonthSelect");
+    const selMonth = monthEl ? monthEl.value : today().slice(0, 7);
+    const compFilterEl = document.getElementById("attSummaryCompanyFilter");
+    const targetComp = isSuperAdmin ? (compFilterEl ? compFilterEl.value : compId) : compId;
+
+    const tbody = document.getElementById("attSummaryTableBody");
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="${isSuperAdmin ? 8 : 7}" style="text-align:center; padding:24px;"><div class="spinner"></div> Calculating monthly attendance summary...</td></tr>`;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/attendance?action=monthly-summary&month=${selMonth}&company_id=${targetComp}`, {
+        headers: authHeaders()
+      });
+      const data = await res.json();
+      if (!data.success) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="${isSuperAdmin ? 8 : 7}" style="text-align:center; padding:20px; color:var(--text3);">${esc(data.error || 'Failed to load summary')}</td></tr>`;
+        return;
+      }
+
+      attSummaryAllData = data.summary || [];
+      renderSummaryStats(data.stats);
+      applySummaryFilter();
+    } catch (err) {
+      console.error("fetchAttMonthlySummary error:", err);
+      if (tbody) tbody.innerHTML = `<tr><td colspan="${isSuperAdmin ? 8 : 7}" style="text-align:center; padding:20px; color:var(--danger, #ef4444);">Error loading summary: ${esc(err.message)}</td></tr>`;
+    }
+  }
 
   async function fetchAtt() {
     const selDate = document.getElementById("attDateSelect").value;
@@ -1922,6 +2196,7 @@ async function loadAttendanceSubTab() {
                 if (d.success) {
                   showToast(d.message || `Unexpected Leave recorded for ${empName}!`, "success");
                   fetchAtt();
+                  fetchAttMonthlySummary();
                 } else {
                   showToast(d.error || "Failed to mark unexpected leave", "error");
                   btn.disabled = false;
@@ -2064,6 +2339,7 @@ async function loadAttendanceSubTab() {
       if (data.success) {
         showToast("Attendance saved successfully!", "success");
         fetchAtt();
+        fetchAttMonthlySummary();
       } else showToast(data.error, "error");
     } catch (err) {
       showToast("Save attendance error: " + err.message, "error");
@@ -2075,7 +2351,15 @@ async function loadAttendanceSubTab() {
     }
   });
 
+  on("attSummaryMonthSelect", "change", fetchAttMonthlySummary);
+  if (isSuperAdmin) {
+    on("attSummaryCompanyFilter", "change", fetchAttMonthlySummary);
+  }
+  on("attSummaryRefreshBtn", "click", fetchAttMonthlySummary);
+  on("attSummarySearchInput", "input", applySummaryFilter);
+
   fetchAtt();
+  fetchAttMonthlySummary();
 }
 
 // ═══════════════════════════════════════════════════

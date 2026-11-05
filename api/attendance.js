@@ -84,6 +84,229 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, attendance: rows, employees: rows, date });
     }
 
+    // ═══════════════ MONTHLY ATTENDANCE SUMMARY & ABSENTEEI-SM ═══════════════
+    else if (action === "monthly-summary" || action === "attendance-monthly-summary") {
+      const monthStr = req.query.month || req.body?.month || getISTDate().slice(0, 7);
+      const [yrStr, moStr] = monthStr.split("-");
+      const year = parseInt(yrStr, 10);
+      const month = parseInt(moStr, 10);
+      if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
+        return res.status(400).json({ error: "Invalid month format. Expected YYYY-MM" });
+      }
+
+      const lastDay = new Date(year, month, 0).getDate();
+      const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+      const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      // 1. Fetch active employees
+      let employees;
+      if (isAll) {
+        employees = await sql`
+          SELECT e.id as employee_id, e.name as employee_name, e.employee_code, e.department, e.designation, e.company_id, e.user_id,
+                 c.name as company_name
+          FROM employees e
+          LEFT JOIN companies c ON e.company_id = c.id
+          LEFT JOIN users u ON (e.user_id = u.id OR u.employee_id = e.id)
+          WHERE e.employment_status = 'active'
+            AND LOWER(COALESCE(e.name, '')) != 'superadmin'
+            AND LOWER(COALESCE(e.department, '')) != 'superadmin'
+            AND (u.role IS NULL OR LOWER(u.role) != 'superadmin')
+          ORDER BY c.name ASC, e.name ASC
+        `;
+      } else {
+        const cId = parseInt(compQuery);
+        employees = await sql`
+          SELECT e.id as employee_id, e.name as employee_name, e.employee_code, e.department, e.designation, e.company_id, e.user_id,
+                 c.name as company_name
+          FROM employees e
+          LEFT JOIN companies c ON e.company_id = c.id
+          LEFT JOIN users u ON (e.user_id = u.id OR u.employee_id = e.id)
+          WHERE e.company_id = ${cId} AND e.employment_status = 'active'
+            AND LOWER(COALESCE(e.name, '')) != 'superadmin'
+            AND LOWER(COALESCE(e.department, '')) != 'superadmin'
+            AND (u.role IS NULL OR LOWER(u.role) != 'superadmin')
+          ORDER BY e.name ASC
+        `;
+      }
+
+      // 2. Fetch monthly attendance records
+      let attRows;
+      if (isAll) {
+        attRows = await sql`
+          SELECT a.id, a.company_id, a.employee_id, a.date, a.status, a.login_time, a.logout_time, a.remarks
+          FROM attendance a
+          WHERE a.date >= ${startDate} AND a.date <= ${endDate}
+          ORDER BY a.date ASC
+        `;
+      } else {
+        const cId = parseInt(compQuery);
+        attRows = await sql`
+          SELECT a.id, a.company_id, a.employee_id, a.date, a.status, a.login_time, a.logout_time, a.remarks
+          FROM attendance a
+          WHERE a.company_id = ${cId} AND a.date >= ${startDate} AND a.date <= ${endDate}
+          ORDER BY a.date ASC
+        `;
+      }
+
+      // 3. Fetch approved leave applications overlapping the month
+      let leaveRows;
+      if (isAll) {
+        leaveRows = await sql`
+          SELECT l.id, l.company_id, l.employee_id, l.start_date, l.end_date, l.total_days, l.reason, lt.name as leave_type_name
+          FROM leave_applications l
+          LEFT JOIN leave_types lt ON l.leave_type_id = lt.id
+          WHERE l.status = 'approved' AND l.start_date <= ${endDate} AND l.end_date >= ${startDate}
+        `;
+      } else {
+        const cId = parseInt(compQuery);
+        leaveRows = await sql`
+          SELECT l.id, l.company_id, l.employee_id, l.start_date, l.end_date, l.total_days, l.reason, lt.name as leave_type_name
+          FROM leave_applications l
+          LEFT JOIN leave_types lt ON l.leave_type_id = lt.id
+          WHERE l.company_id = ${cId} AND l.status = 'approved' AND l.start_date <= ${endDate} AND l.end_date >= ${startDate}
+        `;
+      }
+
+      const attByEmp = new Map();
+      for (const r of attRows) {
+        const eId = parseInt(r.employee_id);
+        if (!attByEmp.has(eId)) attByEmp.set(eId, []);
+        attByEmp.get(eId).push(r);
+      }
+
+      const leavesByEmp = new Map();
+      for (const l of leaveRows) {
+        const eId = parseInt(l.employee_id);
+        if (!leavesByEmp.has(eId)) leavesByEmp.set(eId, []);
+        leavesByEmp.get(eId).push(l);
+      }
+
+      function toDateStr(val) {
+        if (!val) return '';
+        if (typeof val === 'string') return val.slice(0, 10);
+        if (val instanceof Date) {
+          try {
+            return val.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+          } catch (e) {
+            return val.toISOString().slice(0, 10);
+          }
+        }
+        return String(val).slice(0, 10);
+      }
+
+      let totalAllPresent = 0;
+      let totalAllAbsent = 0;
+      let totalAllLeaves = 0;
+
+      const summary = employees.map(emp => {
+        const eId = parseInt(emp.employee_id);
+        const empAtt = attByEmp.get(eId) || [];
+        const empLeaves = leavesByEmp.get(eId) || [];
+
+        const dateStatusMap = new Map();
+        const absentDatesSet = new Set();
+
+        for (const r of empAtt) {
+          const dStr = toDateStr(r.date);
+          if (!dStr) continue;
+          const st = (r.status || '').toLowerCase().trim();
+          dateStatusMap.set(dStr, st);
+          if (st === 'absent') {
+            absentDatesSet.add(dStr);
+          }
+        }
+
+        // Overlay approved leave applications
+        for (const l of empLeaves) {
+          const lStart = toDateStr(l.start_date);
+          const lEnd = toDateStr(l.end_date);
+          if (!lStart || !lEnd) continue;
+
+          let cur = new Date(lStart + "T00:00:00Z");
+          const end = new Date(lEnd + "T00:00:00Z");
+          const monthStartObj = new Date(startDate + "T00:00:00Z");
+          const monthEndObj = new Date(endDate + "T00:00:00Z");
+
+          if (cur < monthStartObj) cur = new Date(monthStartObj);
+          const effectiveEnd = end > monthEndObj ? monthEndObj : end;
+
+          while (cur <= effectiveEnd) {
+            const dStr = cur.toISOString().slice(0, 10);
+            const existingSt = dateStatusMap.get(dStr);
+            if (!existingSt || existingSt === 'not_checked_in') {
+              dateStatusMap.set(dStr, 'leave');
+            }
+            cur.setUTCDate(cur.getUTCDate() + 1);
+          }
+        }
+
+        let presentDays = 0;
+        let lateDays = 0;
+        let absentDays = 0;
+        let leavesCount = 0;
+
+        for (const [dStr, st] of dateStatusMap.entries()) {
+          if (st === 'present') {
+            presentDays++;
+          } else if (st === 'late') {
+            presentDays++;
+            lateDays++;
+          } else if (st === 'absent') {
+            absentDays++;
+          } else if (st === 'leave' || st === 'unexpected_leave') {
+            leavesCount++;
+          }
+        }
+
+        const absentDatesList = Array.from(absentDatesSet).sort();
+        const totalMarkedDays = presentDays + absentDays + leavesCount;
+        const attendancePct = totalMarkedDays > 0 ? Math.round((presentDays / totalMarkedDays) * 100) : null;
+
+        totalAllPresent += presentDays;
+        totalAllAbsent += absentDays;
+        totalAllLeaves += leavesCount;
+
+        return {
+          employee_id: emp.employee_id,
+          employee_name: emp.employee_name,
+          employee_code: emp.employee_code || `EMP-${emp.employee_id}`,
+          department: emp.department || 'General',
+          designation: emp.designation || '',
+          company_id: emp.company_id,
+          company_name: emp.company_name || 'Main Company',
+          user_id: emp.user_id,
+          present_days: presentDays,
+          late_days: lateDays,
+          absent_days: absentDays,
+          leaves_count: leavesCount,
+          total_marked_days: totalMarkedDays,
+          attendance_percentage: attendancePct,
+          absent_dates: absentDatesList
+        };
+      });
+
+      const totalEmployees = summary.length;
+      const validPctList = summary.filter(s => s.attendance_percentage !== null).map(s => s.attendance_percentage);
+      const avgAttendancePct = validPctList.length > 0
+        ? Math.round(validPctList.reduce((acc, p) => acc + p, 0) / validPctList.length)
+        : 100;
+
+      return res.status(200).json({
+        success: true,
+        month: monthStr,
+        start_date: startDate,
+        end_date: endDate,
+        summary,
+        stats: {
+          total_employees: totalEmployees,
+          total_present_days: totalAllPresent,
+          total_absent_days: totalAllAbsent,
+          total_leave_days: totalAllLeaves,
+          avg_attendance_pct: avgAttendancePct
+        }
+      });
+    }
+
     // ═══════════════ MY CHECK-IN STATUS ═══════════════
     else if (action === "my-status") {
       const today = getISTDate();

@@ -8200,9 +8200,9 @@ window.generateBarcodeSVG = function (text, height = 36, showText = true, textCo
     x += gap;
   }
   const svgWidth = Math.ceil(x + quietZone);
-  const svgHeight = height + (showText ? 16 : 4);
+  const svgHeight = height + (showText ? 18 : 4);
   const bgHtml = `<rect width="${svgWidth}" height="${svgHeight}" fill="#ffffff" />`;
-  const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 13}" font-family="Consolas, monospace" font-size="11" font-weight="900" letter-spacing="1.2" text-anchor="middle" fill="${textColor || '#dc2626'}">${raw}</text>` : '';
+  const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 14}" font-family="Consolas, monospace" font-size="13" font-weight="900" letter-spacing="1.2" text-anchor="middle" fill="${textColor || '#dc2626'}">${raw}</text>` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" style="display:block;margin:0 auto;background:#fff;">${bgHtml}${rectsHtml}${textHtml}</svg>`;
 };
 
@@ -8903,7 +8903,7 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       text-orientation: mixed;
       transform: rotate(180deg);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
-      font-size: 6.5px;
+      font-size: 8px;
       font-weight: 900;
       letter-spacing: 0.5px;
       text-transform: uppercase;
@@ -8939,8 +8939,8 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
     }
     body.mode-a4_sheet .sticker-rack-col,
     body.mode-a4_24 .sticker-rack-col {
-      width: 4.5mm;
-      max-width: 5mm;
+      width: 5.5mm;
+      max-width: 6mm;
     }
 
     body.mode-a4_40 .barcode-sticker {
@@ -8951,13 +8951,13 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       padding: 1mm 1mm;
     }
     body.mode-a4_40 .sticker-rack-col {
-      width: 4mm;
-      max-width: 4.5mm;
+      width: 4.8mm;
+      max-width: 5.2mm;
       margin-left: 1mm;
       padding-left: 0.8mm;
     }
     body.mode-a4_40 .rack-vertical-text {
-      font-size: 6px;
+      font-size: 7.5px;
       font-weight: 900;
       color: #dc2626 !important;
     }
@@ -8976,13 +8976,15 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       padding: 1.2mm 1.5mm;
     }
     body.mode-thermal .sticker-rack-col {
-      width: 4mm;
-      max-width: 4.5mm;
+      width: 4.8mm;
+      max-width: 5.2mm;
       margin-left: 1mm;
       padding-left: 0.8mm;
     }
     body.mode-thermal .rack-vertical-text {
-      font-size: 5.5px;
+      font-size: 7px;
+      font-weight: 900;
+      color: #dc2626 !important;
     }
 
     body.mode-thermal_large .barcode-sticker {
@@ -8993,8 +8995,8 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
       padding: 2mm 2.5mm;
     }
     body.mode-thermal_large .sticker-rack-col {
-      width: 4.5mm;
-      max-width: 5mm;
+      width: 5.5mm;
+      max-width: 6mm;
     }
 
     /* Internal typography & elements */
@@ -9081,6 +9083,20 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
         color: #dc2626 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+      }
+      body.mode-a4_sheet .rack-vertical-text,
+      body.mode-a4_24 .rack-vertical-text,
+      body.mode-thermal_large .rack-vertical-text {
+        font-size: 8px !important;
+        font-weight: 900 !important;
+      }
+      body.mode-a4_40 .rack-vertical-text {
+        font-size: 7.5px !important;
+        font-weight: 900 !important;
+      }
+      body.mode-thermal .rack-vertical-text {
+        font-size: 7px !important;
+        font-weight: 900 !important;
       }
       body.mode-a4_40 .barcode-svg-container svg {
         width: 100% !important;

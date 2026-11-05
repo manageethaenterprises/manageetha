@@ -1177,9 +1177,9 @@ window.generateBarcodeSVG = function (text, height = 36, showText = true, textCo
   }
 
   const svgWidth = Math.ceil(x + quietZone);
-  const svgHeight = height + (showText ? 16 : 6);
+  const svgHeight = height + (showText ? 18 : 6);
   const bgHtml = `<rect width="${svgWidth}" height="${svgHeight}" fill="#ffffff" rx="3" />`;
-  const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 13}" font-family="Consolas, 'Courier New', monospace" font-size="11" font-weight="900" letter-spacing="1.2" text-anchor="middle" fill="${textColor || '#dc2626'}">${esc(raw)}</text>` : '';
+  const textHtml = showText ? `<text x="${(svgWidth / 2).toFixed(1)}" y="${height + 14}" font-family="Consolas, 'Courier New', monospace" font-size="13" font-weight="900" letter-spacing="1.2" text-anchor="middle" fill="${textColor || '#dc2626'}">${esc(raw)}</text>` : '';
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" style="display:inline-block;vertical-align:middle;background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;padding:2px;max-width:260px;max-height:46px;box-shadow:0 1px 2px rgba(0,0,0,0.05);">${bgHtml}${rectsHtml}${textHtml}</svg>`;
 };

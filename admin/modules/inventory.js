@@ -8466,7 +8466,7 @@ function openBarcodePrintModal(products) {
         </div>
         ${showRack ? `
           <div style="border-left:1.5px dashed #ef4444;margin-left:8px;padding-left:6px;display:flex;align-items:center;justify-content:center;background:#fff5f5;border-radius:0 4px 4px 0;">
-            <span style="writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);font-size:9.5px;font-weight:900;letter-spacing:0.8px;text-transform:uppercase;color:#dc2626;white-space:nowrap;">
+            <span style="writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);font-size:11px;font-weight:900;letter-spacing:0.8px;text-transform:uppercase;color:#dc2626;white-space:nowrap;">
               ${esc(rackVal)}
             </span>
           </div>

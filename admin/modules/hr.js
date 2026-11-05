@@ -70,6 +70,7 @@ window.renderHRModule = async function (tabKey, container) {
   else if (effectiveKey === 'hr_payslips') loadPayrollSubTab(true);
   else if (effectiveKey === 'hr_advances') loadAdvancesSubTab();
   else if (effectiveKey === 'hr_incentives') loadIncentivesSubTab();
+  else if (effectiveKey === 'hr_reports') loadHRReportsSubTab();
   else loadEmployeesSubTab();
 };
 
@@ -5442,4 +5443,982 @@ async function loadIncentivesSubTab() {
   }
 
   fetchIncentivesSummary();
+}
+
+// ═══════════════════════════════════════════════════
+// 10. HR ANALYTICS & EXECUTIVE REPORTS SUBTAB
+// ═══════════════════════════════════════════════════
+
+async function loadHRReportsSubTab() {
+  const subContent = document.getElementById("hrSubContent");
+  if (!subContent) return;
+  const compId = getActiveCompId();
+  const loggedUser = getUser() || {};
+  const isSuperAdmin = loggedUser.role === "superadmin" || loggedUser.username === "superadmin";
+
+  const compIdToUse = compId !== "all" ? parseInt(compId) : (currentCompanies[0]?.id || 1);
+  const compList = (window.currentCompanies && window.currentCompanies.length > 0)
+    ? window.currentCompanies
+    : (typeof currentCompanies !== "undefined" ? currentCompanies : []);
+  const userCompObj = compList.find(c => c.id == compIdToUse) || compList[0] || { name: "Main Company" };
+  const userCompName = userCompObj.name || "Main Company";
+
+  let activeReportType = "overview";
+  let reportDataCache = null;
+  let currentFilteredList = [];
+
+  const now = new Date();
+  const defaultMonth = typeof today === "function" ? today().slice(0, 7) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const hrReportPills = [
+    { key: "overview", name: "📊 Executive Overview", desc: "Workforce KPIs, headcount distribution, payroll cost, and department analytics" },
+    { key: "workforce", name: "👥 Employee Directory", desc: "Detailed staff roster, designation, joining date, basic pay, and app access" },
+    { key: "attendance", name: "📅 Attendance Compliance", desc: "Monthly present days, late arrivals, absences, attendance percentage, and absent dates" },
+    { key: "leaves", name: "🏖️ Leave & Absenteeism", desc: "Leave applications, casual & sick leave usage, approved vs pending, and unexpected leaves" },
+    { key: "payroll", name: "💰 Payroll Register", desc: "Complete salary breakdown: basic, HRA/DA/allowances, gross, deductions, net pay & bank details" },
+    { key: "advances", name: "💸 Salary Advances", desc: "Employee advances ledger, principal disbursed, monthly EMI recovery, outstanding & recovery rate" },
+    { key: "incentives", name: "🎯 Performance Incentives", desc: "Sales & lead generation incentives register, sales count, released payouts vs pending approval" },
+    { key: "departments", name: "🏢 Department Budgeting", desc: "Department-wise headcount distribution, total gross payroll cost, average salary & absenteeism" },
+    { key: "channel-partners", name: "🤝 Dealers & Financers", desc: "HR channel partners: assigned dealers, financers, and sales customer directory" }
+  ];
+
+  subContent.innerHTML = `
+    <!-- Top Executive Header & Export Actions -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h3 style="font-size:18px;font-weight:700;color:var(--text1);margin:0;display:flex;align-items:center;gap:8px;">
+          <span>📊</span> HR Analytics & Executive Workforce Intelligence
+        </h3>
+        <p style="font-size:12px;color:var(--text3);margin:3px 0 0 0;">
+          Comprehensive workforce metrics, attendance compliance, payroll expenditure, leave balances, advances & incentives.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" id="refreshHrReportBtn" title="Reload live data" style="display:inline-flex;align-items:center;gap:6px;">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+        <button class="btn btn-secondary btn-sm" id="printHrReportBtn" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+          🖨️ Print Report
+        </button>
+        <button class="btn btn-primary btn-sm" id="exportHrReportCsvBtn" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;">
+          📥 Export CSV
+        </button>
+      </div>
+    </div>
+
+    <!-- Report Type Selector Pills Grid -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:8px;margin-bottom:18px;">
+      ${hrReportPills.map(r => `
+        <button class="btn hr-report-pill ${r.key === activeReportType ? 'btn-primary' : 'btn-secondary'}" data-repkey="${r.key}" title="${esc(r.desc)}" style="justify-content:flex-start;text-align:left;padding:8px 12px;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${r.name}
+        </button>
+      `).join('')}
+    </div>
+
+    <!-- Filter & Search Toolbar -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap;background:var(--bg-secondary);padding:12px 16px;border-radius:10px;border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <!-- Month Picker -->
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap;">Month:</label>
+          <input type="month" id="hrRptMonth" class="form-input" value="${defaultMonth}" style="width:145px;height:34px;font-weight:600;">
+        </div>
+
+        <!-- Superadmin Company Filter -->
+        ${isSuperAdmin ? `
+          <div style="display:flex;align-items:center;gap:6px;">
+            <label style="font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap;">Company:</label>
+            <select id="hrRptCompany" class="form-select" style="min-width:180px;height:34px;font-weight:600;">
+              <option value="all">🌐 All Companies</option>
+              ${compList.map(c => `
+                <option value="${c.id}" ${compId != 'all' && compId == c.id ? 'selected' : ''}>${esc(c.name)}</option>
+              `).join('')}
+            </select>
+          </div>
+        ` : `
+          <div class="badge badge-neutral" style="font-size:12px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;">
+            🏢 ${esc(userCompName)}
+          </div>
+        `}
+
+        <!-- Department Filter -->
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap;">Dept:</label>
+          <select id="hrRptDept" class="form-select" style="min-width:150px;height:34px;font-weight:600;">
+            <option value="all">🏢 All Departments</option>
+          </select>
+        </div>
+
+        <!-- Live Search -->
+        <input type="text" id="hrRptSearchInput" class="form-input" placeholder="🔍 Search records..." style="width:210px;height:34px;font-size:12px;">
+      </div>
+
+      <div id="hrRptStatusCount" style="font-size:12px;font-weight:600;color:var(--text2);">
+        Loading HR Intelligence...
+      </div>
+    </div>
+
+    <!-- Industry KPI Cards Container -->
+    <div id="hrRptKpiGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:12px;margin-bottom:20px;">
+      <!-- KPI cards rendered dynamically -->
+    </div>
+
+    <!-- Printable Report Container -->
+    <div id="hrReportPrintArea">
+      <div id="hrReportPrintHeader" style="display:none;margin-bottom:14px;border-bottom:2px solid #334155;padding-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <h2 id="hrReportPrintTitle" style="font-size:18px;font-weight:800;color:#0f172a;margin:0;">Manageetha Enterprises - HR Intelligence Report</h2>
+            <div id="hrReportPrintSubtitle" style="font-size:12px;color:#475569;margin-top:2px;">Workforce Analytics</div>
+          </div>
+          <div style="text-align:right;font-size:11px;color:#64748b;">
+            <div>Company: <strong id="hrReportPrintComp">${esc(userCompName)}</strong></div>
+            <div>Generated: ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Responsive Report Table Wrapper -->
+      <div class="table-container" style="overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:10px;background:var(--card-bg, #fff);">
+        <table class="data-table" id="hrReportTable" style="width:100%;border-collapse:collapse;min-width:850px;">
+          <thead id="hrReportTHead">
+            <!-- Headers rendered dynamically -->
+          </thead>
+          <tbody id="hrReportTBody">
+            <tr><td colspan="10" style="text-align:center;padding:30px;"><div class="spinner"></div> Aggregating HR Intelligence & KPIs...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Paged Pagination Controls -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:8px;">
+      <div id="hrReportInfo"></div>
+      <div id="hrReportPagination" class="pagination"></div>
+    </div>
+  `;
+
+  // Currency & formatting helpers
+  const fmtINR = (val) => '₹' + parseFloat(val || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  const fmtPct = (val) => (val != null ? parseFloat(val).toFixed(0) + '%' : '100%');
+
+  // Pill click handlers
+  subContent.querySelectorAll(".hr-report-pill").forEach(btn => {
+    btn.addEventListener("click", () => {
+      subContent.querySelectorAll(".hr-report-pill").forEach(b => {
+        b.classList.remove("btn-primary");
+        b.classList.add("btn-secondary");
+      });
+      btn.classList.remove("btn-secondary");
+      btn.classList.add("btn-primary");
+      activeReportType = btn.dataset.repkey;
+      renderActiveReportView();
+    });
+  });
+
+  // Fetch report data from backend
+  async function fetchHRReportData() {
+    const selMonth = document.getElementById("hrRptMonth")?.value || defaultMonth;
+    const compFilterEl = document.getElementById("hrRptCompany");
+    const targetComp = isSuperAdmin ? (compFilterEl ? compFilterEl.value : compId) : compId;
+    const deptFilter = document.getElementById("hrRptDept")?.value || "all";
+
+    const tbody = document.getElementById("hrReportTBody");
+    const statusCount = document.getElementById("hrRptStatusCount");
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;"><div class="spinner"></div> Aggregating HR Intelligence for ${selMonth}...</td></tr>`;
+    if (statusCount) statusCount.textContent = "Fetching live data...";
+
+    try {
+      const url = `${API_BASE}/reports?action=hr-report&month=${selMonth}&company_id=${targetComp}&department=${encodeURIComponent(deptFilter)}`;
+      const res = await fetch(url, { headers: authHeaders() });
+      const data = await res.json();
+      if (!data.success) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text3);">${esc(data.error || 'Failed to fetch HR data')}</td></tr>`;
+        return;
+      }
+
+      reportDataCache = data;
+
+      // Populate Department Dropdown
+      const deptSelect = document.getElementById("hrRptDept");
+      if (deptSelect && data.departments) {
+        const curVal = deptSelect.value;
+        let dHtml = `<option value="all">🏢 All Departments (${data.departments.length})</option>`;
+        data.departments.forEach(d => {
+          dHtml += `<option value="${esc(d.toLowerCase())}" ${curVal === d.toLowerCase() ? 'selected' : ''}>${esc(d)}</option>`;
+        });
+        deptSelect.innerHTML = dHtml;
+      }
+
+      renderActiveReportView();
+    } catch (err) {
+      console.error("fetchHRReportData error:", err);
+      if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--danger, #ef4444);">Error loading HR report: ${esc(err.message)}</td></tr>`;
+    }
+  }
+
+  // Render KPIs and Table based on active pill
+  function renderActiveReportView() {
+    if (!reportDataCache) return;
+    const { kpis, department_breakdown, employees, payroll, attendance, leaves, advances, incentives, dealers, financers, month } = reportDataCache;
+
+    const kpiGrid = document.getElementById("hrRptKpiGrid");
+    const thead = document.getElementById("hrReportTHead");
+    const printTitle = document.getElementById("hrReportPrintTitle");
+    const printSub = document.getElementById("hrReportPrintSubtitle");
+
+    const selMonth = document.getElementById("hrRptMonth")?.value || month;
+    if (printSub) printSub.textContent = `Month: ${selMonth} | Category: ${activeReportType.toUpperCase()}`;
+
+    let rowsToDisplay = [];
+    let headersHtml = '';
+    let rowRenderer = (item) => '';
+
+    // ─────────────────────────────────────────────────────────────
+    // 1. EXECUTIVE OVERVIEW
+    // ─────────────────────────────────────────────────────────────
+    if (activeReportType === "overview") {
+      if (printTitle) printTitle.textContent = `HR Executive Workforce Overview - ${selMonth}`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;">Active Headcount</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text1);margin-top:2px;">${kpis.total_headcount || 0}</div>
+            <div style="font-size:10px;color:var(--text3);">${kpis.inactive_headcount || 0} Inactive</div>
+          </div>
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Gross Payroll Spend</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${fmtINR(kpis.total_gross_payroll)}</div>
+            <div style="font-size:10px;color:var(--text3);">Month Est. Cost</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Net Salary Disbursed</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${fmtINR(kpis.total_net_disbursed)}</div>
+            <div style="font-size:10px;color:#d97706;">Pending: ${fmtINR(kpis.total_net_pending)}</div>
+          </div>
+          <div style="background:rgba(139, 92, 246, 0.08);border:1px solid rgba(139, 92, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;">Attendance Rate</div>
+            <div style="font-size:22px;font-weight:800;color:#7c3aed;margin-top:2px;">${fmtPct(kpis.avg_attendance_rate)}</div>
+            <div style="font-size:10px;color:var(--text3);">${kpis.total_present_days || 0} Present Days</div>
+          </div>
+          <div style="background:rgba(239, 68, 68, 0.08);border:1px solid rgba(239, 68, 68, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#dc2626;text-transform:uppercase;">Total Absences</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;margin-top:2px;">${kpis.total_absent_days || 0} <span style="font-size:12px;">Days</span></div>
+            <div style="font-size:10px;color:var(--text3);">${kpis.total_leaves_taken || 0} Approved Leaves</div>
+          </div>
+          <div style="background:rgba(245, 158, 11, 0.08);border:1px solid rgba(245, 158, 11, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;">Advances Outstanding</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;margin-top:2px;">${fmtINR(kpis.total_advances_outstanding)}</div>
+            <div style="font-size:10px;color:var(--text3);">${kpis.active_advances_count || 0} Active Advances</div>
+          </div>
+          <div style="background:rgba(14, 165, 233, 0.08);border:1px solid rgba(14, 165, 233, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#0284c7;text-transform:uppercase;">Incentives Released</div>
+            <div style="font-size:22px;font-weight:800;color:#0284c7;margin-top:2px;">${fmtINR(kpis.total_incentives_released)}</div>
+            <div style="font-size:10px;color:#d97706;">Pending: ${fmtINR(kpis.total_incentives_pending)}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Department</th>
+          <th style="text-align:center;">Headcount</th>
+          <th style="text-align:center;">Workforce %</th>
+          <th style="text-align:right;">Monthly Gross Budget</th>
+          <th style="text-align:right;">Avg Pay / Employee</th>
+          <th style="text-align:center;">Attendance %</th>
+          <th style="text-align:center;">Leaves Taken</th>
+        </tr>
+      `;
+
+      rowsToDisplay = department_breakdown || [];
+      rowRenderer = (d) => `
+        <tr>
+          <td style="font-weight:700;color:var(--text1);">🏢 ${esc(d.department)}</td>
+          <td style="text-align:center;font-weight:600;">${d.headcount}</td>
+          <td style="text-align:center;">
+            <span class="badge badge-neutral" style="font-weight:600;">${d.headcount_pct}%</span>
+          </td>
+          <td style="text-align:right;font-weight:700;color:var(--text1);">${fmtINR(d.total_gross_payroll)}</td>
+          <td style="text-align:right;font-weight:600;color:#2563eb;">${fmtINR(d.avg_salary_per_employee)}</td>
+          <td style="text-align:center;">
+            <span class="badge ${d.attendance_rate >= 90 ? 'badge-success' : d.attendance_rate >= 75 ? 'badge-warning' : 'badge-danger'}" style="font-weight:700;">
+              ${d.attendance_rate}%
+            </span>
+          </td>
+          <td style="text-align:center;font-weight:600;color:#dc2626;">${d.leaves_taken} Days</td>
+        </tr>
+      `;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 2. WORKFORCE / EMPLOYEE DIRECTORY
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "workforce") {
+      if (printTitle) printTitle.textContent = `Workforce & Employee Directory Audit`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;">Active Staff</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text1);margin-top:2px;">${kpis.total_headcount || 0}</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Departments</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${kpis.active_departments_count || 0}</div>
+          </div>
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">System App Users</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${employees.filter(e => e.system_username).length}</div>
+          </div>
+          <div style="background:rgba(245, 158, 11, 0.08);border:1px solid rgba(245, 158, 11, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;">Avg Basic Pay</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;margin-top:2px;">${employees.length > 0 ? fmtINR(employees.reduce((acc, e) => acc + parseFloat(e.basic_salary || 0), 0) / employees.length) : '₹0'}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Code</th>
+          <th>Employee Name</th>
+          ${isSuperAdmin ? `<th>Company</th>` : ''}
+          <th>Department</th>
+          <th>Designation</th>
+          <th>Phone / Contact</th>
+          <th style="text-align:right;">Basic Salary</th>
+          <th style="text-align:center;">Status</th>
+          <th style="text-align:center;">System Access</th>
+        </tr>
+      `;
+
+      rowsToDisplay = employees || [];
+      rowRenderer = (e) => `
+        <tr>
+          <td style="font-weight:600;font-size:12px;color:var(--primary);">${esc(e.employee_code || `EMP-${e.id}`)}</td>
+          <td style="font-weight:700;color:var(--text1);">${esc(e.name)}</td>
+          ${isSuperAdmin ? `<td><span class="badge badge-outline">${esc(e.company_name || 'Main')}</span></td>` : ''}
+          <td><span class="badge badge-neutral">${esc(e.department || 'General')}</span></td>
+          <td>${esc(e.designation || 'Staff')}</td>
+          <td>${esc(e.phone || e.email || '—')}</td>
+          <td style="text-align:right;font-weight:700;">${fmtINR(e.basic_salary)}</td>
+          <td style="text-align:center;">
+            <span class="badge ${(e.employment_status || 'active').toLowerCase() === 'active' ? 'badge-success' : 'badge-danger'}">
+              ${esc(e.employment_status || 'active')}
+            </span>
+          </td>
+          <td style="text-align:center;">
+            ${e.system_username ? `<span class="badge badge-primary">🔑 ${esc(e.system_role || 'User')}</span>` : `<span style="color:var(--text3);font-size:11px;">No Access</span>`}
+          </td>
+        </tr>
+      `;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 3. ATTENDANCE COMPLIANCE & TIME TRACKING
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "attendance") {
+      if (printTitle) printTitle.textContent = `Attendance Compliance & Absenteeism Audit - ${selMonth}`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Total Present Days</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${kpis.total_present_days || 0}</div>
+          </div>
+          <div style="background:rgba(239, 68, 68, 0.08);border:1px solid rgba(239, 68, 68, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#dc2626;text-transform:uppercase;">Total Absences</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;margin-top:2px;">${kpis.total_absent_days || 0}</div>
+          </div>
+          <div style="background:rgba(245, 158, 11, 0.08);border:1px solid rgba(245, 158, 11, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;">Late Clock-Ins</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;margin-top:2px;">${kpis.total_late_clockins || 0}</div>
+          </div>
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Overall Compliance</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${fmtPct(kpis.avg_attendance_rate)}</div>
+          </div>
+        `;
+      }
+
+      // Group attendance per employee for clean view
+      const empAttMap = new Map();
+      employees.forEach(e => {
+        empAttMap.set(e.id, {
+          id: e.id,
+          name: e.name,
+          code: e.employee_code || `EMP-${e.id}`,
+          department: e.department || 'General',
+          company_name: e.company_name || 'Main',
+          present_days: 0,
+          late_days: 0,
+          absent_days: 0,
+          leaves_count: 0,
+          absent_dates: []
+        });
+      });
+
+      attendance.forEach(a => {
+        const item = empAttMap.get(a.employee_id);
+        if (item) {
+          const st = (a.status || '').toLowerCase().trim();
+          const dStr = a.date ? (typeof a.date === 'string' ? a.date.slice(0, 10) : new Date(a.date).toISOString().slice(0, 10)) : '';
+          if (st === 'present') item.present_days++;
+          else if (st === 'late') { item.present_days++; item.late_days++; }
+          else if (st === 'absent') { item.absent_days++; if (dStr) item.absent_dates.push(dStr); }
+          else if (st === 'leave' || st === 'unexpected_leave') item.leaves_count++;
+        }
+      });
+
+      headersHtml = `
+        <tr>
+          <th>Employee</th>
+          <th>Department</th>
+          ${isSuperAdmin ? `<th>Company</th>` : ''}
+          <th style="text-align:center;">Present</th>
+          <th style="text-align:center;">Late</th>
+          <th style="text-align:center;">Absent</th>
+          <th style="text-align:center;">Leaves</th>
+          <th style="text-align:center;">Attendance %</th>
+          <th>Absent Dates</th>
+        </tr>
+      `;
+
+      rowsToDisplay = Array.from(empAttMap.values());
+      rowRenderer = (item) => {
+        const totalMarks = item.present_days + item.absent_days + item.leaves_count;
+        const pct = totalMarks > 0 ? Math.round((item.present_days / totalMarks) * 100) : 100;
+        return `
+          <tr>
+            <td style="font-weight:700;color:var(--text1);">
+              <div>${esc(item.name)}</div>
+              <div style="font-size:11px;color:var(--text3);font-weight:normal;">${esc(item.code)}</div>
+            </td>
+            <td><span class="badge badge-neutral">${esc(item.department)}</span></td>
+            ${isSuperAdmin ? `<td><span class="badge badge-outline">${esc(item.company_name)}</span></td>` : ''}
+            <td style="text-align:center;font-weight:700;color:#059669;">${item.present_days}</td>
+            <td style="text-align:center;font-weight:600;color:#d97706;">${item.late_days}</td>
+            <td style="text-align:center;font-weight:700;color:#dc2626;">${item.absent_days}</td>
+            <td style="text-align:center;font-weight:600;color:#7c3aed;">${item.leaves_count}</td>
+            <td style="text-align:center;">
+              <span class="badge ${pct >= 90 ? 'badge-success' : pct >= 75 ? 'badge-warning' : 'badge-danger'}" style="font-weight:700;">
+                ${totalMarks > 0 ? pct + '%' : 'No Logs'}
+              </span>
+            </td>
+            <td>
+              ${item.absent_dates && item.absent_dates.length > 0 ? `
+                <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                  ${item.absent_dates.map(d => `<span class="badge badge-danger" style="font-size:10px;padding:2px 6px;">${d.slice(8)} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(d.slice(5,7),10)-1]}</span>`).join('')}
+                </div>
+              ` : `<span class="badge badge-success" style="font-size:11px;">✅ None</span>`}
+            </td>
+          </tr>
+        `;
+      };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 4. LEAVES & ABSENTEEISM
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "leaves") {
+      if (printTitle) printTitle.textContent = `Leave Applications & Absenteeism Register`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;">Applications</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text1);margin-top:2px;">${leaves.length}</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Approved</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${leaves.filter(l => l.status === 'approved').length}</div>
+          </div>
+          <div style="background:rgba(245, 158, 11, 0.08);border:1px solid rgba(245, 158, 11, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;">Pending Approval</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;margin-top:2px;">${leaves.filter(l => l.status === 'pending').length}</div>
+          </div>
+          <div style="background:rgba(239, 68, 68, 0.08);border:1px solid rgba(239, 68, 68, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#dc2626;text-transform:uppercase;">Rejected</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;margin-top:2px;">${leaves.filter(l => l.status === 'rejected').length}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Employee</th>
+          <th>Department</th>
+          <th>Leave Type</th>
+          <th>Dates (From - To)</th>
+          <th style="text-align:center;">Total Days</th>
+          <th>Reason</th>
+          <th style="text-align:center;">Status</th>
+        </tr>
+      `;
+
+      rowsToDisplay = leaves || [];
+      rowRenderer = (l) => `
+        <tr>
+          <td style="font-weight:700;color:var(--text1);">${esc(l.employee_name || 'Staff')}</td>
+          <td><span class="badge badge-neutral">${esc(l.department || 'General')}</span></td>
+          <td><span class="badge badge-primary">${esc(l.leave_type_name || 'Casual Leave')}</span></td>
+          <td style="font-weight:600;font-size:12px;">${String(l.start_date).slice(0, 10)} &rarr; ${String(l.end_date).slice(0, 10)}</td>
+          <td style="text-align:center;font-weight:700;">${l.total_days}</td>
+          <td>${esc(l.reason || 'Personal / Emergency')}</td>
+          <td style="text-align:center;">
+            <span class="badge ${l.status === 'approved' ? 'badge-success' : l.status === 'pending' ? 'badge-warning' : 'badge-danger'}">
+              ${esc(l.status || 'pending')}
+            </span>
+          </td>
+        </tr>
+      `;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 5. PAYROLL REGISTER
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "payroll") {
+      if (printTitle) printTitle.textContent = `Comprehensive Payroll Register - ${selMonth}`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Gross Salary Cost</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${fmtINR(kpis.total_gross_payroll)}</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Net Salary Disbursed</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${fmtINR(kpis.total_net_disbursed)}</div>
+          </div>
+          <div style="background:rgba(245, 158, 11, 0.08);border:1px solid rgba(245, 158, 11, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;">Pending Payout</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;margin-top:2px;">${fmtINR(kpis.total_net_pending)}</div>
+          </div>
+          <div style="background:rgba(139, 92, 246, 0.08);border:1px solid rgba(139, 92, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;">Statutory Cuts</div>
+            <div style="font-size:22px;font-weight:800;color:#7c3aed;margin-top:2px;">${fmtINR(kpis.total_statutory_deductions)}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Employee</th>
+          <th>Department</th>
+          <th style="text-align:right;">Basic Salary</th>
+          <th style="text-align:right;">HRA + DA + Allow</th>
+          <th style="text-align:right;">Gross Salary</th>
+          <th style="text-align:right;">Statutory Deductions</th>
+          <th style="text-align:right;">Advance Cuts</th>
+          <th style="text-align:right;">Net Salary</th>
+          <th style="text-align:center;">Status</th>
+        </tr>
+      `;
+
+      rowsToDisplay = (payroll && payroll.length > 0) ? payroll : employees.map(e => {
+        const b = parseFloat(e.basic_salary || 0);
+        const hra = Math.round(b * 0.40);
+        const da = Math.round(b * 0.10);
+        const ta = Math.max(1600, Math.round(b * 0.05));
+        const spl = Math.round(b * 0.15);
+        const gross = b + hra + da + ta + spl;
+        const pf = Math.min(1800, Math.round(b * 0.12));
+        const net = gross - pf;
+        return {
+          employee_name: e.name,
+          employee_code: e.employee_code,
+          department: e.department,
+          basic_salary: b,
+          allowances: (hra + da + ta + spl),
+          gross_salary: gross,
+          statutory_deductions: pf,
+          advance_deductions: 0,
+          net_salary: net,
+          payment_status: 'pending'
+        };
+      });
+
+      rowRenderer = (p) => {
+        const statutory = parseFloat(p.statutory_deductions != null ? p.statutory_deductions : ((parseFloat(p.pf_deduction || 0)) + (parseFloat(p.esi_deduction || 0)) + (parseFloat(p.tds_deduction || 0)) + (parseFloat(p.pt_deduction || 0))));
+        return `
+          <tr>
+            <td style="font-weight:700;color:var(--text1);">
+              <div>${esc(p.employee_name)}</div>
+              <div style="font-size:11px;color:var(--text3);font-weight:normal;">${esc(p.employee_code || '')}</div>
+            </td>
+            <td><span class="badge badge-neutral">${esc(p.department || 'General')}</span></td>
+            <td style="text-align:right;font-weight:600;">${fmtINR(p.basic_salary)}</td>
+            <td style="text-align:right;">${fmtINR(p.allowances != null ? p.allowances : (parseFloat(p.gross_salary || 0) - parseFloat(p.basic_salary || 0)))}</td>
+            <td style="text-align:right;font-weight:700;color:var(--text1);">${fmtINR(p.gross_salary)}</td>
+            <td style="text-align:right;color:#dc2626;">-${fmtINR(statutory)}</td>
+            <td style="text-align:right;color:#d97706;">-${fmtINR(p.advance_deductions)}</td>
+            <td style="text-align:right;font-weight:800;color:#059669;font-size:13px;">${fmtINR(p.net_salary)}</td>
+            <td style="text-align:center;">
+              <span class="badge ${p.payment_status === 'paid' ? 'badge-success' : p.payment_status === 'partially_paid' ? 'badge-warning' : 'badge-neutral'}">
+                ${esc(p.payment_status || 'pending')}
+              </span>
+            </td>
+          </tr>
+        `;
+      };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 6. SALARY ADVANCES
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "advances") {
+      if (printTitle) printTitle.textContent = `Salary Advances & Recovery Ledger`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Total Disbursed</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${fmtINR(kpis.total_advances_disbursed)}</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Total Recovered</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${fmtINR(kpis.total_advances_repaid)}</div>
+          </div>
+          <div style="background:rgba(239, 68, 68, 0.08);border:1px solid rgba(239, 68, 68, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#dc2626;text-transform:uppercase;">Outstanding At Risk</div>
+            <div style="font-size:22px;font-weight:800;color:#dc2626;margin-top:2px;">${fmtINR(kpis.total_advances_outstanding)}</div>
+          </div>
+          <div style="background:rgba(139, 92, 246, 0.08);border:1px solid rgba(139, 92, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#7c3aed;text-transform:uppercase;">Recovery Rate</div>
+            <div style="font-size:22px;font-weight:800;color:#7c3aed;margin-top:2px;">${kpis.advance_recovery_rate || 0}%</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Advance Date</th>
+          <th>Employee</th>
+          <th>Department</th>
+          <th style="text-align:right;">Principal Disbursed</th>
+          <th style="text-align:right;">Monthly EMI</th>
+          <th style="text-align:right;">Total Repaid</th>
+          <th style="text-align:right;">Outstanding Balance</th>
+          <th style="text-align:center;">Status</th>
+        </tr>
+      `;
+
+      rowsToDisplay = advances || [];
+      rowRenderer = (a) => `
+        <tr>
+          <td style="font-size:12px;">${String(a.advance_date || a.created_at || '').slice(0, 10)}</td>
+          <td style="font-weight:700;color:var(--text1);">${esc(a.employee_name)}</td>
+          <td><span class="badge badge-neutral">${esc(a.department || 'General')}</span></td>
+          <td style="text-align:right;font-weight:700;">${fmtINR(a.amount)}</td>
+          <td style="text-align:right;font-weight:600;color:#2563eb;">${fmtINR(a.monthly_deduction)}</td>
+          <td style="text-align:right;color:#059669;">${fmtINR(a.total_repaid)}</td>
+          <td style="text-align:right;font-weight:800;color:#dc2626;">${fmtINR(a.outstanding != null ? a.outstanding : (parseFloat(a.amount || 0) - parseFloat(a.total_repaid || 0)))}</td>
+          <td style="text-align:center;">
+            <span class="badge ${a.repayment_status === 'settled' ? 'badge-success' : 'badge-warning'}">
+              ${esc(a.repayment_status || 'active')}
+            </span>
+          </td>
+        </tr>
+      `;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 7. PERFORMANCE INCENTIVES
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "incentives") {
+      if (printTitle) printTitle.textContent = `Sales & Performance Incentives Register`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Total Generated</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${fmtINR(kpis.total_incentives_generated)}</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Total Released</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${fmtINR(kpis.total_incentives_released)}</div>
+          </div>
+          <div style="background:rgba(245, 158, 11, 0.08);border:1px solid rgba(245, 158, 11, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#d97706;text-transform:uppercase;">Pending Payout</div>
+            <div style="font-size:22px;font-weight:800;color:#d97706;margin-top:2px;">${fmtINR(kpis.total_incentives_pending)}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Lead Generator / Performer</th>
+          <th>Contact Phone</th>
+          ${isSuperAdmin ? `<th>Company</th>` : ''}
+          <th style="text-align:center;">Sales Count</th>
+          <th style="text-align:right;">Total Incentive</th>
+          <th style="text-align:right;">Released Amount</th>
+          <th style="text-align:right;">Pending Release</th>
+          <th style="text-align:center;">Payout Status</th>
+        </tr>
+      `;
+
+      rowsToDisplay = incentives || [];
+      rowRenderer = (i) => {
+        const isFullyReleased = parseFloat(i.pending_amount || 0) <= 0;
+        return `
+          <tr>
+            <td style="font-weight:700;color:var(--text1);">${esc(i.lead_generator_name)}</td>
+            <td>${esc(i.lead_phone_number || '—')}</td>
+            ${isSuperAdmin ? `<td><span class="badge badge-outline">${esc(i.company_name || 'Main')}</span></td>` : ''}
+            <td style="text-align:center;font-weight:600;">${i.sales_count} NOS</td>
+            <td style="text-align:right;font-weight:700;color:var(--text1);">${fmtINR(i.total_incentive)}</td>
+            <td style="text-align:right;font-weight:700;color:#059669;">${fmtINR(i.released_amount)}</td>
+            <td style="text-align:right;font-weight:700;color:#d97706;">${fmtINR(i.pending_amount)}</td>
+            <td style="text-align:center;">
+              <span class="badge ${isFullyReleased ? 'badge-success' : 'badge-warning'}">
+                ${isFullyReleased ? 'Released' : 'Pending'}
+              </span>
+            </td>
+          </tr>
+        `;
+      };
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 8. DEPARTMENTS BUDGETING & HEADCOUNT
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "departments") {
+      if (printTitle) printTitle.textContent = `Department-Wise Headcount & Budget Distribution - ${selMonth}`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;">Active Departments</div>
+            <div style="font-size:22px;font-weight:800;color:var(--text1);margin-top:2px;">${department_breakdown.length}</div>
+          </div>
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Largest Department</div>
+            <div style="font-size:18px;font-weight:800;color:#2563eb;margin-top:4px;">${department_breakdown[0]?.department || 'None'}</div>
+            <div style="font-size:10px;color:var(--text3);">${department_breakdown[0]?.headcount || 0} Staff (${department_breakdown[0]?.headcount_pct || 0}%)</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Total Gross Budget</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${fmtINR(kpis.total_gross_payroll)}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Department</th>
+          <th style="text-align:center;">Active Headcount</th>
+          <th style="text-align:center;">Workforce Share</th>
+          <th style="text-align:right;">Total Gross Payroll</th>
+          <th style="text-align:right;">Average Pay / Staff</th>
+          <th style="text-align:center;">Attendance %</th>
+          <th style="text-align:center;">Leaves Taken</th>
+        </tr>
+      `;
+
+      rowsToDisplay = department_breakdown || [];
+      rowRenderer = (d) => `
+        <tr>
+          <td style="font-weight:700;color:var(--text1);">🏢 ${esc(d.department)}</td>
+          <td style="text-align:center;font-weight:700;">${d.headcount}</td>
+          <td style="text-align:center;"><span class="badge badge-neutral">${d.headcount_pct}%</span></td>
+          <td style="text-align:right;font-weight:700;">${fmtINR(d.total_gross_payroll)}</td>
+          <td style="text-align:right;font-weight:600;color:#2563eb;">${fmtINR(d.avg_salary_per_employee)}</td>
+          <td style="text-align:center;"><span class="badge badge-success">${d.attendance_rate}%</span></td>
+          <td style="text-align:center;font-weight:600;color:#dc2626;">${d.leaves_taken} Days</td>
+        </tr>
+      `;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // 9. DEALERS & FINANCERS CHANNEL PARTNERS
+    // ─────────────────────────────────────────────────────────────
+    else if (activeReportType === "channel-partners") {
+      if (printTitle) printTitle.textContent = `HR External Channel Directory - Dealers & Financers`;
+      if (kpiGrid) {
+        kpiGrid.innerHTML = `
+          <div style="background:rgba(59, 130, 246, 0.08);border:1px solid rgba(59, 130, 246, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#2563eb;text-transform:uppercase;">Registered Dealers</div>
+            <div style="font-size:22px;font-weight:800;color:#2563eb;margin-top:2px;">${dealers.length}</div>
+          </div>
+          <div style="background:rgba(16, 185, 129, 0.08);border:1px solid rgba(16, 185, 129, 0.2);border-radius:8px;padding:12px;text-align:center;">
+            <div style="font-size:11px;font-weight:600;color:#059669;text-transform:uppercase;">Financer Partners</div>
+            <div style="font-size:22px;font-weight:800;color:#059669;margin-top:2px;">${financers.length}</div>
+          </div>
+        `;
+      }
+
+      headersHtml = `
+        <tr>
+          <th>Partner Category</th>
+          <th>Business Name</th>
+          ${isSuperAdmin ? `<th>Company</th>` : ''}
+          <th>Contact Person</th>
+          <th>Phone / Mobile</th>
+          <th>Region / City</th>
+          <th style="text-align:right;">Credit Limit / Details</th>
+        </tr>
+      `;
+
+      const combinedPartners = [
+        ...dealers.map(d => ({ ...d, _type: 'Dealer' })),
+        ...financers.map(f => ({ ...f, _type: 'Financer' }))
+      ];
+
+      rowsToDisplay = combinedPartners;
+      rowRenderer = (p) => `
+        <tr>
+          <td><span class="badge ${p._type === 'Dealer' ? 'badge-primary' : 'badge-success'}">${p._type}</span></td>
+          <td style="font-weight:700;color:var(--text1);">${esc(p.name)}</td>
+          ${isSuperAdmin ? `<td><span class="badge badge-outline">${esc(p.company_name || 'Main')}</span></td>` : ''}
+          <td>${esc(p.contact_person || '—')}</td>
+          <td>${esc(p.phone || p.mobile || '—')}</td>
+          <td>${esc(p.city || p.state || p.address || '—')}</td>
+          <td style="text-align:right;font-weight:600;">${p.credit_limit ? fmtINR(p.credit_limit) : (p.type || 'Standard Partner')}</td>
+        </tr>
+      `;
+    }
+
+    if (thead) thead.innerHTML = headersHtml;
+
+    // Filter by live search box
+    const query = (document.getElementById("hrRptSearchInput")?.value || "").toLowerCase().trim();
+    if (!query) {
+      currentFilteredList = [...rowsToDisplay];
+    } else {
+      currentFilteredList = rowsToDisplay.filter(item => {
+        return JSON.stringify(item).toLowerCase().includes(query);
+      });
+    }
+
+    const statusCount = document.getElementById("hrRptStatusCount");
+    if (statusCount) statusCount.textContent = `Showing ${currentFilteredList.length} of ${rowsToDisplay.length} records`;
+
+    // Render paginated table
+    window.renderPaginatedTable({
+      data: currentFilteredList,
+      pageSize: 15,
+      currentPage: 1,
+      tbody: "hrReportTBody",
+      paginationContainer: "hrReportPagination",
+      infoContainer: "hrReportInfo",
+      renderRow: rowRenderer
+    });
+  }
+
+  // Bind Toolbar Event Listeners
+  on("hrRptMonth", "change", fetchHRReportData);
+  if (isSuperAdmin) {
+    on("hrRptCompany", "change", fetchHRReportData);
+  }
+  on("hrRptDept", "change", fetchHRReportData);
+  on("refreshHrReportBtn", "click", fetchHRReportData);
+
+  on("hrRptSearchInput", "input", () => {
+    renderActiveReportView();
+  });
+
+  // Export CSV handler
+  on("exportHrReportCsvBtn", "click", () => {
+    if (!currentFilteredList || currentFilteredList.length === 0) {
+      return showToast("No records available to export", "warning");
+    }
+
+    const selMonth = document.getElementById("hrRptMonth")?.value || defaultMonth;
+    const filename = `hr_${activeReportType}_report_${selMonth}.csv`;
+
+    // Extract table headers and row data
+    const table = document.getElementById("hrReportTable");
+    if (!table) return;
+
+    const rows = [];
+    const headerCells = table.querySelectorAll("thead th");
+    const headers = Array.from(headerCells).map(th => `"${th.textContent.trim().replace(/"/g, '""')}"`);
+    rows.push(headers.join(","));
+
+    // Convert filtered data items
+    currentFilteredList.forEach(item => {
+      const vals = [];
+      headers.forEach(h => {
+        // Flat string approximation for CSV export
+        const cleanH = h.replace(/"/g, '').toLowerCase();
+        let matchVal = '';
+        for (const [k, v] of Object.entries(item)) {
+          if (cleanH.includes(k.replace(/_/g, ' '))) {
+            matchVal = v;
+            break;
+          }
+        }
+        if (matchVal === '' && typeof item === 'object') {
+          // Fallback key lookup
+          const k = Object.keys(item)[0];
+          matchVal = item[k] || '';
+        }
+        vals.push(`"${String(matchVal || '').replace(/"/g, '""')}"`);
+      });
+      rows.push(vals.join(","));
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + rows.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast(`Exported ${filename} successfully!`, "success");
+  });
+
+  // Print Report handler
+  on("printHrReportBtn", "click", () => {
+    const printArea = document.getElementById("hrReportPrintArea");
+    if (!printArea) return;
+    const printWin = window.open("", "_blank", "width=950,height=900");
+    if (!printWin) return alert("Please allow popups to print report.");
+
+    const title = document.getElementById("hrReportPrintTitle")?.textContent || "HR Report";
+    const kpiContent = document.getElementById("hrRptKpiGrid")?.innerHTML || "";
+    const tableHtml = document.getElementById("hrReportTable")?.outerHTML || "";
+
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${title} - Manageetha ERP</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; padding: 24px; color: #0f172a; }
+          h2 { margin: 0 0 6px 0; font-size: 20px; }
+          .header-meta { font-size: 12px; color: #64748b; margin-bottom: 20px; border-bottom: 2px solid #cbd5e1; padding-bottom: 12px; display: flex; justify-content: space-between; }
+          .kpi-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+          .kpi-container > div { border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+          th, td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }
+          th { background: #f8fafc; font-weight: 700; color: #334155; }
+          .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; border: 1px solid #cbd5e1; }
+          @media print {
+            body { padding: 0; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <h2>${title}</h2>
+            <div style="font-size:13px;color:#475569;">Manageetha Enterprises HR Intelligence</div>
+          </div>
+          <div style="text-align:right;font-size:12px;color:#64748b;">
+            <div>Company: <strong>${esc(userCompName)}</strong></div>
+            <div>Generated: ${new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</div>
+          </div>
+        </div>
+        <div class="header-meta"></div>
+        <div class="kpi-container">${kpiContent}</div>
+        ${tableHtml}
+        <script>
+          setTimeout(() => { window.print(); }, 400);
+        </script>
+      </body>
+      </html>
+    `);
+    printWin.document.close();
+  });
+
+  fetchHRReportData();
 }

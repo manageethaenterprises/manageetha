@@ -809,6 +809,391 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ success: true, sales: sales || [] });
     }
 
+    // ═════════════════════════════════════════════════════════════════════════
+    // 5. HR EXECUTIVE ANALYTICS & INDUSTRY KPIS REPORT
+    // ═════════════════════════════════════════════════════════════════════════
+    else if (action === "hr-report" || action === "hr-analytics") {
+      const month = req.query.month || new Date().toISOString().slice(0, 7);
+      const reportType = (req.query.type || "overview").toLowerCase();
+      const departmentFilter = (req.query.department || "all").toLowerCase().trim();
+
+      // Calculate month boundaries (YYYY-MM-01 to YYYY-MM-lastDay)
+      const [yrStr, moStr] = month.split("-");
+      const year = parseInt(yrStr, 10) || new Date().getFullYear();
+      const mo = parseInt(moStr, 10) || (new Date().getMonth() + 1);
+      const lastDay = new Date(year, mo, 0).getDate();
+      const mStart = `${year}-${String(mo).padStart(2, "0")}-01`;
+      const mEnd = `${year}-${String(mo).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      // A) Employees Directory
+      let empRows = [];
+      try {
+        if (isAll) {
+          empRows = await sql`
+            SELECT e.*, c.name as company_name, u.username as system_username, u.role as system_role, u.is_active as user_active
+            FROM employees e
+            LEFT JOIN companies c ON e.company_id = c.id
+            LEFT JOIN users u ON (e.user_id = u.id OR u.employee_id = e.id)
+            WHERE LOWER(COALESCE(e.name, '')) != 'superadmin'
+              AND LOWER(COALESCE(e.department, '')) != 'superadmin'
+              AND (u.role IS NULL OR LOWER(u.role) != 'superadmin')
+            ORDER BY c.name ASC, e.name ASC
+          `;
+        } else {
+          empRows = await sql`
+            SELECT e.*, c.name as company_name, u.username as system_username, u.role as system_role, u.is_active as user_active
+            FROM employees e
+            LEFT JOIN companies c ON e.company_id = c.id
+            LEFT JOIN users u ON (e.user_id = u.id OR u.employee_id = e.id)
+            WHERE e.company_id = ${targetCompId}
+              AND LOWER(COALESCE(e.name, '')) != 'superadmin'
+              AND LOWER(COALESCE(e.department, '')) != 'superadmin'
+              AND (u.role IS NULL OR LOWER(u.role) != 'superadmin')
+            ORDER BY e.name ASC
+          `;
+        }
+      } catch (e) {
+        console.error("hr-report employees error:", e);
+      }
+
+      // Department filter
+      const filteredEmployees = (departmentFilter && departmentFilter !== "all")
+        ? empRows.filter(e => (e.department || "").toLowerCase().trim() === departmentFilter)
+        : empRows;
+
+      // B) Payroll Records for selected month
+      let payrollRows = [];
+      try {
+        if (isAll) {
+          payrollRows = await sql`
+            SELECT p.*, e.name as employee_name, e.employee_code, e.department, c.name as company_name
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN companies c ON p.company_id = c.id
+            WHERE p.month = ${month}
+            ORDER BY e.name ASC
+          `;
+        } else {
+          payrollRows = await sql`
+            SELECT p.*, e.name as employee_name, e.employee_code, e.department, c.name as company_name
+            FROM payroll p
+            JOIN employees e ON p.employee_id = e.id
+            LEFT JOIN companies c ON p.company_id = c.id
+            WHERE p.company_id = ${targetCompId} AND p.month = ${month}
+            ORDER BY e.name ASC
+          `;
+        }
+      } catch (e) {
+        payrollRows = [];
+      }
+
+      // C) Attendance Records for selected month
+      let attRows = [];
+      try {
+        if (isAll) {
+          attRows = await sql`
+            SELECT a.*, e.name as employee_name, e.employee_code, e.department, c.name as company_name
+            FROM attendance a
+            JOIN employees e ON a.employee_id = e.id
+            LEFT JOIN companies c ON a.company_id = c.id
+            WHERE a.date >= ${mStart} AND a.date <= ${mEnd}
+            ORDER BY a.date ASC
+          `;
+        } else {
+          attRows = await sql`
+            SELECT a.*, e.name as employee_name, e.employee_code, e.department, c.name as company_name
+            FROM attendance a
+            JOIN employees e ON a.employee_id = e.id
+            LEFT JOIN companies c ON a.company_id = c.id
+            WHERE a.company_id = ${targetCompId} AND a.date >= ${mStart} AND a.date <= ${mEnd}
+            ORDER BY a.date ASC
+          `;
+        }
+      } catch (e) {
+        attRows = [];
+      }
+
+      // D) Leave Applications for selected month
+      let leaveRows = [];
+      try {
+        if (isAll) {
+          leaveRows = await sql`
+            SELECT l.*, e.name as employee_name, e.employee_code, e.department, lt.name as leave_type_name, c.name as company_name
+            FROM leave_applications l
+            JOIN employees e ON l.employee_id = e.id
+            LEFT JOIN leave_types lt ON l.leave_type_id = lt.id
+            LEFT JOIN companies c ON l.company_id = c.id
+            WHERE l.start_date <= ${mEnd} AND l.end_date >= ${mStart}
+            ORDER BY l.start_date DESC
+          `;
+        } else {
+          leaveRows = await sql`
+            SELECT l.*, e.name as employee_name, e.employee_code, e.department, lt.name as leave_type_name, c.name as company_name
+            FROM leave_applications l
+            JOIN employees e ON l.employee_id = e.id
+            LEFT JOIN leave_types lt ON l.leave_type_id = lt.id
+            LEFT JOIN companies c ON l.company_id = c.id
+            WHERE l.company_id = ${targetCompId} AND l.start_date <= ${mEnd} AND l.end_date >= ${mStart}
+            ORDER BY l.start_date DESC
+          `;
+        }
+      } catch (e) {
+        leaveRows = [];
+      }
+
+      // E) Employee Advances
+      let advanceRows = [];
+      try {
+        if (isAll) {
+          advanceRows = await sql`
+            SELECT a.*, e.name as employee_name, e.employee_code, e.department, c.name as company_name
+            FROM employee_advances a
+            JOIN employees e ON a.employee_id = e.id
+            LEFT JOIN companies c ON a.company_id = c.id
+            ORDER BY a.advance_date DESC
+          `;
+        } else {
+          advanceRows = await sql`
+            SELECT a.*, e.name as employee_name, e.employee_code, e.department, c.name as company_name
+            FROM employee_advances a
+            JOIN employees e ON a.employee_id = e.id
+            LEFT JOIN companies c ON a.company_id = c.id
+            WHERE a.company_id = ${targetCompId}
+            ORDER BY a.advance_date DESC
+          `;
+        }
+      } catch (e) {
+        advanceRows = [];
+      }
+
+      // F) Dealers & Financers Channel Directory
+      let dealerRows = [];
+      let financerRows = [];
+      try {
+        if (isAll) {
+          dealerRows = await sql`SELECT v.*, c.name as company_name FROM dealers v LEFT JOIN companies c ON v.company_id = c.id ORDER BY v.name ASC`;
+          financerRows = await sql`SELECT f.*, c.name as company_name FROM financers f LEFT JOIN companies c ON f.company_id = c.id ORDER BY f.name ASC`;
+        } else {
+          dealerRows = await sql`SELECT v.*, c.name as company_name FROM dealers v LEFT JOIN companies c ON v.company_id = c.id WHERE v.company_id = ${targetCompId} ORDER BY v.name ASC`;
+          financerRows = await sql`SELECT f.*, c.name as company_name FROM financers f LEFT JOIN companies c ON f.company_id = c.id WHERE f.company_id = ${targetCompId} ORDER BY f.name ASC`;
+        }
+      } catch (e) {}
+
+      // G) Lead Incentives Summary
+      let incentiveRows = [];
+      try {
+        if (isAll) {
+          incentiveRows = await sql`
+            SELECT s.lead_generator_name, s.lead_phone_number, c.name as company_name,
+                   COUNT(s.id) as sales_count,
+                   SUM(COALESCE(s.lead_incentive_amount, 0)) as total_incentive,
+                   SUM(CASE WHEN s.lead_incentive_status = 'released' THEN COALESCE(s.lead_incentive_amount, 0) ELSE 0 END) as released_amount,
+                   SUM(CASE WHEN s.lead_incentive_status != 'released' THEN COALESCE(s.lead_incentive_amount, 0) ELSE 0 END) as pending_amount
+            FROM sales s
+            LEFT JOIN companies c ON s.company_id = c.id
+            WHERE s.lead_generator_name IS NOT NULL AND TRIM(s.lead_generator_name) != ''
+            GROUP BY s.lead_generator_name, s.lead_phone_number, c.name
+            ORDER BY total_incentive DESC
+          `;
+        } else {
+          incentiveRows = await sql`
+            SELECT s.lead_generator_name, s.lead_phone_number, c.name as company_name,
+                   COUNT(s.id) as sales_count,
+                   SUM(COALESCE(s.lead_incentive_amount, 0)) as total_incentive,
+                   SUM(CASE WHEN s.lead_incentive_status = 'released' THEN COALESCE(s.lead_incentive_amount, 0) ELSE 0 END) as released_amount,
+                   SUM(CASE WHEN s.lead_incentive_status != 'released' THEN COALESCE(s.lead_incentive_amount, 0) ELSE 0 END) as pending_amount
+            FROM sales s
+            LEFT JOIN companies c ON s.company_id = c.id
+            WHERE s.company_id = ${targetCompId} AND s.lead_generator_name IS NOT NULL AND TRIM(s.lead_generator_name) != ''
+            GROUP BY s.lead_generator_name, s.lead_phone_number, c.name
+            ORDER BY total_incentive DESC
+          `;
+        }
+      } catch (e) {
+        incentiveRows = [];
+      }
+
+      // ── KPI AGGREGATIONS ──
+      const activeEmps = filteredEmployees.filter(e => (e.employment_status || 'active').toLowerCase() === 'active');
+      const totalHeadcount = activeEmps.length;
+      const inactiveCount = filteredEmployees.length - totalHeadcount;
+
+      const deptSet = new Set();
+      filteredEmployees.forEach(e => { if (e.department) deptSet.add(e.department.trim()); });
+      const departmentsList = Array.from(deptSet).sort();
+
+      // Attendance Metrics
+      let totalPresents = 0;
+      let totalLates = 0;
+      let totalAbsents = 0;
+      let totalAttLeaves = 0;
+      attRows.forEach(a => {
+        const st = (a.status || '').toLowerCase().trim();
+        if (st === 'present') totalPresents++;
+        else if (st === 'late') { totalPresents++; totalLates++; }
+        else if (st === 'absent') totalAbsents++;
+        else if (st === 'leave' || st === 'unexpected_leave') totalAttLeaves++;
+      });
+      const totalMarkedDays = totalPresents + totalAbsents + totalAttLeaves;
+      const avgAttendanceRate = totalMarkedDays > 0 ? Math.round((totalPresents / totalMarkedDays) * 100) : 100;
+
+      // Payroll Metrics
+      let totalGrossPayroll = 0;
+      let totalNetDisbursed = 0;
+      let totalNetPending = 0;
+      let totalStatutoryDeductions = 0;
+      let totalAdvanceDeductions = 0;
+
+      if (payrollRows.length > 0) {
+        payrollRows.forEach(p => {
+          const gross = parseFloat(p.gross_salary || 0);
+          const net = parseFloat(p.net_salary || 0);
+          const paid = parseFloat(p.paid_amount || 0);
+          const pf = parseFloat(p.pf_deduction || 0);
+          const esi = parseFloat(p.esi_deduction || 0);
+          const tds = parseFloat(p.tds_deduction || 0);
+          const pt = parseFloat(p.pt_deduction || 0);
+          const adv = parseFloat(p.advance_deductions || 0);
+
+          totalGrossPayroll += gross;
+          totalStatutoryDeductions += (pf + esi + tds + pt);
+          totalAdvanceDeductions += adv;
+
+          if (p.payment_status === 'paid') {
+            totalNetDisbursed += (paid > 0 ? paid : net);
+          } else if (p.payment_status === 'partially_paid') {
+            totalNetDisbursed += paid;
+            totalNetPending += Math.max(0, net - paid);
+          } else {
+            totalNetPending += net;
+          }
+        });
+      } else {
+        // Fallback estimate from basic salary if payroll not processed yet for this month
+        activeEmps.forEach(e => {
+          const basic = parseFloat(e.basic_salary || 0);
+          if (basic > 0) {
+            const grossEst = basic * 1.70 + Math.max(1600, basic * 0.05);
+            totalGrossPayroll += grossEst;
+            totalNetPending += (grossEst - Math.min(1800, basic * 0.12));
+          }
+        });
+      }
+
+      // Advances Metrics
+      let totalAdvDisbursed = 0;
+      let totalAdvRepaid = 0;
+      let totalAdvOutstanding = 0;
+      let activeAdvCount = 0;
+      advanceRows.forEach(a => {
+        const amt = parseFloat(a.amount || 0);
+        const repaid = parseFloat(a.total_repaid || 0);
+        const out = parseFloat(a.outstanding != null ? a.outstanding : (amt - repaid));
+        totalAdvDisbursed += amt;
+        totalAdvRepaid += repaid;
+        totalAdvOutstanding += Math.max(0, out);
+        if (a.repayment_status === 'active' || out > 0) activeAdvCount++;
+      });
+      const advanceRecoveryRate = totalAdvDisbursed > 0 ? Math.round((totalAdvRepaid / totalAdvDisbursed) * 100) : 100;
+
+      // Incentives Metrics
+      let totalIncentivesGen = 0;
+      let totalIncentivesRel = 0;
+      let totalIncentivesPend = 0;
+      incentiveRows.forEach(i => {
+        totalIncentivesGen += parseFloat(i.total_incentive || 0);
+        totalIncentivesRel += parseFloat(i.released_amount || 0);
+        totalIncentivesPend += parseFloat(i.pending_amount || 0);
+      });
+
+      // Department-Wise Breakdown
+      const deptMap = new Map();
+      activeEmps.forEach(e => {
+        const d = e.department ? e.department.trim() : 'General';
+        if (!deptMap.has(d)) {
+          deptMap.set(d, {
+            department: d,
+            headcount: 0,
+            total_basic: 0,
+            total_gross: 0,
+            presents: 0,
+            absents: 0,
+            leaves: 0
+          });
+        }
+        const obj = deptMap.get(d);
+        obj.headcount++;
+        const basic = parseFloat(e.basic_salary || 0);
+        obj.total_basic += basic;
+        obj.total_gross += (basic * 1.70 + Math.max(1600, basic * 0.05));
+      });
+
+      attRows.forEach(a => {
+        const d = a.department ? a.department.trim() : 'General';
+        if (deptMap.has(d)) {
+          const obj = deptMap.get(d);
+          const st = (a.status || '').toLowerCase().trim();
+          if (st === 'present' || st === 'late') obj.presents++;
+          else if (st === 'absent') obj.absents++;
+          else if (st === 'leave' || st === 'unexpected_leave') obj.leaves++;
+        }
+      });
+
+      const departmentBreakdown = Array.from(deptMap.values()).map(d => {
+        const totalMarks = d.presents + d.absents + d.leaves;
+        return {
+          department: d.department,
+          headcount: d.headcount,
+          headcount_pct: totalHeadcount > 0 ? Math.round((d.headcount / totalHeadcount) * 100) : 0,
+          total_gross_payroll: Math.round(d.total_gross),
+          avg_salary_per_employee: d.headcount > 0 ? Math.round(d.total_gross / d.headcount) : 0,
+          attendance_rate: totalMarks > 0 ? Math.round((d.presents / totalMarks) * 100) : 100,
+          leaves_taken: d.leaves
+        };
+      }).sort((a, b) => b.headcount - a.headcount);
+
+      return res.status(200).json({
+        success: true,
+        month,
+        report_type: reportType,
+        kpis: {
+          total_headcount: totalHeadcount,
+          inactive_headcount: inactiveCount,
+          active_departments_count: departmentsList.length,
+          avg_attendance_rate: avgAttendanceRate,
+          total_present_days: totalPresents,
+          total_absent_days: totalAbsents,
+          total_late_clockins: totalLates,
+          total_leaves_taken: totalAttLeaves + leaveRows.filter(l => l.status === 'approved').length,
+          total_gross_payroll: Math.round(totalGrossPayroll),
+          total_net_disbursed: Math.round(totalNetDisbursed),
+          total_net_pending: Math.round(totalNetPending),
+          total_statutory_deductions: Math.round(totalStatutoryDeductions),
+          total_advance_deductions: Math.round(totalAdvanceDeductions),
+          total_advances_disbursed: Math.round(totalAdvDisbursed),
+          total_advances_repaid: Math.round(totalAdvRepaid),
+          total_advances_outstanding: Math.round(totalAdvOutstanding),
+          active_advances_count: activeAdvCount,
+          advance_recovery_rate: advanceRecoveryRate,
+          total_incentives_generated: Math.round(totalIncentivesGen),
+          total_incentives_released: Math.round(totalIncentivesRel),
+          total_incentives_pending: Math.round(totalIncentivesPend),
+          total_dealers_count: dealerRows.length,
+          total_financers_count: financerRows.length
+        },
+        departments: departmentsList,
+        department_breakdown: departmentBreakdown,
+        employees: filteredEmployees,
+        payroll: payrollRows,
+        attendance: attRows,
+        leaves: leaveRows,
+        advances: advanceRows,
+        incentives: incentiveRows,
+        dealers: dealerRows,
+        financers: financerRows
+      });
+    }
+
     else {
       return res.status(404).json({ error: `Action '${action}' not recognized` });
     }

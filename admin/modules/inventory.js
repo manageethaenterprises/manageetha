@@ -1475,6 +1475,110 @@ async function loadProductsSubTab() {
   fetchProducts();
 }
 
+// ── Universal Spreadsheet (Excel .xlsx/.xls & CSV) Parser Helper ──
+async function parseSpreadsheetFile(file) {
+  const fileNameLower = (file.name || "").toLowerCase();
+  const isExcel = fileNameLower.endsWith(".xlsx") || fileNameLower.endsWith(".xls");
+
+  if (isExcel) {
+    if (typeof window.XLSX === "undefined") {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+        script.onload = resolve;
+        script.onerror = () => reject(new Error("Unable to load Excel parsing library (SheetJS). Please verify your internet connection."));
+        document.head.appendChild(script);
+      });
+    }
+
+    const buffer = await file.arrayBuffer();
+    const data = new Uint8Array(buffer);
+    const workbook = window.XLSX.read(data, { type: "array", cellDates: true });
+    if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+      throw new Error("Excel file contains no readable sheets.");
+    }
+
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rawMatrix = window.XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+
+    // Filter out rows that are entirely empty
+    const matrix = rawMatrix.filter(row => Array.isArray(row) && row.some(c => String(c !== undefined && c !== null ? c : "").trim().length > 0));
+    if (matrix.length < 2) {
+      throw new Error("Excel sheet contains no data rows.");
+    }
+
+    // Scan first 10 rows to detect the actual header row
+    let headerRowIdx = 0;
+    for (let r = 0; r < Math.min(10, matrix.length); r++) {
+      const rowCombined = matrix[r].map(c => String(c || "").toLowerCase().replace(/[^a-z0-9]/g, "")).join(" ");
+      if (
+        rowCombined.includes("product") || rowCombined.includes("item") || rowCombined.includes("name") ||
+        rowCombined.includes("sku") || rowCombined.includes("model") || rowCombined.includes("brand") ||
+        rowCombined.includes("supplier") || rowCombined.includes("invoice") || rowCombined.includes("bill") ||
+        rowCombined.includes("rate") || rowCombined.includes("stock")
+      ) {
+        headerRowIdx = r;
+        break;
+      }
+    }
+
+    const headerRow = matrix[headerRowIdx];
+    const headers = headerRow.map(h => String(h || "").toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const rows = [];
+
+    for (let r = headerRowIdx + 1; r < matrix.length; r++) {
+      const cols = matrix[r];
+      if (!cols || cols.length === 0 || !cols.some(c => String(c !== undefined && c !== null ? c : "").trim().length > 0)) continue;
+      const rowObj = {};
+      headers.forEach((h, idx) => {
+        const val = cols[idx];
+        rowObj[h] = (val !== undefined && val !== null) ? String(val).trim() : "";
+      });
+      rows.push({ rowObj, rawCols: cols.map(c => (c !== undefined && c !== null) ? String(c).trim() : "") });
+    }
+
+    return { headers, rows };
+  } else {
+    // CSV / Plain text
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length < 2) {
+      throw new Error("CSV file contains no data rows.");
+    }
+
+    function parseCsvLine(str) {
+      const result = [];
+      let cur = '';
+      let inQuotes = false;
+      for (let i = 0; i < str.length; i++) {
+        const c = str[i];
+        if (c === '"') {
+          if (inQuotes && str[i + 1] === '"') { cur += '"'; i++; }
+          else { inQuotes = !inQuotes; }
+        } else if (c === ',' && !inQuotes) {
+          result.push(cur.trim());
+          cur = '';
+        } else { cur += c; }
+      }
+      result.push(cur.trim());
+      return result;
+    }
+
+    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const rows = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCsvLine(lines[i]).map(c => c.replace(/^["']|["']$/g, ""));
+      if (cols.length === 0 || !cols.some(c => c.trim().length > 0)) continue;
+      const rowObj = {};
+      headers.forEach((h, idx) => { rowObj[h] = cols[idx] || ""; });
+      rows.push({ rowObj, rawCols: cols });
+    }
+
+    return { headers, rows };
+  }
+}
+
 function openProductImportModal(onSuccessCallback) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -1488,18 +1592,21 @@ function openProductImportModal(onSuccessCallback) {
       </div>
 
       <div style="background:var(--bg-card, #f8fafc);padding:12px 16px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.4;">
-        Upload a product catalog spreadsheet file (.csv). Products are mapped by <strong>Product Name</strong> and <strong>Model</strong> to update existing stock or create new items automatically.<br>
-        <button type="button" class="btn btn-xs btn-outline" id="dlModalTemplateBtn" style="margin-top:6px;">📄 Download Sample CSV Template</button>
+        Upload a product catalog spreadsheet file (<strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong>). Products are mapped by <strong>Product Name</strong> and <strong>Model</strong> to update existing stock or create new items automatically.<br>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-xs btn-outline" id="dlModalTemplateBtn">📄 Download Sample CSV Template</button>
+          <button type="button" class="btn btn-xs btn-primary" id="dlModalXlsxTemplateBtn" style="background:#16a34a;border-color:#16a34a;color:#fff;">📊 Download Sample Excel (.xlsx) Template</button>
+        </div>
       </div>
 
-      <!-- CSV FILE DROPZONE -->
+      <!-- FILE DROPZONE -->
       <div class="form-group" style="margin-bottom:16px;">
-        <label class="form-label" style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:8px;display:block;">📁 Select / Drag CSV File *</label>
+        <label class="form-label" style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:8px;display:block;">📁 Select / Drag Excel or CSV File *</label>
         <div id="csvDropzone" style="border:2.5px dashed #3b82f6;background:#eff6ff;border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;position:relative;transition:all 0.2s ease-in-out;">
-          <input type="file" id="csvFileInput" accept=".csv,.txt,.xlsx" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;">
+          <input type="file" id="csvFileInput" accept=".xlsx,.xls,.csv,.txt" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;">
           <div style="font-size:36px;margin-bottom:4px;">📂</div>
-          <div style="font-size:14px;font-weight:700;color:#1e40af;margin-bottom:2px;" id="csvFileTitle">Click Here to Browse or Drag & Drop CSV File</div>
-          <div style="font-size:12px;color:#3b82f6;font-weight:600;" id="csvFileName">Supported file formats: .csv, .txt, .xlsx</div>
+          <div style="font-size:14px;font-weight:700;color:#1e40af;margin-bottom:2px;" id="csvFileTitle">Click Here to Browse or Drag & Drop Excel / CSV File</div>
+          <div style="font-size:12px;color:#3b82f6;font-weight:600;" id="csvFileName">Supported file formats: .xlsx, .xls, .csv, .txt</div>
         </div>
       </div>
 
@@ -1550,7 +1657,11 @@ function openProductImportModal(onSuccessCallback) {
 
   const dlBtn = overlay.querySelector("#dlModalTemplateBtn");
   if (dlBtn) {
-    dlBtn.addEventListener("click", () => window.downloadProductImportTemplate());
+    dlBtn.addEventListener("click", () => window.downloadProductImportTemplate(false));
+  }
+  const dlXlsxBtn = overlay.querySelector("#dlModalXlsxTemplateBtn");
+  if (dlXlsxBtn) {
+    dlXlsxBtn.addEventListener("click", () => window.downloadProductImportTemplate(true));
   }
 
   const dropzone = overlay.querySelector("#csvDropzone");
@@ -1559,25 +1670,7 @@ function openProductImportModal(onSuccessCallback) {
   const fileName = overlay.querySelector("#csvFileName");
   let parsedProducts = [];
 
-  function parseCsvLine(text) {
-    const result = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (c === '"') {
-        if (inQuotes && text[i + 1] === '"') { cur += '"'; i++; }
-        else { inQuotes = !inQuotes; }
-      } else if (c === ',' && !inQuotes) {
-        result.push(cur.trim());
-        cur = '';
-      } else { cur += c; }
-    }
-    result.push(cur.trim());
-    return result;
-  }
-
-  fileInp.addEventListener("change", (e) => {
+  fileInp.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
@@ -1588,76 +1681,69 @@ function openProductImportModal(onSuccessCallback) {
       dropzone.style.background = "#f0fdf4";
     }
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const rawText = evt.target.result;
-      const lines = rawText.split(/\r?\n/).filter(l => l.trim().length > 0);
-      if (lines.length < 2) return alert("CSV file contains no data rows.");
-
-      const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    try {
+      const { headers, rows } = await parseSpreadsheetFile(file);
       parsedProducts = [];
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = parseCsvLine(lines[i]).map(c => c.replace(/^["']|["']$/g, ""));
-        if (cols.length === 0 || !cols[0]) continue;
-
-        const rowObj = {};
-        headers.forEach((h, idx) => { rowObj[h] = cols[idx] || ""; });
-
-        const prodName = rowObj["productname"] || rowObj["name"] || rowObj["product_name"] || rowObj["item"] || cols[1] || cols[0];
-        if (!prodName) continue;
+      for (const { rowObj, rawCols } of rows) {
+        const prodName = rowObj["productname"] || rowObj["name"] || rowObj["product_name"] || rowObj["item"] || rowObj["itemname"] || rowObj["itemdescription"] || rowObj["description"] || rawCols[1] || rawCols[0];
+        if (!prodName || !prodName.trim()) continue;
 
         const brand = rowObj["brand"] || rowObj["brandname"] || null;
-        const model = rowObj["model"] || rowObj["modelname"] || rowObj["spec"] || null;
+        const model = rowObj["model"] || rowObj["modelname"] || rowObj["spec"] || rowObj["specification"] || null;
         const supName = rowObj["assignedsupplier"] || rowObj["suppliername"] || rowObj["supplier"] || rowObj["dealer"] || rowObj["vendor"] || rowObj["assigned_supplier"] || rowObj["legalname"] || rowObj["legal_name"] || null;
-        const gstRate = parseFloat(rowObj["gstrate"] || rowObj["gst"] || 18);
-        const purRateExcl = parseFloat(rowObj["purchaserateexcltax"] || rowObj["purchaserateexcl"] || rowObj["purchaserate"] || rowObj["purchase_rate"] || 0);
+        const gstRate = parseFloat(rowObj["gstrate"] || rowObj["gst"] || rowObj["gstpct"] || rowObj["tax"] || 18);
+        const purRateExcl = parseFloat(rowObj["purchaserateexcltax"] || rowObj["purchaserateexcl"] || rowObj["purchaserate"] || rowObj["purchase_rate"] || rowObj["purrate"] || rowObj["cost"] || 0);
         let purRateIncl = parseFloat(rowObj["purchaserateincltax"] || rowObj["purchaserateincl"] || 0);
         if (!purRateIncl && purRateExcl > 0) {
-          purRateIncl = Math.round(purRateExcl * (1 + gstRate / 100) * 100) / 100;
+          purRateIncl = Math.round(purRateExcl * (1 + (isNaN(gstRate) ? 18 : gstRate) / 100) * 100) / 100;
         }
 
-        const transportExp = parseFloat(rowObj["transportexpenses"] || rowObj["transport_expenses"] || rowObj["transport"] || 0);
-        const sellPct = parseFloat(rowObj["sellingpercentage"] || rowObj["selling_percentage"] || rowObj["sellingpct"] || 0);
+        const transportExp = parseFloat(rowObj["transportexpenses"] || rowObj["transport_expenses"] || rowObj["transport"] || rowObj["freight"] || 0);
+        const sellPct = parseFloat(rowObj["sellingpercentage"] || rowObj["selling_percentage"] || rowObj["sellingpct"] || rowObj["margin"] || 0);
         
-        let sellRateExcl = parseFloat(rowObj["sellingpriceexcltax"] || rowObj["sellingpricemrpexcltax"] || rowObj["sellingpriceexcl"] || rowObj["sellingprice"] || rowObj["sellingrate"] || 0);
+        let sellRateExcl = parseFloat(rowObj["sellingpriceexcltax"] || rowObj["sellingpricemrpexcltax"] || rowObj["sellingpriceexcl"] || rowObj["sellingprice"] || rowObj["sellingrate"] || rowObj["saleprice"] || 0);
         if (!sellRateExcl && purRateExcl > 0) {
-          const baseCostExcl = purRateExcl + transportExp;
+          const baseCostExcl = purRateExcl + (isNaN(transportExp) ? 0 : transportExp);
           sellRateExcl = sellPct > 0 ? Math.round((baseCostExcl * (1 + sellPct / 100)) * 100) / 100 : Math.round(baseCostExcl * 100) / 100;
         }
 
         let mrpIncl = parseFloat(rowObj["mrpincltax"] || rowObj["mrpincl"] || rowObj["mrp"] || 0);
         if (!mrpIncl && sellRateExcl > 0) {
-          mrpIncl = Math.round(sellRateExcl * (1 + gstRate / 100) * 100) / 100;
+          mrpIncl = Math.round(sellRateExcl * (1 + (isNaN(gstRate) ? 18 : gstRate) / 100) * 100) / 100;
         }
 
         parsedProducts.push({
           company: rowObj["company"] || rowObj["companyname"] || null,
-          sku: (rowObj["sku"] || rowObj["skucode"] || "").trim() || null,
+          sku: (rowObj["sku"] || rowObj["skucode"] || rowObj["code"] || rowObj["itemcode"] || "").trim() || null,
           name: prodName.trim(),
           brand: brand ? brand.trim() : null,
           model: model ? model.trim() : null,
-          serial_no: (rowObj["productserialno"] || rowObj["serialno"] || rowObj["serial"] || "").trim() || null,
+          serial_no: (rowObj["productserialno"] || rowObj["serialno"] || rowObj["serial"] || rowObj["serialnumber"] || "").trim() || null,
           supplier_name: supName ? supName.trim() : null,
-          hsn_sac: (rowObj["hsnsac"] || rowObj["hsn"] || rowObj["hsncode"] || "").trim() || null,
-          gst_rate: gstRate,
-          weight: parseFloat(rowObj["weight"] || rowObj["weightkg"] || 0),
-          purchase_rate: purRateExcl,
-          purchase_rate_incl_tax: purRateIncl,
-          transport_expenses: transportExp,
-          selling_percentage: sellPct,
-          selling_rate: sellRateExcl,
-          mrp: mrpIncl,
-          current_stock: parseInt(rowObj["initialstock"] || rowObj["currentstock"] || rowObj["stock"] || rowObj["quantity"] || rowObj["qty"] || 0, 10),
-          min_stock: parseInt(rowObj["minstock"] || rowObj["minreorderstock"] || 5, 10),
-          rack_no: (rowObj["rackno"] || rowObj["rack"] || "").trim() || null
+          hsn_sac: (rowObj["hsnsac"] || rowObj["hsn"] || rowObj["hsncode"] || rowObj["sac"] || "").trim() || null,
+          gst_rate: isNaN(gstRate) ? 18 : gstRate,
+          weight: parseFloat(rowObj["weight"] || rowObj["weightkg"] || 0) || 0,
+          purchase_rate: isNaN(purRateExcl) ? 0 : purRateExcl,
+          purchase_rate_incl_tax: isNaN(purRateIncl) ? 0 : purRateIncl,
+          transport_expenses: isNaN(transportExp) ? 0 : transportExp,
+          selling_percentage: isNaN(sellPct) ? 0 : sellPct,
+          selling_rate: isNaN(sellRateExcl) ? 0 : sellRateExcl,
+          mrp: isNaN(mrpIncl) ? 0 : mrpIncl,
+          current_stock: parseInt(rowObj["initialstock"] || rowObj["currentstock"] || rowObj["stock"] || rowObj["quantity"] || rowObj["qty"] || 0, 10) || 0,
+          min_stock: parseInt(rowObj["minstock"] || rowObj["minreorderstock"] || 5, 10) || 5,
+          rack_no: (rowObj["rackno"] || rowObj["rack"] || rowObj["location"] || rowObj["bin"] || "").trim() || null
         });
       }
 
-      if (parsedProducts.length === 0) return alert("No valid product rows parsed from CSV.");
+      if (parsedProducts.length === 0) {
+        showToast("No valid product rows parsed from spreadsheet file.", "warning");
+        return;
+      }
       renderParsedPreview(parsedProducts);
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      showToast("Error parsing file: " + err.message, "error");
+    }
   });
 
   function renderParsedPreview(products) {
@@ -1768,7 +1854,7 @@ function getCompanyNamesForTemplate() {
   return ["Manaswini Enterprises"];
 }
 
-window.downloadProductImportTemplate = function() {
+window.downloadProductImportTemplate = function(asExcel = false) {
   const headers = [
     "Company", "Product Name", "Brand", "Model", "Product Serial No", "Supplier Name", 
     "HSN/SAC", "GST Rate", "Weight (kg)", "Purchase Rate Excl Tax", "Purchase Rate Incl Tax", 
@@ -1787,6 +1873,15 @@ window.downloadProductImportTemplate = function() {
     const baseRow = baseSamples[idx % baseSamples.length];
     sampleRows.push([compName, ...baseRow]);
   });
+
+  if (asExcel && typeof window.XLSX !== "undefined") {
+    const ws = window.XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Product Catalog Template");
+    window.XLSX.writeFile(wb, "products_import_template.xlsx");
+    if (typeof showToast === "function") showToast("Excel template (.xlsx) downloaded successfully!", "success");
+    return;
+  }
 
   let csvContent = headers.map(h => `"${h.replace(/"/g, '""')}"`).join(",") + "\n";
   sampleRows.forEach(row => {
@@ -5936,7 +6031,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 // ═══════════════════════════════════════════════════
 // DOWNLOAD PURCHASE ENTRY CSV TEMPLATE
 // ═══════════════════════════════════════════════════
-window.downloadPurchaseEntryTemplateCSV = function() {
+window.downloadPurchaseEntryTemplateCSV = function(asExcel = false) {
   const headers = [
     "Company", "Supplier Name", "Invoice No", "Invoice Date", "Product Name", "Brand", "Model", "Product Serial No",
     "HSN Code", "Weight (kg)", "Unit", "GST Rate (%)", "Purchase Rate Excl", "Quantity", "Transport Exp", "Selling Price",
@@ -5954,6 +6049,15 @@ window.downloadPurchaseEntryTemplateCSV = function() {
     const baseRow = basePurchaseSamples[idx % basePurchaseSamples.length];
     sampleRows.push([compName, ...baseRow]);
   });
+
+  if (asExcel && typeof window.XLSX !== "undefined") {
+    const ws = window.XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Purchase Entry Template");
+    window.XLSX.writeFile(wb, "Purchase_Entry_Template.xlsx");
+    showToast("Purchase Entry Excel Template (.xlsx) downloaded!", "success");
+    return;
+  }
 
   let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
   sampleRows.forEach(row => {
@@ -5989,13 +6093,16 @@ function openPurchaseImportModal(onSuccessCallback) {
       </div>
 
       <div style="background:var(--bg-card, #f8fafc);padding:12px 16px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.4;">
-        Upload a purchase entry spreadsheet file (.csv). Rows will be grouped by <strong>Company</strong>, <strong>Supplier Name</strong> and <strong>Invoice No</strong>.<br>
-        <button type="button" class="btn btn-xs btn-outline" id="piDlTemplateInModalBtn" style="margin-top:6px;">📄 Download Sample CSV Template</button>
+        Upload a purchase entry spreadsheet file (<strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong>). Rows will be grouped by <strong>Company</strong>, <strong>Supplier Name</strong> and <strong>Invoice No</strong>.<br>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-xs btn-outline" id="piDlTemplateInModalBtn">📄 Download Sample CSV Template</button>
+          <button type="button" class="btn btn-xs btn-primary" id="piDlXlsxTemplateInModalBtn" style="background:#16a34a;border-color:#16a34a;color:#fff;">📊 Download Sample Excel (.xlsx) Template</button>
+        </div>
       </div>
 
       <div class="form-group" style="margin-bottom:14px;">
-        <label class="form-label" style="font-size:12.5px;font-weight:600;">Select Purchase Entry CSV File *</label>
-        <input type="file" id="piCsvFile" class="form-input" accept=".csv,.txt,.xlsx" style="padding:6px 10px;font-size:13px;">
+        <label class="form-label" style="font-size:12.5px;font-weight:600;">Select Purchase Entry Excel / CSV File *</label>
+        <input type="file" id="piCsvFile" class="form-input" accept=".xlsx,.xls,.csv,.txt" style="padding:6px 10px;font-size:13px;">
       </div>
 
       <div id="piPreviewArea" style="display:none;">
@@ -6014,51 +6121,26 @@ function openPurchaseImportModal(onSuccessCallback) {
   document.body.appendChild(overlay);
   overlay.querySelectorAll(".closePiModal").forEach(b => b.addEventListener("click", () => overlay.remove()));
 
-  overlay.querySelector("#piDlTemplateInModalBtn").addEventListener("click", () => downloadPurchaseEntryTemplateCSV());
+  overlay.querySelector("#piDlTemplateInModalBtn").addEventListener("click", () => downloadPurchaseEntryTemplateCSV(false));
+  const dlXlsxBtn = overlay.querySelector("#piDlXlsxTemplateInModalBtn");
+  if (dlXlsxBtn) {
+    dlXlsxBtn.addEventListener("click", () => downloadPurchaseEntryTemplateCSV(true));
+  }
 
   const fileInp = overlay.querySelector("#piCsvFile");
   let parsedGroups = [];
 
-  fileInp.addEventListener("change", (e) => {
+  fileInp.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const rawText = evt.target.result;
-      const lines = rawText.split(/\r?\n/).filter(l => l.trim().length > 0);
-      if (lines.length < 2) return alert("CSV file contains no data rows.");
-
-      const parseCsvLine = (text) => {
-        const result = [];
-        let cur = '';
-        let inQuotes = false;
-        for (let i = 0; i < text.length; i++) {
-          const c = text[i];
-          if (c === '"') {
-            if (inQuotes && text[i + 1] === '"') { cur += '"'; i++; }
-            else { inQuotes = !inQuotes; }
-          } else if (c === ',' && !inQuotes) {
-            result.push(cur.trim());
-            cur = '';
-          } else { cur += c; }
-        }
-        result.push(cur.trim());
-        return result;
-      };
-
-      const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    try {
+      const { headers, rows } = await parseSpreadsheetFile(file);
       const groupsMap = {};
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = parseCsvLine(lines[i]).map(c => c.replace(/^["']|["']$/g, ""));
-        if (cols.length === 0 || !cols[0]) continue;
-
-        const rowObj = {};
-        headers.forEach((h, idx) => { rowObj[h] = cols[idx] || ""; });
-
+      for (const { rowObj, rawCols } of rows) {
         const compName = rowObj["company"] || rowObj["companyname"] || null;
-        const supName = rowObj["suppliername"] || rowObj["supplier"] || rowObj["dealer"] || "Direct Supplier";
+        const supName = rowObj["suppliername"] || rowObj["supplier"] || rowObj["dealer"] || rowObj["assignedsupplier"] || "Direct Supplier";
         const invNo = rowObj["invoiceno"] || rowObj["billno"] || rowObj["invoice"] || "INV-BULK";
         const key = `${compName || 'Default'}::${supName}::${invNo}`;
 
@@ -6067,11 +6149,9 @@ function openPurchaseImportModal(onSuccessCallback) {
             company_name: compName,
             supplier_name: supName,
             bill_no: invNo,
-            supplier_name: supName,
-            bill_no: invNo,
             invoice_date: rowObj["invoicedate"] || rowObj["date"] || new Date().toISOString().split('T')[0],
             paid_amount: (rowObj["paidamount"] || rowObj["paid"]) !== undefined && (rowObj["paidamount"] || rowObj["paid"]) !== '' ? parseFloat(rowObj["paidamount"] || rowObj["paid"]) : undefined,
-            interest_rate: parseFloat(rowObj["interestrate"] || rowObj["interest"] || 0),
+            interest_rate: parseFloat(rowObj["interestrate"] || rowObj["interest"] || 0) || 0,
             interest_frequency: rowObj["interestfrequency"] || rowObj["frequency"] || 'monthly',
             due_date: rowObj["duedate"] || rowObj["due"] || null,
             invoice_doc: null,
@@ -6079,32 +6159,36 @@ function openPurchaseImportModal(onSuccessCallback) {
           };
         }
 
-        const pName = rowObj["productname"] || rowObj["name"] || rowObj["item"] || cols[3] || cols[0];
-        if (!pName) continue;
+        const pName = rowObj["productname"] || rowObj["name"] || rowObj["product_name"] || rowObj["item"] || rowObj["itemname"] || rowObj["itemdescription"] || rowObj["description"] || rawCols[3] || rawCols[0];
+        if (!pName || !pName.trim()) continue;
 
         groupsMap[key].items.push({
-          product_name: pName,
-          brand: rowObj["brand"] || null,
-          model: rowObj["model"] || null,
+          product_name: pName.trim(),
+          brand: rowObj["brand"] || rowObj["brandname"] || null,
+          model: rowObj["model"] || rowObj["modelname"] || null,
           serial_no: rowObj["productserialno"] || rowObj["serialno"] || rowObj["serial"] || null,
-          hsn_sac: rowObj["hsncode"] || rowObj["hsn"] || null,
-          weight: parseFloat(rowObj["weight"] || rowObj["weightkg"] || 0),
+          hsn_sac: rowObj["hsncode"] || rowObj["hsn"] || rowObj["hsnsac"] || null,
+          weight: parseFloat(rowObj["weight"] || rowObj["weightkg"] || 0) || 0,
           unit_of_measure: rowObj["unit"] || "NOS",
-          gst_rate: parseFloat(rowObj["gstrate"] || rowObj["gst"] || 18),
-          purchase_rate: parseFloat(rowObj["purchaserateexcl"] || rowObj["purchaserate"] || rowObj["rate"] || 0),
-          quantity: parseInt(rowObj["quantity"] || rowObj["qty"] || 1, 10),
-          packaging_charges: parseFloat(rowObj["packagingcharges"] || rowObj["packaging"] || 0),
-          transport_expenses: parseFloat(rowObj["transportexp"] || rowObj["transport"] || 0),
-          selling_price: parseFloat(rowObj["sellingprice"] || rowObj["mrp"] || 0)
+          gst_rate: parseFloat(rowObj["gstrate"] || rowObj["gst"] || rowObj["gstpct"] || 18) || 18,
+          purchase_rate: parseFloat(rowObj["purchaserateexcl"] || rowObj["purchaserate"] || rowObj["rate"] || 0) || 0,
+          quantity: parseInt(rowObj["quantity"] || rowObj["qty"] || 1, 10) || 1,
+          packaging_charges: parseFloat(rowObj["packagingcharges"] || rowObj["packaging"] || 0) || 0,
+          transport_expenses: parseFloat(rowObj["transportexp"] || rowObj["transport"] || 0) || 0,
+          selling_price: parseFloat(rowObj["sellingprice"] || rowObj["mrp"] || 0) || 0
         });
       }
 
       parsedGroups = Object.values(groupsMap);
-      if (parsedGroups.length === 0) return alert("No valid rows parsed from CSV.");
+      if (parsedGroups.length === 0) {
+        showToast("No valid rows parsed from spreadsheet file.", "warning");
+        return;
+      }
 
       renderParsedPreview(parsedGroups);
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      showToast("Error parsing file: " + err.message, "error");
+    }
   });
 
   function renderParsedPreview(groups) {

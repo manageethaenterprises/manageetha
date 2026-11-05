@@ -4704,9 +4704,10 @@ async function loadStockReceiptSubTab() {
         ` : items.map((it, idx) => {
           const qty = parseFloat(it.quantity) || 1;
           const rate = parseFloat(it.rate) || 0;
+          const disc = parseFloat(it.discount || 0);
           const pkg = parseFloat(it.packaging_charges) || 0;
           const trp = parseFloat(it.transport_expenses) || 0;
-          const taxable = (qty * rate) + pkg + trp;
+          const taxable = Math.max(0, (qty * rate) - disc + pkg + trp);
           const savedTot = parseFloat(it.total) || 0;
 
           let itemGst = parseFloat(it.gst_rate);
@@ -4746,7 +4747,10 @@ async function loadStockReceiptSubTab() {
               </td>
               <td style="padding:6px 8px;font-family:monospace;font-size:11px;color:var(--text2);">${esc(it.serial_no || '—')}</td>
               <td style="text-align:center;padding:6px 8px;font-weight:700;color:var(--success);font-size:12px;">+${it.quantity}</td>
-              <td style="text-align:right;padding:6px 8px;font-size:12px;">₹${parseFloat(it.rate || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td style="text-align:right;padding:6px 8px;font-size:12px;">
+                ₹${parseFloat(it.rate || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}
+                ${disc > 0 ? `<div style="font-size:10px;color:var(--danger);" title="Discount deducted">(-₹${disc.toFixed(2)})</div>` : ''}
+              </td>
               <td style="text-align:center;padding:6px 8px;font-size:12px;">${itemGst}%</td>
               <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.packaging_charges || 0) > 0 ? '₹' + parseFloat(it.packaging_charges).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
               <td style="text-align:right;padding:6px 8px;font-size:12px;color:var(--text2);">${parseFloat(it.transport_expenses || 0) > 0 ? '₹' + parseFloat(it.transport_expenses).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
@@ -4770,21 +4774,21 @@ async function loadStockReceiptSubTab() {
         }).join("");
 
         const supObj = (loadedSuppliersList || []).find(s => s.id == r.supplier_id) || {};
-        const subTaxInfo = determineGstTaxType({
+        const isIgstSub = r.tax_type ? (r.tax_type === 'inter') : determineGstTaxType({
           supply_state: r.supplier_state || supObj.state || supObj.supply_state,
           state: r.supplier_state || supObj.state || supObj.supply_state,
           gstin: r.supplier_gstin || supObj.gstin
-        }, r.company_id);
+        }, r.company_id).isIgst;
 
-        const subGstCellHtml = subTaxInfo.isIgst ? `
+        const subGstCellHtml = isIgstSub ? `
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-            <span class="badge" style="background:#2563eb;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;" title="${esc(subTaxInfo.reason)}">⚡ IGST</span>
+            <span class="badge" style="background:#2563eb;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;">⚡ IGST</span>
             <span style="font-weight:800;color:#1d4ed8;font-size:11.5px;">₹${subTotGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-            <span style="font-size:9px;color:var(--text3);">(Inter-State: ${esc(subTaxInfo.state || 'Other State')})</span>
+            <span style="font-size:9px;color:var(--text3);">(Inter-State)</span>
           </div>
         ` : `
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-            <span class="badge" style="background:#16a34a;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;" title="${esc(subTaxInfo.reason)}">🌿 CGST+SGST</span>
+            <span class="badge" style="background:#16a34a;color:#fff;font-size:9.5px;padding:2px 6px;border-radius:4px;font-weight:700;">🌿 CGST+SGST</span>
             <span style="font-weight:800;color:#15803d;font-size:11.5px;">₹${subTotGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
             <span style="font-size:9px;color:var(--text3);font-weight:600;white-space:nowrap;">(CGST: ₹${(subTotGst/2).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} | SGST: ₹${(subTotGst/2).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})})</span>
           </div>
@@ -5522,21 +5526,26 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
   } catch (e) {}
 
   let initialRoundOff = 0;
+  let initialTaxType = (isEdit && editPurchase.tax_type) ? editPurchase.tax_type : null;
+  let initialGrandTotal = 0;
+
   if (isEdit) {
     if (editPurchase.round_off !== undefined && editPurchase.round_off !== null && parseFloat(editPurchase.round_off) !== 0) {
       initialRoundOff = parseFloat(editPurchase.round_off) || 0;
     } else if (editPurchase.grand_total || editPurchase.total_amount) {
       const targetBilled = parseFloat(editPurchase.grand_total || editPurchase.total_amount || 0);
+      initialGrandTotal = targetBilled;
       let calculatedItemsSubtotal = 0;
       (editPurchase.items || []).forEach(it => {
         const q = parseFloat(it.quantity) || 1;
         const r = parseFloat(it.rate) || 0;
+        const disc = parseFloat(it.discount || 0);
         const pkg = parseFloat(it.packaging_charges) || 0;
         const trp = parseFloat(it.transport_expenses) || 0;
         const g = parseFloat(it.gst_rate !== undefined && it.gst_rate !== null ? it.gst_rate : 18) || 0;
-        const taxable = (q * r) + pkg + trp;
+        const taxable = Math.max(0, (q * r) - disc + pkg + trp);
         const lineTot = Math.round((taxable * (1 + g / 100)) * 100) / 100;
-        const rowTot = (it.total && Math.abs(parseFloat(it.total) - lineTot) <= 0.02) ? parseFloat(it.total) : lineTot;
+        const rowTot = (it.total && Math.abs(parseFloat(it.total) - lineTot) <= 0.05) ? parseFloat(it.total) : lineTot;
         calculatedItemsSubtotal += rowTot;
       });
       calculatedItemsSubtotal = Math.round(calculatedItemsSubtotal * 100) / 100;
@@ -5549,7 +5558,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
   }
 
   overlay.innerHTML = `
-    <div class="modal-box" style="max-width:1380px;width:96vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div class="modal-box" style="max-width:1420px;width:97vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;">
       <div class="modal-header">
         <div>
           <h3 style="font-size:17px;font-weight:700;color:var(--text1);margin:0;">
@@ -5561,8 +5570,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
       </div>
 
       <form id="multiPurchaseForm" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
-        <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1;">
-          <div class="form-grid" style="grid-template-columns:1.5fr 1.1fr 1fr 1.2fr;gap:12px 16px;margin-bottom:12px;background:var(--bg-primary);padding:14px 18px;border-radius:10px;border:1px solid var(--border);">
+        <div class="modal-body" style="padding:18px 20px;overflow-y:auto;flex:1;">
+          <div class="form-grid" style="grid-template-columns:1.4fr 1.15fr 1.1fr 1fr 1.2fr;gap:12px 14px;margin-bottom:12px;background:var(--bg-primary);padding:14px 18px;border-radius:10px;border:1px solid var(--border);">
             <div class="form-group" style="margin-bottom:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                 <label class="form-label" style="font-size:12px;font-weight:600;margin:0;">Select Primary Supplier *</label>
@@ -5575,8 +5584,19 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label class="form-label" style="font-size:12px;font-weight:600;margin:0;" title="Select Intra-State (CGST+SGST) or Inter-State (IGST) matching your invoice">Tax Treatment *</label>
+                <span id="mpTaxBadge" class="badge" style="font-size:10px;padding:1px 6px;font-weight:700;">Auto</span>
+              </div>
+              <select id="mpTaxTypeSel" class="form-select" style="padding:6px 10px;font-size:12.5px;font-weight:600;">
+                <option value="intra" ${(initialTaxType === 'intra') ? 'selected' : ''}>🌿 Intra-State (CGST + SGST)</option>
+                <option value="inter" ${(initialTaxType === 'inter') ? 'selected' : ''}>⚡ Inter-State (IGST)</option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:4px;">Supplier Invoice / Bill No.</label>
-              <input type="text" id="mpBillNo" class="form-input" placeholder="e.g. INV-2026-881" style="padding:6px 10px;font-size:13px;" value="${isEdit ? esc(editPurchase.purchase_invoice_no || editPurchase.bill_number || '') : ''}">
+              <input type="text" id="mpBillNo" class="form-input" placeholder="e.g. AGRSIAP2627/0044" style="padding:6px 10px;font-size:13px;" value="${isEdit ? esc(editPurchase.purchase_invoice_no || editPurchase.bill_number || '') : ''}">
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
@@ -5623,7 +5643,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
           <style>
             .mp-entry-table th, .mp-entry-table td {
-              padding: 6px 8px !important;
+              padding: 6px 7px !important;
               vertical-align: middle !important;
             }
             .mp-entry-table tfoot td {
@@ -5648,19 +5668,20 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
           </style>
 
           <div class="table-container" style="max-height:380px;overflow-y:auto;overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
-            <table class="data-table mp-entry-table" style="font-size:12.5px;width:100%;min-width:1250px;border-collapse:collapse;">
+            <table class="data-table mp-entry-table" style="font-size:12.5px;width:100%;min-width:1320px;border-collapse:collapse;">
               <thead>
                 <tr style="background:var(--bg-secondary);">
-                  <th style="width:40px;min-width:40px;text-align:center;">S.No</th>
-                  <th style="min-width:270px;">Product Name & Model</th>
-                  <th style="min-width:140px;">Serial No.</th>
-                  <th style="min-width:85px;text-align:center;">Qty</th>
-                  <th style="min-width:135px;text-align:right;">Pur Rate (Excl ₹)</th>
-                  <th style="min-width:145px;text-align:center;">GST %</th>
-                  <th style="min-width:115px;text-align:right;" title="Packaging Charges (₹)">Packaging (₹)</th>
-                  <th style="min-width:115px;text-align:right;" title="Transport Expenses (₹)">Transport (₹)</th>
-                  <th style="min-width:135px;text-align:right;">Line Total (₹)</th>
-                  <th style="width:48px;min-width:48px;text-align:center;">Action</th>
+                  <th style="width:36px;min-width:36px;text-align:center;">S.No</th>
+                  <th style="min-width:240px;">Product Name & Model</th>
+                  <th style="min-width:120px;">Serial No.</th>
+                  <th style="min-width:75px;text-align:center;">Qty</th>
+                  <th style="min-width:120px;text-align:right;" title="Purchase Unit Rate Excl. GST (₹)">Pur Rate (₹)</th>
+                  <th style="min-width:100px;text-align:right;" title="Line Discount (₹) deducted from taxable base">Discount (₹)</th>
+                  <th style="min-width:80px;text-align:center;">GST %</th>
+                  <th style="min-width:95px;text-align:right;" title="Packaging Charges (₹)">Packaging (₹)</th>
+                  <th style="min-width:95px;text-align:right;" title="Transport Expenses (₹)">Transport (₹)</th>
+                  <th style="min-width:125px;text-align:right;">Line Total (₹)</th>
+                  <th style="width:42px;min-width:42px;text-align:center;">Action</th>
                 </tr>
               </thead>
               <tbody id="mpItemsTableBody">
@@ -5669,7 +5690,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
                 <tr style="background:var(--bg-secondary,#f8fafc);">
                   <td colspan="3" style="text-align:right;padding:9px 12px;font-weight:800;color:var(--text1);letter-spacing:0.5px;">TOTALS:</td>
                   <td id="mpFootTotalQty" style="text-align:center;padding:9px 6px;font-weight:800;color:var(--text1);font-size:13px;white-space:nowrap;">0</td>
-                  <td id="mpFootTotalRate" style="text-align:right;padding:9px 8px;font-weight:800;color:var(--text1);font-size:12.5px;white-space:nowrap;">₹0.00</td>
+                  <td id="mpFootTotalRate" style="text-align:right;padding:9px 8px;font-weight:800;color:var(--text1);font-size:12px;white-space:nowrap;">₹0.00</td>
+                  <td id="mpFootTotalDisc" style="text-align:right;padding:9px 8px;font-weight:700;color:var(--text2);font-size:12px;white-space:nowrap;">₹0.00</td>
                   <td id="mpFootTotalGst" style="text-align:center;padding:7px 6px;">—</td>
                   <td id="mpFootTotalPkg" style="text-align:right;padding:9px 8px;font-weight:700;color:var(--text2);font-size:12px;white-space:nowrap;">₹0.00</td>
                   <td id="mpFootTotalTrp" style="text-align:right;padding:9px 8px;font-weight:700;color:var(--text2);font-size:12px;white-space:nowrap;">₹0.00</td>
@@ -5680,22 +5702,28 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
             </table>
           </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
             <button type="button" class="btn btn-secondary btn-sm" id="mpAddRowBtn">+ Add Item Row</button>
             <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <!-- Round-off input -->
               <div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg-primary);border:1px solid var(--border);padding:5px 10px;border-radius:6px;">
-                <label for="mpRoundOffInp" style="font-size:12px;font-weight:600;color:var(--text2);margin:0;white-space:nowrap;">
+                <label for="mpRoundOffInp" style="font-size:12px;font-weight:600;color:var(--text2);margin:0;white-space:nowrap;" title="Supplier Rounding Difference">
                   Supplier Round-off (₹):
                 </label>
-                <input type="number" step="0.01" id="mpRoundOffInp" class="form-input" placeholder="0.00" style="width:85px;padding:3px 6px;font-size:12.5px;font-weight:700;text-align:right;" value="${initialRoundOff !== 0 ? initialRoundOff.toFixed(2) : '0.00'}">
+                <input type="number" step="0.01" id="mpRoundOffInp" class="form-input" placeholder="0.00" style="width:80px;padding:3px 6px;font-size:13px;font-weight:700;text-align:right;" value="${initialRoundOff !== 0 ? initialRoundOff.toFixed(2) : '0.00'}">
                 <button type="button" id="mpAutoRoundBtn" class="btn btn-xs btn-outline" title="Auto-calculate round-off to nearest whole rupee" style="padding:2px 7px;font-size:11px;font-weight:600;">
                   ⚡ Auto
                 </button>
               </div>
-              <div style="font-size:13px;font-weight:700;color:var(--text1);background:var(--bg-secondary);padding:8px 14px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+
+              <!-- Grand Total Box with Direct Edit Two-Way Sync -->
+              <div style="font-size:13px;font-weight:700;color:var(--text1);background:var(--bg-secondary);padding:6px 14px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
                 <span>Subtotal: <span id="mpItemsSubtotalText" style="color:var(--text2);font-weight:600;font-size:13px;">₹0.00</span></span>
                 <span style="color:var(--border);">|</span>
-                <span>Grand Total Billed: <span id="mpGrandTotalText" style="color:var(--primary);font-size:15px;margin-left:4px;">₹0.00</span></span>
+                <div style="display:inline-flex;align-items:center;gap:6px;">
+                  <span style="font-size:13px;font-weight:700;color:var(--text1);white-space:nowrap;">Grand Total Billed:</span>
+                  <input type="number" step="0.01" id="mpGrandTotalInp" class="form-input" placeholder="0.00" style="width:130px;padding:3px 8px;font-size:14px;font-weight:800;color:var(--primary);text-align:right;border:1.5px solid var(--primary);border-radius:6px;background:var(--bg-primary);" title="Enter physical invoice Grand Total to auto-calculate exact round-off difference">
+                </div>
                 <span id="mpGstTypeIndicator" style="font-size:11.5px;"></span>
               </div>
             </div>
@@ -5715,33 +5743,81 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
   document.body.appendChild(overlay);
   overlay.querySelectorAll(".closeMpModal").forEach(b => b.addEventListener("click", () => overlay.remove()));
 
-  overlay.querySelector("#mpSupplierId")?.addEventListener("change", () => {
+  const supSel = overlay.querySelector("#mpSupplierId");
+  const taxSel = overlay.querySelector("#mpTaxTypeSel");
+  const roundOffInp = overlay.querySelector("#mpRoundOffInp");
+  const grandTotalInp = overlay.querySelector("#mpGrandTotalInp");
+
+  function syncTaxTypeFromSupplier(force = false) {
+    const selSupId = supSel?.value;
+    const selectedSupplier = suppliers.find(s => String(s.id) === String(selSupId));
+    const taxInfo = determineGstTaxType(selectedSupplier, targetCompId);
+    const badge = overlay.querySelector("#mpTaxBadge");
+
+    if (taxSel && (!taxSel.dataset.manualOverride || force)) {
+      taxSel.value = taxInfo.isIgst ? 'inter' : 'intra';
+      if (badge) {
+        badge.textContent = taxInfo.isIgst ? '⚡ IGST' : '🌿 Intra';
+        badge.style.background = taxInfo.isIgst ? '#dbeafe' : '#dcfce7';
+        badge.style.color = taxInfo.isIgst ? '#1e40af' : '#166534';
+      }
+    }
+  }
+
+  // Initial tax badge setup
+  if (supSel && supSel.value) {
+    if (!initialTaxType) {
+      syncTaxTypeFromSupplier(true);
+    } else {
+      const badge = overlay.querySelector("#mpTaxBadge");
+      if (badge) {
+        badge.textContent = initialTaxType === 'inter' ? '⚡ IGST' : '🌿 Intra';
+        badge.style.background = initialTaxType === 'inter' ? '#dbeafe' : '#dcfce7';
+        badge.style.color = initialTaxType === 'inter' ? '#1e40af' : '#166534';
+      }
+    }
+  }
+
+  supSel?.addEventListener("change", () => {
+    syncTaxTypeFromSupplier(false);
     calcGrandTotal();
   });
 
-  overlay.querySelector("#mpRoundOffInp")?.addEventListener("input", () => {
+  taxSel?.addEventListener("change", () => {
+    taxSel.dataset.manualOverride = "true";
+    const badge = overlay.querySelector("#mpTaxBadge");
+    if (badge) {
+      badge.textContent = 'Manual';
+      badge.style.background = '#fef3c7';
+      badge.style.color = '#92400e';
+    }
     calcGrandTotal();
+  });
+
+  roundOffInp?.addEventListener("input", () => {
+    calcGrandTotal(false);
+  });
+
+  grandTotalInp?.addEventListener("input", () => {
+    const subtotalText = overlay.querySelector("#mpItemsSubtotalText")?.textContent || "0";
+    const currentSubtotal = parseFloat(subtotalText.replace(/[^\d.-]/g, '') || 0);
+    const enteredGrand = parseFloat(grandTotalInp.value || 0);
+    if (!isNaN(enteredGrand) && currentSubtotal > 0) {
+      const diff = Math.round((enteredGrand - currentSubtotal) * 100) / 100;
+      if (roundOffInp) roundOffInp.value = diff.toFixed(2);
+      calcGrandTotal(true); // Don't overwrite the grand total input while the user is typing into it
+    }
   });
 
   overlay.querySelector("#mpAutoRoundBtn")?.addEventListener("click", () => {
-    let grand = 0;
-    tbody.querySelectorAll("tr").forEach(tr => {
-      const q = parseFloat(tr.querySelector(".mpQty")?.value || 0);
-      const r = parseFloat(tr.querySelector(".mpRate")?.value || 0);
-      const g = parseFloat(tr.querySelector(".mpGst")?.value || 0);
-      const pkg = parseFloat(tr.querySelector(".mpPackaging")?.value || 0);
-      const t = parseFloat(tr.querySelector(".mpTransport")?.value || 0);
-      const rowTaxable = (q * r) + pkg + t;
-      const lineTot = Math.round((rowTaxable * (1 + g / 100)) * 100) / 100;
-      grand += lineTot;
-    });
-    const subtotal = Math.round(grand * 100) / 100;
-    const nearestWhole = Math.round(subtotal);
-    const diff = Math.round((nearestWhole - subtotal) * 100) / 100;
-    const inp = overlay.querySelector("#mpRoundOffInp");
-    if (inp) {
-      inp.value = diff.toFixed(2);
-      calcGrandTotal();
+    calcGrandTotal(false);
+    const subtotalText = overlay.querySelector("#mpItemsSubtotalText")?.textContent || "0";
+    const currentSubtotal = parseFloat(subtotalText.replace(/[^\d.-]/g, '') || 0);
+    const nearestWhole = Math.round(currentSubtotal);
+    const diff = Math.round((nearestWhole - currentSubtotal) * 100) / 100;
+    if (roundOffInp) {
+      roundOffInp.value = diff.toFixed(2);
+      calcGrandTotal(false);
     }
   });
 
@@ -5753,6 +5829,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         sel.innerHTML = `<option value="">-- Select Supplier --</option>` +
           suppliers.map(s => `<option value="${s.id}">${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("");
         sel.value = newSup.id;
+        syncTaxTypeFromSupplier(true);
         calcGrandTotal();
       }
     }, targetCompId);
@@ -5797,19 +5874,21 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     const len = Math.max(val.length, ph.length, 1);
 
     if (inp.classList.contains("mpQty")) {
-      inp.style.width = `max(70px, ${Math.max(len + 3, 5)}ch)`;
+      inp.style.width = `max(65px, ${Math.max(len + 2, 4)}ch)`;
     } else if (inp.classList.contains("mpGst")) {
-      inp.style.width = `max(80px, ${Math.max(len + 3, 6)}ch)`;
+      inp.style.width = `max(70px, ${Math.max(len + 2, 5)}ch)`;
     } else if (inp.classList.contains("mpRate")) {
-      inp.style.width = `max(130px, ${Math.max(len + 4, 12)}ch)`;
+      inp.style.width = `max(115px, ${Math.max(len + 3, 10)}ch)`;
+    } else if (inp.classList.contains("mpDiscount")) {
+      inp.style.width = `max(95px, ${Math.max(len + 3, 7)}ch)`;
     } else if (inp.classList.contains("mpPackaging") || inp.classList.contains("mpTransport")) {
-      inp.style.width = `max(105px, ${Math.max(len + 3, 8)}ch)`;
+      inp.style.width = `max(90px, ${Math.max(len + 2, 7)}ch)`;
     } else if (inp.classList.contains("mpSerialNo")) {
-      inp.style.width = `max(130px, ${Math.max(len + 3, 13)}ch)`;
+      inp.style.width = `max(120px, ${Math.max(len + 3, 11)}ch)`;
     }
   }
 
-  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '', initialPkg = 0, initialTransport = 0) {
+  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '', initialPkg = 0, initialTransport = 0, initialDiscount = 0) {
     itemRowIndex++;
     const tr = document.createElement("tr");
     tr.id = `mpRow_${itemRowIndex}`;
@@ -5817,6 +5896,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     const effectiveModel = initialModel || (initProd && initProd.model) || '';
     const effectivePkg = initialPkg !== undefined && initialPkg !== null ? initialPkg : ((initProd && initProd.packaging_charges) || 0);
     const effectiveTransport = initialTransport !== undefined && initialTransport !== null ? initialTransport : ((initProd && initProd.transport_expenses) || 0);
+    const effectiveDiscount = initialDiscount !== undefined && initialDiscount !== null ? initialDiscount : 0;
+
     tr.innerHTML = `
       <td style="text-align:center;font-weight:600;color:var(--text3);vertical-align:middle;">${tbody.children.length + 1}</td>
       <td style="vertical-align:middle;">
@@ -5830,12 +5911,13 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
           <input type="text" class="form-input mpModelInp" value="${esc(effectiveModel)}" placeholder="Model Name / Spec" style="padding:3px 6px;font-size:11.5px;background:var(--bg-secondary);border:1px solid var(--border);" title="Model Name / Spec">
         </div>
       </td>
-      <td style="vertical-align:middle;"><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 8px;font-size:12px;min-width:125px;box-sizing:border-box;"></td>
-      <td style="text-align:center;vertical-align:middle;"><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:70px;box-sizing:border-box;"></td>
-      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:130px;box-sizing:border-box;" title="Purchase Rate Excl. GST (₹)"></td>
-      <td style="text-align:center;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:75px;box-sizing:border-box;"></td>
-      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpPackaging" value="${effectivePkg}" placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:100px;box-sizing:border-box;" title="Packaging Charges (₹)"></td>
-      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpTransport" value="${effectiveTransport}" placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:100px;box-sizing:border-box;" title="Transport Expenses (₹)"></td>
+      <td style="vertical-align:middle;"><input type="text" class="form-input mpSerialNo" value="${esc(initialSerial)}" placeholder="Serial No" style="padding:4px 8px;font-size:12px;min-width:120px;box-sizing:border-box;"></td>
+      <td style="text-align:center;vertical-align:middle;"><input type="number" min="1" class="form-input mpQty" value="${initialQty}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:65px;box-sizing:border-box;"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpRate" value="${initialRate}" required placeholder="0.00" style="padding:4px 8px;font-size:12px;text-align:right;min-width:115px;box-sizing:border-box;" title="Purchase Unit Rate Excl. GST (₹)"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpDiscount" value="${effectiveDiscount !== 0 ? effectiveDiscount : ''}" placeholder="0.00" style="padding:4px 6px;font-size:12px;text-align:right;min-width:95px;box-sizing:border-box;" title="Line Discount (₹) deducted from taxable base"></td>
+      <td style="text-align:center;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpGst" value="${initialGst}" required style="padding:4px 6px;font-size:12px;text-align:center;min-width:70px;box-sizing:border-box;"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpPackaging" value="${effectivePkg}" placeholder="0.00" style="padding:4px 6px;font-size:12px;text-align:right;min-width:90px;box-sizing:border-box;" title="Packaging Charges (₹)"></td>
+      <td style="text-align:right;vertical-align:middle;"><input type="number" step="0.01" class="form-input mpTransport" value="${effectiveTransport}" placeholder="0.00" style="padding:4px 6px;font-size:12px;text-align:right;min-width:90px;box-sizing:border-box;" title="Transport Expenses (₹)"></td>
       <td class="mpLineTotal" style="font-weight:700;color:var(--text1);vertical-align:middle;text-align:right;white-space:nowrap;">₹0.00</td>
       <td style="text-align:center;vertical-align:middle;"><button type="button" class="btn btn-xs btn-danger mpDelRowBtn" title="Remove row" style="padding:2px 6px;">&times;</button></td>
     `;
@@ -5846,12 +5928,13 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     const serialInp = tr.querySelector(".mpSerialNo");
     const qtyInp = tr.querySelector(".mpQty");
     const rateInp = tr.querySelector(".mpRate");
+    const discInp = tr.querySelector(".mpDiscount");
     const gstInp = tr.querySelector(".mpGst");
     const packagingInp = tr.querySelector(".mpPackaging");
     const transportInp = tr.querySelector(".mpTransport");
     const totalTd = tr.querySelector(".mpLineTotal");
 
-    const dynInputs = [serialInp, qtyInp, rateInp, gstInp, packagingInp, transportInp];
+    const dynInputs = [serialInp, qtyInp, rateInp, discInp, gstInp, packagingInp, transportInp];
     dynInputs.forEach(inp => {
       adjustInputToValue(inp);
       inp.addEventListener("input", () => {
@@ -5863,11 +5946,23 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     function calcRowTotal() {
       const q = parseFloat(qtyInp.value || 0);
       const r = parseFloat(rateInp.value || 0);
+      const disc = parseFloat(discInp?.value || 0) || 0;
       const g = parseFloat(gstInp.value || 0);
       const pkg = parseFloat(packagingInp.value || 0);
       const t = parseFloat(transportInp.value || 0);
-      const taxable = (q * r) + pkg + t;
-      const tot = Math.round((taxable * (1 + g / 100)) * 100) / 100;
+      const taxable = Math.max(0, (q * r) - disc + pkg + t);
+
+      const isIntra = (overlay.querySelector("#mpTaxTypeSel")?.value || 'intra') === 'intra';
+      let rowGst = 0;
+      if (isIntra) {
+        const cgst = Math.round((taxable * (g / 200)) * 100) / 100;
+        const sgst = Math.round((taxable * (g / 200)) * 100) / 100;
+        rowGst = Math.round((cgst + sgst) * 100) / 100;
+      } else {
+        rowGst = Math.round((taxable * (g / 100)) * 100) / 100;
+      }
+
+      const tot = Math.round((taxable + rowGst) * 100) / 100;
       totalTd.textContent = `₹${tot.toFixed(2)}`;
       calcGrandTotal();
     }
@@ -5924,26 +6019,45 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     calcRowTotal();
   }
 
-  function calcGrandTotal() {
+  function calcGrandTotal(skipGrandInputSync = false) {
+    const isIntra = (overlay.querySelector("#mpTaxTypeSel")?.value || 'intra') === 'intra';
     let grand = 0;
     let totalQty = 0;
     let totalBase = 0;
+    let totalDiscount = 0;
     let totalPackaging = 0;
     let totalTransport = 0;
     let totalGstAmount = 0;
+    let totalCgst = 0;
+    let totalSgst = 0;
 
     tbody.querySelectorAll("tr").forEach(tr => {
       const q = parseFloat(tr.querySelector(".mpQty")?.value || 0);
       const r = parseFloat(tr.querySelector(".mpRate")?.value || 0);
+      const disc = parseFloat(tr.querySelector(".mpDiscount")?.value || 0) || 0;
       const g = parseFloat(tr.querySelector(".mpGst")?.value || 0);
       const pkg = parseFloat(tr.querySelector(".mpPackaging")?.value || 0);
       const t = parseFloat(tr.querySelector(".mpTransport")?.value || 0);
-      const rowTaxable = (q * r) + pkg + t;
-      const lineTot = Math.round((rowTaxable * (1 + g / 100)) * 100) / 100;
-      const rowGst = Math.round((lineTot - rowTaxable) * 100) / 100;
+      const rowTaxable = Math.max(0, (q * r) - disc + pkg + t);
+
+      let rowGst = 0;
+      if (isIntra) {
+        const cgst = Math.round((rowTaxable * (g / 200)) * 100) / 100;
+        const sgst = Math.round((rowTaxable * (g / 200)) * 100) / 100;
+        rowGst = Math.round((cgst + sgst) * 100) / 100;
+        totalCgst += cgst;
+        totalSgst += sgst;
+      } else {
+        rowGst = Math.round((rowTaxable * (g / 100)) * 100) / 100;
+      }
+
+      const lineTot = Math.round((rowTaxable + rowGst) * 100) / 100;
+      const totalTd = tr.querySelector(".mpLineTotal");
+      if (totalTd) totalTd.textContent = `₹${lineTot.toFixed(2)}`;
 
       totalQty += q;
       totalBase += (q * r);
+      totalDiscount += disc;
       totalPackaging += pkg;
       totalTransport += t;
       totalGstAmount += rowGst;
@@ -5952,23 +6066,21 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
     grand = Math.round(grand * 100) / 100;
     totalBase = Math.round(totalBase * 100) / 100;
+    totalDiscount = Math.round(totalDiscount * 100) / 100;
     totalPackaging = Math.round(totalPackaging * 100) / 100;
     totalTransport = Math.round(totalTransport * 100) / 100;
     totalGstAmount = Math.round(totalGstAmount * 100) / 100;
+    totalCgst = Math.round(totalCgst * 100) / 100;
+    totalSgst = Math.round(totalSgst * 100) / 100;
 
     const subtotal = grand;
-    const roundOffInp = overlay.querySelector("#mpRoundOffInp");
     const roundOffVal = parseFloat(roundOffInp?.value || 0) || 0;
     const finalGrand = Math.round((subtotal + roundOffVal) * 100) / 100;
-
-    // Determine supplier state and IGST vs CGST+SGST
-    const selSupId = overlay.querySelector("#mpSupplierId")?.value;
-    const selectedSupplier = suppliers.find(s => String(s.id) === String(selSupId));
-    const taxInfo = determineGstTaxType(selectedSupplier, targetCompId);
 
     // Update Footer Totals
     const footQty = overlay.querySelector("#mpFootTotalQty");
     const footRate = overlay.querySelector("#mpFootTotalRate");
+    const footDisc = overlay.querySelector("#mpFootTotalDisc");
     const footPkg = overlay.querySelector("#mpFootTotalPkg");
     const footTrp = overlay.querySelector("#mpFootTotalTrp");
     const footGst = overlay.querySelector("#mpFootTotalGst");
@@ -5976,31 +6088,31 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
     if (footQty) footQty.innerHTML = `<span>${totalQty}</span> <span style="font-size:10px;font-weight:normal;color:var(--text3);">NOS</span>`;
     if (footRate) footRate.textContent = `₹${totalBase.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    if (footDisc) footDisc.textContent = totalDiscount > 0 ? `₹${totalDiscount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `₹0.00`;
     if (footPkg) footPkg.textContent = totalPackaging > 0 ? `₹${totalPackaging.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `₹0.00`;
     if (footTrp) footTrp.textContent = totalTransport > 0 ? `₹${totalTransport.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}` : `₹0.00`;
     if (footGrand) footGrand.textContent = `₹${subtotal.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 
     if (footGst) {
-      if (taxInfo.isIgst) {
+      if (!isIntra) {
         footGst.innerHTML = `
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-            <span class="badge" style="background:#2563eb;color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.3px;" title="${esc(taxInfo.reason)}">
+            <span class="badge" style="background:#2563eb;color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.3px;">
               ⚡ IGST
             </span>
             <span style="font-weight:800;font-size:12.5px;color:#1d4ed8;">₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-            <span style="font-size:9.5px;color:var(--text3);font-weight:500;">(Inter-State: ${esc(taxInfo.state || 'Other State')})</span>
+            <span style="font-size:9.5px;color:var(--text3);font-weight:500;">(Inter-State)</span>
           </div>
         `;
       } else {
-        const halfGst = totalGstAmount / 2;
         footGst.innerHTML = `
           <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-            <span class="badge" style="background:#16a34a;color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.3px;" title="${esc(taxInfo.reason)}">
+            <span class="badge" style="background:#16a34a;color:#fff;font-weight:700;font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:0.3px;">
               🌿 CGST + SGST
             </span>
             <span style="font-weight:800;font-size:12.5px;color:#15803d;">₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
             <span style="font-size:9.5px;color:var(--text3);font-weight:600;white-space:nowrap;">
-              CGST: ₹${halfGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} | SGST: ₹${halfGst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}
+              CGST: ₹${totalCgst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})} | SGST: ₹${totalSgst.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}
             </span>
           </div>
         `;
@@ -6010,7 +6122,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     const subtotalTextEl = overlay.querySelector("#mpItemsSubtotalText");
     if (subtotalTextEl) subtotalTextEl.textContent = `₹${subtotal.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
 
-    overlay.querySelector("#mpGrandTotalText").textContent = `₹${finalGrand.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    if (grandTotalInp && !skipGrandInputSync) {
+      grandTotalInp.value = finalGrand.toFixed(2);
+    }
 
     const paidInp = overlay.querySelector("#mpPaidAmt");
     if (paidInp && (!paidInp.value || paidInp.dataset.autoupdated === "true")) {
@@ -6020,10 +6134,10 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
     const taxInd = overlay.querySelector("#mpGstTypeIndicator");
     if (taxInd) {
-      if (taxInfo.isIgst) {
-        taxInd.innerHTML = `<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:3px 8px;border-radius:4px;font-weight:700;" title="${esc(taxInfo.reason)}">⚡ IGST Collected: ₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
+      if (!isIntra) {
+        taxInd.innerHTML = `<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:3px 8px;border-radius:4px;font-weight:700;">⚡ IGST: ₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
       } else {
-        taxInd.innerHTML = `<span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:4px;font-weight:700;" title="${esc(taxInfo.reason)}">🌿 CGST + SGST Collected: ₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
+        taxInd.innerHTML = `<span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:3px 8px;border-radius:4px;font-weight:700;">🌿 CGST: ₹${totalCgst.toFixed(2)} + SGST: ₹${totalSgst.toFixed(2)} = ₹${totalGstAmount.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
       }
     }
   }
@@ -6034,9 +6148,10 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
       let itemGst = parseFloat(it.gst_rate);
       const itQty = parseFloat(it.quantity) || 1;
       let itRate = parseFloat(it.rate) || 0;
+      const itDisc = parseFloat(it.discount || 0);
       const itPkg = parseFloat(it.packaging_charges) || 0;
       const itTrp = parseFloat(it.transport_expenses) || 0;
-      const itTaxable = (itQty * itRate) + itPkg + itTrp;
+      const itTaxable = Math.max(0, (itQty * itRate) - itDisc + itPkg + itTrp);
       const itSavedTot = parseFloat(it.total) || 0;
 
       // Ensure that if it.gst_rate was saved as 18 by mistake, but total matches 5%, we restore 5%
@@ -6058,7 +6173,8 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         it.serial_no || '',
         it.model || '',
         itPkg,
-        itTrp
+        itTrp,
+        itDisc
       );
     });
   } else {
@@ -6074,7 +6190,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         const val = sel.value;
         sel.innerHTML = renderProductOptionsHtml(val);
       });
-      addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18, '', newP.model || '', newP.packaging_charges || 0, newP.transport_expenses || 0);
+      addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18, '', newP.model || '', newP.packaging_charges || 0, newP.transport_expenses || 0, 0);
     });
   });
 
@@ -6091,15 +6207,19 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     tbody.querySelectorAll("tr").forEach(tr => {
       const prodId = tr.querySelector(".mpProdSel").value;
       if (prodId) {
+        const totalTd = tr.querySelector(".mpLineTotal");
+        const lineTotalNum = totalTd ? parseFloat(totalTd.textContent.replace(/[^\d.-]/g, '')) || 0 : 0;
         items.push({
           product_id: prodId,
           model: tr.querySelector(".mpModelInp") ? tr.querySelector(".mpModelInp").value.trim() : null,
           serial_no: tr.querySelector(".mpSerialNo") ? tr.querySelector(".mpSerialNo").value.trim() : null,
           quantity: tr.querySelector(".mpQty").value,
           rate: tr.querySelector(".mpRate").value,
+          discount: tr.querySelector(".mpDiscount") ? tr.querySelector(".mpDiscount").value : 0,
           gst_rate: tr.querySelector(".mpGst").value,
           packaging_charges: tr.querySelector(".mpPackaging") ? tr.querySelector(".mpPackaging").value : 0,
-          transport_expenses: tr.querySelector(".mpTransport").value
+          transport_expenses: tr.querySelector(".mpTransport").value,
+          total: lineTotalNum
         });
       }
     });
@@ -6111,20 +6231,23 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
       submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> ${isEdit ? 'Updating Entries...' : 'Saving Entries...'}`;
     }
 
-      const payload = {
-        purchase_id: isEdit ? editPurchase.id : undefined,
-        company_id: targetCompId,
-        supplier_id: supId,
-        bill_no: overlay.querySelector("#mpBillNo").value.trim(),
-        purchase_date: overlay.querySelector("#mpDate").value,
-        paid_amount: overlay.querySelector("#mpPaidAmt")?.value !== "" ? overlay.querySelector("#mpPaidAmt")?.value : null,
-        interest_rate: overlay.querySelector("#mpInterestRate")?.value || 0,
-        interest_frequency: overlay.querySelector("#mpInterestFreq")?.value || "monthly",
-        due_date: overlay.querySelector("#mpDueDate")?.value || null,
-        bill_doc: overlay.querySelector("#mpFileBase64").value || null,
-        round_off: parseFloat(overlay.querySelector("#mpRoundOffInp")?.value || 0) || 0,
-        items
-      };
+    const payload = {
+      purchase_id: isEdit ? editPurchase.id : undefined,
+      company_id: targetCompId,
+      supplier_id: supId,
+      tax_type: overlay.querySelector("#mpTaxTypeSel")?.value || "intra",
+      bill_no: overlay.querySelector("#mpBillNo").value.trim(),
+      purchase_date: overlay.querySelector("#mpDate").value,
+      subtotal: parseFloat(overlay.querySelector("#mpItemsSubtotalText")?.textContent.replace(/[^\d.-]/g, '') || 0),
+      round_off: parseFloat(overlay.querySelector("#mpRoundOffInp")?.value || 0) || 0,
+      grand_total: parseFloat(overlay.querySelector("#mpGrandTotalInp")?.value || 0) || 0,
+      paid_amount: overlay.querySelector("#mpPaidAmt")?.value !== "" ? overlay.querySelector("#mpPaidAmt")?.value : null,
+      interest_rate: overlay.querySelector("#mpInterestRate")?.value || 0,
+      interest_frequency: overlay.querySelector("#mpInterestFreq")?.value || "monthly",
+      due_date: overlay.querySelector("#mpDueDate")?.value || null,
+      bill_doc: overlay.querySelector("#mpFileBase64").value || null,
+      items
+    };
 
     const targetUrl = isEdit ? `${API_BASE}/inventory?action=multi-purchase-update` : `${API_BASE}/inventory?action=multi-purchase-entry`;
 

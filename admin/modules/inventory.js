@@ -8216,8 +8216,24 @@ function openBarcodePrintModal(products) {
   const existingOverlay = document.getElementById("barcodePrintModalOverlay");
   if (existingOverlay) existingOverlay.remove();
 
+  // List of all products available for selection
+  const availableProducts = (typeof allProductsList !== 'undefined' && Array.isArray(allProductsList) && allProductsList.length > 0)
+    ? allProductsList
+    : prods;
+
   const isSingle = prods.length === 1;
   const pSingle = isSingle ? prods[0] : null;
+  let currentSelectedProduct = pSingle;
+
+  // Calculate in-stock count helper
+  const getProductStock = (p) => {
+    if (!p) return 0;
+    const s = p.current_stock != null ? p.current_stock : (p.stock != null ? p.stock : (p.stock_quantity != null ? p.stock_quantity : 0));
+    return isNaN(parseInt(s, 10)) ? 0 : parseInt(s, 10);
+  };
+
+  const initialStock = pSingle ? getProductStock(pSingle) : 0;
+  const initialQty = pSingle ? (initialStock > 0 ? initialStock : 1) : 1;
 
   const overlay = document.createElement("div");
   overlay.id = "barcodePrintModalOverlay";
@@ -8232,13 +8248,38 @@ function openBarcodePrintModal(products) {
         <button class="modal-close" id="closeBarcodePrintModal">&times;</button>
       </div>
       <div class="modal-body" style="padding:16px;">
-        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border-color);">
+        <div id="bcInfoBanner" style="background:var(--bg-secondary);padding:12px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border-color);">
           <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
-            ${isSingle ? `Target Product: ${esc(pSingle.name)} (${esc(pSingle.sku || pSingle.display_sku)})` : `Multiple Products: ${prods.length} items from catalog`}
+            ${pSingle ? `Target Product: ${esc(pSingle.name)} (${esc(pSingle.sku || pSingle.display_sku || 'SKU-' + pSingle.id)})` : `Multiple Products: ${prods.length} items from catalog`}
           </div>
           <div style="font-size:12px;color:var(--text3);">
-            These barcode stickers can be scanned directly in POS Billing and Service Warranty modules.
+            ${pSingle ? `In Stock: <strong style="color:var(--text1);">${initialStock} ${esc(pSingle.unit_of_measure || 'NOS')}</strong> &bull; Defaulted labels count to in-stock count. You can adjust it anytime.` : 'These barcode stickers can be scanned directly in POS Billing and Service Warranty modules.'}
           </div>
+        </div>
+
+        <!-- Products Dropdown Selection -->
+        <div class="form-group" style="margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <label class="form-label" style="font-weight:600;margin:0;">Select Product to Print</label>
+            <span id="bcStockNotice" style="font-size:12px;font-weight:700;">
+              ${pSingle ? (initialStock > 0 ? `<span class="badge badge-success" style="font-size:11px;padding:3px 8px;">📦 In Stock: ${initialStock} ${esc(pSingle.unit_of_measure || 'NOS')}</span>` : `<span class="badge badge-danger" style="font-size:11px;padding:3px 8px;">⚠️ Out of Stock (0)</span>`) : ''}
+            </span>
+          </div>
+          <div style="margin-bottom:6px;">
+            <input type="text" id="bcProductSearch" class="form-input" placeholder="🔍 Quick search product name, SKU, brand, model..." style="font-size:12px;padding:6px 10px;">
+          </div>
+          <select id="bcProductSelect" class="form-select" style="font-weight:600;width:100%;">
+            <option value="all" ${!pSingle ? 'selected' : ''}>📦 All Products (${availableProducts.length} items from catalog)</option>
+            ${availableProducts.map(p => {
+              const stk = getProductStock(p);
+              const sku = p.sku || p.display_sku || ('SKU-' + p.id);
+              const isSel = pSingle && String(pSingle.id) === String(p.id);
+              const brandModel = [p.brand, p.model].filter(Boolean).join(' / ');
+              return `<option value="${p.id}" ${isSel ? 'selected' : ''} data-stock="${stk}">
+                ${esc(p.name)} ${brandModel ? `(${esc(brandModel)})` : ''} [${esc(sku)}] — In Stock: ${stk} ${esc(p.unit_of_measure || 'NOS')}
+              </option>`;
+            }).join('')}
+          </select>
         </div>
 
         <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
@@ -8253,8 +8294,13 @@ function openBarcodePrintModal(products) {
           </div>
 
           <div class="form-group">
-            <label class="form-label" style="font-weight:600;">Labels Per Product</label>
-            <input type="number" id="bcQtyInput" class="form-input" min="1" max="100" value="${isSingle ? (pSingle.current_stock > 0 ? Math.min(pSingle.current_stock, 10) : 1) : 1}">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+              <label id="bcQtyLabel" class="form-label" style="font-weight:600;margin:0;">
+                ${pSingle ? 'Labels Count (to print)' : 'Labels Per Product'}
+              </label>
+              <span style="font-size:11px;color:var(--text3);">(Adjustable)</span>
+            </div>
+            <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="${initialQty}" style="font-weight:600;">
           </div>
         </div>
 
@@ -8286,10 +8332,12 @@ function openBarcodePrintModal(products) {
 
   document.body.appendChild(overlay);
 
-  const updatePreview = () => {
+  const updatePreview = (targetProd) => {
     const previewEl = document.getElementById("bcLivePreview");
     if (!previewEl) return;
-    const sample = prods[0];
+    const sample = targetProd || currentSelectedProduct || availableProducts[0] || prods[0];
+    if (!sample) return;
+
     const showComp = document.getElementById("bcShowComp").checked;
     const showPrice = document.getElementById("bcShowPrice").checked;
     const showHsn = document.getElementById("bcShowHsn").checked;
@@ -8319,9 +8367,81 @@ function openBarcodePrintModal(products) {
     `;
   };
 
+  const onProductSelectChange = () => {
+    const selVal = document.getElementById("bcProductSelect").value;
+    const qtyInput = document.getElementById("bcQtyInput");
+    const qtyLabel = document.getElementById("bcQtyLabel");
+    const stockNotice = document.getElementById("bcStockNotice");
+    const infoBanner = document.getElementById("bcInfoBanner");
+
+    if (selVal === "all") {
+      currentSelectedProduct = null;
+      qtyLabel.textContent = "Labels Per Product";
+      stockNotice.innerHTML = "";
+      infoBanner.innerHTML = `
+        <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
+          Multiple Products: ${availableProducts.length} items from catalog
+        </div>
+        <div style="font-size:12px;color:var(--text3);">
+          These barcode stickers can be scanned directly in POS Billing and Service Warranty modules.
+        </div>
+      `;
+      qtyInput.value = 1;
+      updatePreview(availableProducts[0]);
+    } else {
+      const chosen = availableProducts.find(p => String(p.id) === String(selVal));
+      if (chosen) {
+        currentSelectedProduct = chosen;
+        const inStock = getProductStock(chosen);
+        const sku = chosen.sku || chosen.display_sku || ('SKU-' + chosen.id);
+        const unit = chosen.unit_of_measure || 'NOS';
+
+        // Default labels count to In Stock count (if > 0, else 1), and keep fully adjustable
+        const defaultQty = inStock > 0 ? inStock : 1;
+        qtyInput.value = defaultQty;
+
+        qtyLabel.innerHTML = `Labels Count (to print)`;
+
+        if (inStock > 0) {
+          stockNotice.innerHTML = `<span class="badge badge-success" style="font-size:11px;padding:3px 8px;">📦 In Stock: ${inStock} ${esc(unit)}</span>`;
+        } else {
+          stockNotice.innerHTML = `<span class="badge badge-danger" style="font-size:11px;padding:3px 8px;">⚠️ Out of Stock (0 ${esc(unit)})</span>`;
+        }
+
+        infoBanner.innerHTML = `
+          <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
+            Target Product: ${esc(chosen.name)} (${esc(sku)})
+          </div>
+          <div style="font-size:12px;color:var(--text3);">
+            In Stock: <strong style="color:var(--text1);">${inStock} ${esc(unit)}</strong> &bull; Defaulted to In-Stock count (${defaultQty}). You can adjust it anytime.
+          </div>
+        `;
+
+        updatePreview(chosen);
+      }
+    }
+  };
+
+  overlay.querySelector("#bcProductSelect").addEventListener("change", onProductSelectChange);
+
+  overlay.querySelector("#bcProductSearch")?.addEventListener("input", (e) => {
+    const filterText = e.target.value.toLowerCase().trim();
+    const selectEl = document.getElementById("bcProductSelect");
+    if (!selectEl) return;
+
+    Array.from(selectEl.options).forEach(opt => {
+      if (opt.value === "all") {
+        opt.hidden = false;
+        return;
+      }
+      const text = opt.textContent.toLowerCase();
+      opt.hidden = !text.includes(filterText);
+    });
+  });
+
   overlay.querySelector("#closeBarcodePrintModal").addEventListener("click", () => overlay.remove());
   overlay.querySelector("#cancelBarcodePrint").addEventListener("click", () => overlay.remove());
-  overlay.querySelectorAll("#bcShowComp, #bcShowPrice, #bcShowHsn").forEach(el => el.addEventListener("change", updatePreview));
+  overlay.querySelectorAll("#bcShowComp, #bcShowPrice, #bcShowHsn").forEach(el => el.addEventListener("change", () => updatePreview()));
 
   overlay.querySelector("#doPrintBarcodeBtn").addEventListener("click", () => {
     const format = document.getElementById("bcFormatSelect").value;
@@ -8330,10 +8450,19 @@ function openBarcodePrintModal(products) {
     const showPrice = document.getElementById("bcShowPrice").checked;
     const showHsn = document.getElementById("bcShowHsn").checked;
 
-    printBarcodeStickersWindow({ prods, format, qty, showComp, showPrice, showHsn });
+    const selVal = document.getElementById("bcProductSelect").value;
+    let targetProds = availableProducts;
+    if (selVal !== "all") {
+      const chosen = availableProducts.find(x => String(x.id) === String(selVal));
+      if (chosen) {
+        targetProds = [chosen];
+      }
+    }
+
+    printBarcodeStickersWindow({ prods: targetProds, format, qty, showComp, showPrice, showHsn });
   });
 
-  updatePreview();
+  updatePreview(pSingle || availableProducts[0]);
 }
 
 function printBarcodeStickersWindow({ prods, format, qty, showComp, showPrice, showHsn }) {

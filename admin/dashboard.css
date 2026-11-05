@@ -1754,41 +1754,183 @@ body.dark-mode ::-webkit-scrollbar-corner {
   opacity: 0.85;
 }
 
+/* ═══════════════ POS BILLING CART & CHECKOUT LAYOUT ═══════════════ */
 .pos-layout-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(350px, 400px);
-  gap: 20px;
+  /* Right side panel is wide (470px - 540px), cart is less wide */
+  grid-template-columns: minmax(0, 1fr) minmax(470px, 540px);
+  gap: 18px;
   align-items: start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-@media (max-width: 1200px) {
+.pos-cart-col {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+.pos-checkout-card {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-sizing: border-box;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+/* Product Bar & Scanner Responsiveness */
+.pos-prod-bar {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+  background: var(--bg-secondary) !important;
+  padding: 12px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.pos-scan-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.pos-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* Responsive Table Wrapper with Horizontal Scroll */
+.pos-cart-table-wrapper {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-primary) !important;
+  box-sizing: border-box !important;
+  margin-bottom: 6px !important;
+}
+
+.pos-cart-table {
+  width: 100% !important;
+  min-width: 760px !important;
+  border-collapse: collapse !important;
+  margin: 0 !important;
+}
+
+.pos-cart-scroll-hint {
+  display: none;
+}
+
+/* LAPTOPS & SMALLER DESKTOP SCREENS (1025px - 1400px):
+   Right side panel is more wide (460px - 520px) and cart is less wide */
+@media (max-width: 1400px) and (min-width: 1025px) {
   .pos-layout-grid {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 20px !important;
+    grid-template-columns: minmax(0, 0.95fr) minmax(460px, 520px) !important;
+    gap: 16px !important;
   }
 }
 
-/* Sub-content area & POS Bar responsiveness */
-.sub-content-area {
-  padding: 24px;
+/* MEDIUM SCREENS / TABLET LANDSCAPE (901px - 1024px):
+   Maintain 2-column balanced grid with wide right panel */
+@media (max-width: 1024px) and (min-width: 901px) {
+  .pos-layout-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(430px, 490px) !important;
+    gap: 14px !important;
+  }
 }
 
-.pos-prod-bar {
-  display: grid;
-  grid-template-columns: 1.6fr 65px 1fr auto;
-  gap: 8px;
-  margin-bottom: 16px;
-  align-items: center;
+/* TABLET PORTRAIT & MOBILE (<= 900px):
+   Stack Cart and Checkout Card into clean 100% full-width column */
+@media (max-width: 900px) {
+  .pos-layout-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+  .pos-layout-grid > div,
+  .pos-cart-col,
+  .pos-checkout-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .pos-checkout-card {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
+  .pos-cart-scroll-hint {
+    display: flex !important;
+  }
+}
+
+/* MOBILE PHONES (<= 600px):
+   Smoothly stack scan bar and search elements */
+@media (max-width: 600px) {
+  .pos-prod-bar {
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+  .pos-scan-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .pos-scan-row > div {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .pos-scan-row button,
+  .pos-scan-row span.badge {
+    width: 100% !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+  }
+  .pos-select-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .pos-select-row > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .pos-select-row > div.pos-btn-group {
+    display: flex !important;
+    width: 100% !important;
+    gap: 6px !important;
+  }
+  .pos-select-row > div.pos-btn-group input#posQty {
+    width: 65px !important;
+  }
+  .pos-select-row > div.pos-btn-group button {
+    flex: 1 !important;
+    padding: 8px 6px !important;
+    font-size: 12px !important;
+  }
 }
 
 /* ═══════════════ RESPONSIVE ═══════════════ */
 @media (max-width: 1024px) {
-  .pos-layout-grid {
-    grid-template-columns: 1fr !important;
-    gap: 16px !important;
-  }
-
   .sidebar {
     transform: translateX(-100%);
   }
@@ -2457,14 +2599,6 @@ html, body {
   display: block !important;
   box-sizing: border-box !important;
   margin-bottom: 12px !important;
-}
-
-@media (max-width: 900px) {
-  .pos-layout-grid {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 16px !important;
-  }
 }
 
 @media (max-width: 650px) {

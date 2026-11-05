@@ -4170,52 +4170,57 @@ async function loadSalesPOSSubTab() {
   subContent.innerHTML = `
     <div class="pos-layout-grid">
       <!-- LEFT: ITEM SELECTION & CART -->
-      <div>
+      <div class="pos-cart-col" style="min-width:0;max-width:100%;box-sizing:border-box;">
         <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin-bottom:12px;">Billing Cart</h3>
         
-        <div class="pos-prod-bar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;background:var(--bg-secondary);padding:12px;border-radius:10px;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.02);">
-          <div style="display:flex;gap:8px;align-items:center;">
-            <div style="position:relative;flex:1;">
-              <input type="text" id="posBarcodeScannerInput" class="form-input" placeholder="Scan Barcode / SKU with Machine Scanner (Auto-Scan Ready)..." style="font-weight:700;font-size:13px;border:2px solid var(--primary);background:var(--bg-primary);padding-left:36px;color:var(--text1);" autocomplete="off">
+        <div class="pos-prod-bar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;background:var(--bg-secondary);padding:12px;border-radius:10px;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.02);box-sizing:border-box;width:100%;max-width:100%;">
+          <div class="pos-scan-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;">
+            <div style="position:relative;flex:1;min-width:180px;">
+              <input type="text" id="posBarcodeScannerInput" class="form-input" placeholder="Scan Barcode / SKU with Machine Scanner (Auto-Scan Ready)..." style="font-weight:700;font-size:13px;border:2px solid var(--primary);background:var(--bg-primary);padding-left:36px;color:var(--text1);width:100%;box-sizing:border-box;" autocomplete="off">
               <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;">📷</span>
             </div>
             <button type="button" class="btn btn-primary" id="posBarcodeScanBtn" style="white-space:nowrap;font-weight:700;padding:8px 14px;background:linear-gradient(135deg,var(--primary),#3b82f6);color:#fff;border:none;">⚡ Scan / Add</button>
             <span id="posScannerStatusBadge" class="badge badge-success" style="font-size:11.5px;padding:7px 11px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.05);background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;" title="Hardware scanner is active anywhere on this screen without needing to click with mouse"><span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 8px #10b981;"></span> Auto-Scan Active</span>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <input type="text" id="posProdSearchInp" class="form-input" placeholder="🔍 Live Search Product (Name, Brand, Model, HSN, SKU)..." style="font-weight:600;font-size:13px;flex:1;min-width:180px;" autocomplete="off">
-            <select id="posProdSelect" class="form-select" style="flex:1.2;font-weight:600;min-width:200px;">
+          <div class="pos-select-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;">
+            <input type="text" id="posProdSearchInp" class="form-input" placeholder="🔍 Live Search Product (Name, Brand, Model, HSN, SKU)..." style="font-weight:600;font-size:13px;flex:1;min-width:160px;box-sizing:border-box;" autocomplete="off">
+            <select id="posProdSelect" class="form-select" style="flex:1.2;font-weight:600;min-width:160px;box-sizing:border-box;">
               <option value="">-- Select Product to Add --</option>
             </select>
-            <input type="number" id="posQty" class="form-input" value="1" min="1" placeholder="Qty" style="width:75px;text-align:center;font-weight:700;">
-            <button class="btn btn-primary" id="posAddBtn" style="white-space:nowrap;font-weight:700;padding:8px 16px;">+ Add Item</button>
-            <button type="button" class="btn btn-outline" id="posAddCustomBtn" style="white-space:nowrap;font-weight:700;padding:8px 14px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;">+ Custom Item</button>
+            <div class="pos-btn-group" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:0 0 auto;">
+              <input type="number" id="posQty" class="form-input" value="1" min="1" placeholder="Qty" style="width:65px;text-align:center;font-weight:700;box-sizing:border-box;">
+              <button class="btn btn-primary" id="posAddBtn" style="white-space:nowrap;font-weight:700;padding:8px 14px;">+ Add Item</button>
+              <button type="button" class="btn btn-outline" id="posAddCustomBtn" style="white-space:nowrap;font-weight:700;padding:8px 12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;">+ Custom Item</button>
+            </div>
           </div>
         </div>
 
-        <div class="table-container">
-          <table class="data-table">
+        <div class="pos-cart-table-wrapper" style="width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);box-sizing:border-box;margin-bottom:6px;">
+          <table class="data-table pos-cart-table" style="width:100%;min-width:760px;border-collapse:collapse;margin:0;">
             <thead>
-              <tr>
-                <th style="min-width:160px;">Product & Serial No</th>
-                <th style="width:80px;text-align:center;">Qty</th>
-                <th style="min-width:145px;">Price Option</th>
-                <th style="width:85px;text-align:center;">Discount</th>
-                <th style="width:90px;text-align:right;">Rate (Excl)</th>
-                <th style="width:60px;text-align:center;">GST %</th>
-                <th style="width:95px;text-align:right;">Total</th>
-                <th style="width:40px;text-align:center;">Act</th>
+              <tr style="background:var(--bg-secondary);">
+                <th style="min-width:160px;padding:10px 12px;">Product & Serial No</th>
+                <th style="width:80px;text-align:center;padding:10px 8px;">Qty</th>
+                <th style="min-width:145px;padding:10px 8px;">Price Option</th>
+                <th style="width:85px;text-align:center;padding:10px 8px;">Discount</th>
+                <th style="width:90px;text-align:right;padding:10px 8px;">Rate (Excl)</th>
+                <th style="width:60px;text-align:center;padding:10px 8px;">GST %</th>
+                <th style="width:95px;text-align:right;padding:10px 8px;">Total</th>
+                <th style="width:40px;text-align:center;padding:10px 6px;">Act</th>
               </tr>
             </thead>
             <tbody id="cartTableBody">
-              <tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>
+              <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Cart is empty. Add products above.</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="pos-cart-scroll-hint" style="font-size:11px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;justify-content:flex-end;gap:4px;">
+          <span>⇄ Swipe horizontally to see all cart columns</span>
         </div>
       </div>
 
       <!-- RIGHT: CUSTOMER & DELIVERY CHALLAN DETAILS -->
-      <div class="card" style="background:var(--bg-primary);border:1px solid var(--border);max-height:85vh;overflow-y:auto;">
+      <div class="card pos-checkout-card" style="background:var(--bg-primary);border:1px solid var(--border);max-height:85vh;overflow-y:auto;box-sizing:border-box;min-width:0;max-width:100%;">
         <h3 style="font-size:15px;font-weight:600;color:var(--text1);margin-bottom:12px;">Delivery Challana & Customer Details</h3>
         <form id="posCheckoutForm">
           ${isSuper ? `

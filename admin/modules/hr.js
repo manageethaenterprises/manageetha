@@ -17,7 +17,7 @@ window.renderHRModule = async function (tabKey, container) {
   const hrTabs = [
     { key: 'hr_today_tasks', label: 'Today Tasks', icon: '📋', aliases: ['hr_tasks'] },
     { key: 'hr_employees', label: 'Employees', icon: '👤', aliases: ['employees'] },
-    { key: 'hr_dealers', label: 'dealers', icon: '🏪', aliases: ['dealers'] },
+    { key: 'hr_dealers', label: 'Dealers', icon: '🏪', aliases: ['dealers'] },
     { key: 'hr_financers', label: 'Financers', icon: '🏛️', aliases: ['financers'] },
     { key: 'hr_customers', label: 'Customers', icon: '🧑', aliases: ['customers'] },
     { key: 'hr_attendance', label: 'Attendance', icon: '📅', aliases: ['attendance'] },

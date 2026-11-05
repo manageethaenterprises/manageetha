@@ -4026,10 +4026,11 @@ async function loadSalesPOSSubTab() {
         <div class="pos-prod-bar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;background:var(--bg-secondary);padding:12px;border-radius:10px;border:1px solid var(--border);box-shadow:0 2px 4px rgba(0,0,0,0.02);">
           <div style="display:flex;gap:8px;align-items:center;">
             <div style="position:relative;flex:1;">
-              <input type="text" id="posBarcodeScannerInput" class="form-input" placeholder="Scan Barcode / SKU with Machine Scanner (Press Enter)..." style="font-weight:700;font-size:13px;border:2px solid var(--primary);background:var(--bg-primary);padding-left:36px;color:var(--text1);" autocomplete="off">
+              <input type="text" id="posBarcodeScannerInput" class="form-input" placeholder="Scan Barcode / SKU with Machine Scanner (Auto-Scan Ready)..." style="font-weight:700;font-size:13px;border:2px solid var(--primary);background:var(--bg-primary);padding-left:36px;color:var(--text1);" autocomplete="off">
               <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:16px;">📷</span>
             </div>
             <button type="button" class="btn btn-primary" id="posBarcodeScanBtn" style="white-space:nowrap;font-weight:700;padding:8px 14px;background:linear-gradient(135deg,var(--primary),#3b82f6);color:#fff;border:none;">⚡ Scan / Add</button>
+            <span id="posScannerStatusBadge" class="badge badge-success" style="font-size:11.5px;padding:7px 11px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.05);background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;" title="Hardware scanner is active anywhere on this screen without needing to click with mouse"><span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 8px #10b981;"></span> Auto-Scan Active</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <input type="text" id="posProdSearchInp" class="form-input" placeholder="🔍 Live Search Product (Name, Brand, Model, HSN, SKU)..." style="font-weight:600;font-size:13px;flex:1;min-width:180px;" autocomplete="off">
@@ -5391,6 +5392,36 @@ async function loadSalesPOSSubTab() {
     posSupplyStateSel.addEventListener("change", () => updateCartUI());
   }
 
+  // ── Web Audio API Crisp Scanner Beep ──
+  function playPosScanBeep(isSuccess = true) {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      if (isSuccess) {
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.1);
+      } else {
+        osc.frequency.setValueAtTime(260, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.16);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.16);
+      }
+    } catch (e) {
+      // Audio autoplay restrictions or not supported, ignore silently
+    }
+  }
+
   // Barcode / Serial No Scanner Processing Function
   async function processBarcodeScan(scannedCode) {
     const code = String(scannedCode || '').trim();
@@ -5398,20 +5429,31 @@ async function loadSalesPOSSubTab() {
 
     const q = code.toLowerCase();
 
-    // 1. Search productsList locally: match against sku, display_sku, serial_no, and barcode
+    // 1. Search productsList locally: Exact matches take top priority
     let matchedProd = (productsList || []).find(p => {
       const sku = String(p.sku || '').toLowerCase().trim();
       const dispSku = String(p.display_sku || '').toLowerCase().trim();
       const serialNo = String(p.serial_no || p.serial_number || '').toLowerCase().trim();
       const barcode = String(p.barcode || '').toLowerCase().trim();
-      const name = String(p.name || '').toLowerCase().trim();
-      const model = String(p.model || '').toLowerCase().trim();
-      return (sku && (sku === q || q.includes(sku))) ||
-             (dispSku && (dispSku === q || q.includes(dispSku))) ||
-             (serialNo && (serialNo === q || q.includes(serialNo))) ||
-             (barcode && (barcode === q || q.includes(barcode))) ||
-             (name && name === q) || (model && model === q);
+      return (sku && sku === q) || (dispSku && dispSku === q) || (barcode && barcode === q) || (serialNo && serialNo === q);
     });
+
+    // 1b. If no exact match on code/sku, match by SKU number (e.g. "SKU-017" vs "017" or "17") or exact name/model
+    if (!matchedProd) {
+      const numMatch = q.match(/\d+/);
+      const qNum = numMatch ? parseInt(numMatch[0], 10) : null;
+      matchedProd = (productsList || []).find(p => {
+        const sku = String(p.sku || '').toLowerCase().trim();
+        const sMatch = sku.match(/\d+/);
+        const sNum = sMatch ? parseInt(sMatch[0], 10) : null;
+        if (qNum !== null && sNum !== null && qNum === sNum && (q.startsWith('sku') || sku.startsWith('sku'))) {
+          return true;
+        }
+        const name = String(p.name || '').toLowerCase().trim();
+        const model = String(p.model || '').toLowerCase().trim();
+        return (name && name === q) || (model && model === q);
+      });
+    }
 
     // 2. If not found locally, attempt API lookup searching by sku / serial_no / barcode query
     if (!matchedProd) {
@@ -5452,7 +5494,13 @@ async function loadSalesPOSSubTab() {
       const currentInCart = cart.filter(c => c.product_id == matchedProd.id).reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
 
       if (stock > 0 && currentInCart + 1 > stock) {
-        return showToast(`⚠️ Cannot add scanned "${matchedProd.name}". Available stock limit is ${stock} (${currentInCart} already in cart).`, "error");
+        playPosScanBeep(false);
+        showToast(`⚠️ Cannot add scanned "${matchedProd.name}". Available stock limit is ${stock} (${currentInCart} already in cart).`, "error");
+        if (barcodeInp) {
+          barcodeInp.value = "";
+          barcodeInp.focus();
+        }
+        return;
       }
 
       const purRateExcl = parseFloat(matchedProd.purchase_rate || 0);
@@ -5484,13 +5532,15 @@ async function loadSalesPOSSubTab() {
           quantity: 1,
           serial_number: detectedSerialNo
         });
-        showToast(`📷 Scanned high-value product "${matchedProd.name}" - Auto-filled Chassis/Serial No: ${detectedSerialNo || '—'}`, "info");
+        playPosScanBeep(true);
+        showToast(`⚡ Scanned high-value "${matchedProd.name}" - Added 1 unit (Serial: ${detectedSerialNo || '—'})`, "info");
       } else {
         const existing = cart.find(c => c.product_id == matchedProd.id && parseFloat(c.rate) <= 10000);
         if (existing) {
           existing.quantity += 1;
           if (!existing.serial_number && detectedSerialNo) existing.serial_number = detectedSerialNo;
-          showToast(`📷 Scanned "${matchedProd.name}" - Incremented quantity to ${existing.quantity}`, "success");
+          playPosScanBeep(true);
+          showToast(`⚡ Scanned "${matchedProd.name}" - Incremented quantity to ${existing.quantity}`, "success");
         } else {
           cart.push({
             product_id: matchedProd.id,
@@ -5506,30 +5556,52 @@ async function loadSalesPOSSubTab() {
             quantity: 1,
             serial_number: detectedSerialNo
           });
-          showToast(`📷 Scanned "${matchedProd.name}" - Added to cart (1 unit)`, "success");
+          playPosScanBeep(true);
+          showToast(`⚡ Scanned "${matchedProd.name}" - Added to cart (1 unit)`, "success");
         }
       }
       updateCartUI();
     } else {
       // 4. Product NOT in inventory -> Ask for price, name, GST & add dynamically!
+      playPosScanBeep(false);
       showToast(`📷 Unknown barcode "${code}". Please enter product details to add.`, "info");
       openAddUnrecognizedBarcodeModal(code, (newItem) => {
         cart.push(newItem);
         updateCartUI();
+        playPosScanBeep(true);
         showToast(`Added scanned item "${newItem.name}" to cart`, "success");
+        if (barcodeInp) {
+          barcodeInp.value = "";
+          barcodeInp.focus();
+        }
       });
+    }
+
+    if (barcodeInp) {
+      barcodeInp.value = "";
+      barcodeInp.focus();
     }
   }
 
   const barcodeInp = document.getElementById("posBarcodeScannerInput");
   const barcodeBtn = document.getElementById("posBarcodeScanBtn");
 
-  const triggerBarcodeProcess = () => {
+  let isScanningProcessing = false;
+  const triggerBarcodeProcess = async (overrideVal) => {
     if (!barcodeInp) return;
-    const val = barcodeInp.value.trim();
-    if (val) {
-      barcodeInp.value = "";
-      processBarcodeScan(val);
+    const val = (typeof overrideVal === "string" ? overrideVal : barcodeInp.value).trim();
+    if (val && !isScanningProcessing) {
+      isScanningProcessing = true;
+      try {
+        barcodeInp.value = "";
+        await processBarcodeScan(val);
+      } finally {
+        isScanningProcessing = false;
+        if (barcodeInp) {
+          barcodeInp.value = "";
+          barcodeInp.focus();
+        }
+      }
     }
   };
 
@@ -5537,10 +5609,11 @@ async function loadSalesPOSSubTab() {
     barcodeInp.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        e.stopPropagation();
         triggerBarcodeProcess();
       }
     });
-    setTimeout(() => barcodeInp.focus(), 200);
+    setTimeout(() => barcodeInp.focus(), 150);
   }
 
   if (barcodeBtn) {
@@ -5549,6 +5622,125 @@ async function loadSalesPOSSubTab() {
       triggerBarcodeProcess();
     });
   }
+
+  // ── High-Speed Always-Ready Global Barcode Scanner Listener ──
+  // Listens globally on window so scanning works even if cursor is NOT in the input box!
+  let globalScanBuffer = "";
+  let globalScanTimes = [];
+  let globalScanDebounce = null;
+
+  const handleGlobalScannerKey = (e) => {
+    const currentScannerInp = document.getElementById("posBarcodeScannerInput");
+    if (!currentScannerInp) return; // Not on Billing/POS screen
+
+    const now = Date.now();
+    const activeEl = document.activeElement;
+    const isInsideScannerInp = (activeEl === currentScannerInp);
+    const isOtherInput = activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT") && !isInsideScannerInp;
+
+    // Ignore navigation/modifier keys
+    if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      return;
+    }
+
+    const prevTime = globalScanTimes.length > 0 ? globalScanTimes[globalScanTimes.length - 1] : 0;
+    const interval = now - prevTime;
+
+    // Reset buffer if delay > 90ms (indicates human typing pause or new sequence)
+    if (interval > 90) {
+      globalScanBuffer = "";
+      globalScanTimes = [];
+    }
+
+    if (e.key === "Enter") {
+      const inpVal = currentScannerInp.value.trim();
+      const bufVal = globalScanBuffer.trim();
+
+      // Case 1: Scanner input has value
+      if (isInsideScannerInp && inpVal) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerBarcodeProcess(inpVal);
+        globalScanBuffer = "";
+        globalScanTimes = [];
+        return;
+      }
+
+      // Case 2: Machine scanner typed while outside or in another field (high speed burst)
+      if (bufVal.length >= 2) {
+        const avgInterval = globalScanTimes.length > 1 ? (globalScanTimes[globalScanTimes.length - 1] - globalScanTimes[0]) / (globalScanTimes.length - 1) : 100;
+        if (avgInterval < 65 || !isOtherInput) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Remove accidentally appended barcode text from the other input
+          if (isOtherInput && typeof activeEl.value === "string") {
+            const currentVal = activeEl.value;
+            if (currentVal.endsWith(bufVal)) {
+              activeEl.value = currentVal.substring(0, currentVal.length - bufVal.length).trim();
+            }
+          }
+          triggerBarcodeProcess(bufVal);
+          globalScanBuffer = "";
+          globalScanTimes = [];
+          return;
+        }
+      }
+
+      if (isInsideScannerInp) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    // Capture single printable characters
+    if (e.key.length === 1) {
+      globalScanBuffer += e.key;
+      globalScanTimes.push(now);
+
+      // If user is NOT in any other input/textarea/select, ensure barcode input receives focus immediately
+      if (!isOtherInput && !isInsideScannerInp) {
+        currentScannerInp.focus();
+        if (!currentScannerInp.value.includes(e.key)) {
+          currentScannerInp.value += e.key;
+        }
+      }
+
+      // Auto-debounce trigger for machine scanners that do NOT send an Enter key suffix
+      clearTimeout(globalScanDebounce);
+      globalScanDebounce = setTimeout(() => {
+        if (globalScanBuffer.length >= 3) {
+          const avgInterval = globalScanTimes.length > 1 ? (globalScanTimes[globalScanTimes.length - 1] - globalScanTimes[0]) / (globalScanTimes.length - 1) : 100;
+          if (avgInterval < 55) {
+            const scanned = globalScanBuffer.trim();
+            if (isOtherInput && typeof activeEl.value === "string" && activeEl.value.endsWith(scanned)) {
+              activeEl.value = activeEl.value.substring(0, activeEl.value.length - scanned.length).trim();
+            }
+            triggerBarcodeProcess(scanned);
+            globalScanBuffer = "";
+            globalScanTimes = [];
+          }
+        }
+      }, 75);
+    }
+  };
+
+  if (window._salesPosScannerListener) {
+    window.removeEventListener("keydown", window._salesPosScannerListener, true);
+  }
+  window._salesPosScannerListener = handleGlobalScannerKey;
+  window.addEventListener("keydown", window._salesPosScannerListener, true);
+
+  // Background click automatically restores focus to barcode scanner input
+  const handleBackgroundClickRefocus = (evt) => {
+    const curInp = document.getElementById("posBarcodeScannerInput");
+    if (!curInp) return;
+    const target = evt.target;
+    const isInteractive = target.closest("input, select, textarea, button, a, .modal-box, .modal-overlay, tr[data-action]");
+    if (!isInteractive) {
+      curInp.focus();
+    }
+  };
+  document.addEventListener("click", handleBackgroundClickRefocus);
 
   on("posAddBtn", "click", () => {
     const pId = document.getElementById("posProdSelect").value;

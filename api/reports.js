@@ -27,7 +27,12 @@ module.exports = async function handler(req, res) {
   try {
     await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
-  } catch (e) {}
+  } catch (e) {
+    try {
+      await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations TEXT DEFAULT '{}';`;
+      await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations TEXT DEFAULT '{}';`;
+    } catch (_) {}
+  }
   const action = req.query.action || req.body?.action || "auditor-transactions";
 
   try {

@@ -6884,7 +6884,10 @@ async function loadSalesPOSSubTab() {
         schemeSubFields.style.display = "none";
         leadIncGrp.style.display = "none";
         updateCartUI();
-      } else showToast(data.error, "error");
+      } else {
+        const errMsg = data.details ? (data.error + ": " + data.details) : (data.error || "Failed to process sale");
+        showToast(errMsg, "error");
+      }
     } catch (err) {
       showToast("Sale error: " + err.message, "error");
     } finally {

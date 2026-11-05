@@ -1,3 +1,72 @@
+
+async function recordSalePaymentSafely(sql, payRow) {
+  const {
+    compId, saleId, invDateVal, paymentMode, bankSubType,
+    transRef, chequeDdNo, chequeDdDate, receivingBank, bankAccountId,
+    amount, cashierId, notes, rcptNo, denomObj
+  } = payRow;
+
+  const dJson = (denomObj && typeof denomObj === 'object') ? JSON.stringify(denomObj) : '{}';
+
+  try {
+    // 1. Try insert with ::jsonb
+    await sql`
+      INSERT INTO sale_payments (
+        company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+        transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+        amount, cashier_id, notes, receipt_number, denominations
+      ) VALUES (
+        ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
+        ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
+        ${chequeDdDate || null}, ${receivingBank || null}, ${bankAccountId || null},
+        ${amount}, ${cashierId},
+        ${notes},
+        ${rcptNo},
+        ${dJson}::jsonb
+      )
+    `;
+  } catch (errJsonb) {
+    try {
+      // 2. Try insert with plain text (if column is TEXT)
+      await sql`
+        INSERT INTO sale_payments (
+          company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+          transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+          amount, cashier_id, notes, receipt_number, denominations
+        ) VALUES (
+          ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
+          ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
+          ${chequeDdDate || null}, ${receivingBank || null}, ${bankAccountId || null},
+          ${amount}, ${cashierId},
+          ${notes},
+          ${rcptNo},
+          ${dJson}
+        )
+      `;
+    } catch (errCol) {
+      // 3. Fallback: Column does not exist on sale_payments, insert WITHOUT denominations so payment is NEVER lost!
+      await sql`
+        INSERT INTO sale_payments (
+          company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+          transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+          amount, cashier_id, notes, receipt_number
+        ) VALUES (
+          ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
+          ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
+          ${chequeDdDate || null}, ${receivingBank || null}, ${bankAccountId || null},
+          ${amount}, ${cashierId},
+          ${notes},
+          ${rcptNo}
+        )
+      `;
+      try {
+        await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+        await sql`UPDATE sale_payments SET denominations = ${dJson}::jsonb WHERE receipt_number = ${rcptNo}`;
+      } catch (_) {}
+    }
+  }
+}
+
 const { getSQL } = require("../shared/db");
 const {
   formatDdmmyy,
@@ -40,7 +109,12 @@ module.exports = async function handler(req, res) {
     await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(50);`;
     await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
     await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
-  } catch (e) {}
+  } catch (e) {
+    try {
+      await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations TEXT DEFAULT '{}';`;
+      await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations TEXT DEFAULT '{}';`;
+    } catch (_) {}
+  }
 
   const action = req.query.action || req.body?.action || "list";
 
@@ -811,32 +885,102 @@ module.exports = async function handler(req, res) {
       else if (warrantyTermVal === '3_years') warrantyMonthsVal = 36;
       else if (warrantyTermVal === 'no_warranty') warrantyMonthsVal = 0;
 
-      const newSale = await sql`
-        INSERT INTO sales (
-          company_id, customer_id, customer_name, father_name, village, mandal,
-          cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
-          transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
-          cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
-          payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
-          receiving_bank, bank_account_id, terms_conditions, financer_id, finance_amount, discount_amount, vip_perk_notes, created_by,
-          invoice_number, invoice_date, warranty_term, warranty_months, denominations
-        ) VALUES (
-          ${compId}, ${finalCustId}, ${customer_name || null},
-          ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
-          ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
-          ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
-          ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
-          ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
-          ${taxableSum}, ${taxableSum}, ${cgst}, ${sgst}, ${igst}, ${taxSum}, ${grandTotal},
-          ${parseFloat(advance_amount || 0)}, ${initialPaid}, ${pendingAmt}, ${status}, ${effectivePaymentMode},
-          ${bank_sub_type || null}, ${effectiveUtr}, ${cheque_dd_no || null},
-          ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${termsSnapshot},
-          ${financer_id ? parseInt(financer_id) : null}, ${finance_amount ? parseFloat(finance_amount) : 0}, ${discVal}, ${vip_perk_notes || null}, ${user.id},
-          ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal},
-          ${denominations ? JSON.stringify(denominations) : '{}'}
-        )
-        RETURNING *
-      `;
+      const denomJson = (denominations && typeof denominations === 'object') ? JSON.stringify(denominations) : '{}';
+
+      let newSale;
+      try {
+        // Tier 1: Try with ::jsonb cast
+        newSale = await sql`
+          INSERT INTO sales (
+            company_id, customer_id, customer_name, father_name, village, mandal,
+            cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
+            transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
+            cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
+            payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
+            receiving_bank, bank_account_id, terms_conditions, financer_id, finance_amount, discount_amount, vip_perk_notes, created_by,
+            invoice_number, invoice_date, warranty_term, warranty_months, denominations
+          ) VALUES (
+            ${compId}, ${finalCustId}, ${customer_name || null},
+            ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
+            ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
+            ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
+            ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
+            ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
+            ${taxableSum}, ${taxableSum}, ${cgst}, ${sgst}, ${igst}, ${taxSum}, ${grandTotal},
+            ${parseFloat(advance_amount || 0)}, ${initialPaid}, ${pendingAmt}, ${status}, ${effectivePaymentMode},
+            ${bank_sub_type || null}, ${effectiveUtr}, ${cheque_dd_no || null},
+            ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${termsSnapshot},
+            ${financer_id ? parseInt(financer_id) : null}, ${finance_amount ? parseFloat(finance_amount) : 0}, ${discVal}, ${vip_perk_notes || null}, ${user.id},
+            ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal},
+            ${denomJson}::jsonb
+          )
+          RETURNING *
+        `;
+      } catch (errJsonb) {
+        console.warn("Tier 1 sales insert failed, trying Tier 2 (plain text):", errJsonb.message);
+        try {
+          // Tier 2: Try without ::jsonb (if column is TEXT)
+          newSale = await sql`
+            INSERT INTO sales (
+              company_id, customer_id, customer_name, father_name, village, mandal,
+              cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
+              transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
+              cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
+              payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
+              receiving_bank, bank_account_id, terms_conditions, financer_id, finance_amount, discount_amount, vip_perk_notes, created_by,
+              invoice_number, invoice_date, warranty_term, warranty_months, denominations
+            ) VALUES (
+              ${compId}, ${finalCustId}, ${customer_name || null},
+              ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
+              ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
+              ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
+              ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
+              ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
+              ${taxableSum}, ${taxableSum}, ${cgst}, ${sgst}, ${igst}, ${taxSum}, ${grandTotal},
+              ${parseFloat(advance_amount || 0)}, ${initialPaid}, ${pendingAmt}, ${status}, ${effectivePaymentMode},
+              ${bank_sub_type || null}, ${effectiveUtr}, ${cheque_dd_no || null},
+              ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${termsSnapshot},
+              ${financer_id ? parseInt(financer_id) : null}, ${finance_amount ? parseFloat(finance_amount) : 0}, ${discVal}, ${vip_perk_notes || null}, ${user.id},
+              ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal},
+              ${denomJson}
+            )
+            RETURNING *
+          `;
+        } catch (errCol) {
+          console.warn("Tier 2 failed, Tier 3 inserting WITHOUT denominations column so invoice is never blocked:", errCol.message);
+          // Tier 3: Insert WITHOUT denominations column completely!
+          newSale = await sql`
+            INSERT INTO sales (
+              company_id, customer_id, customer_name, father_name, village, mandal,
+              cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
+              transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
+              cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
+              payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
+              receiving_bank, bank_account_id, terms_conditions, financer_id, finance_amount, discount_amount, vip_perk_notes, created_by,
+              invoice_number, invoice_date, warranty_term, warranty_months
+            ) VALUES (
+              ${compId}, ${finalCustId}, ${customer_name || null},
+              ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
+              ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
+              ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
+              ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
+              ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
+              ${taxableSum}, ${taxableSum}, ${cgst}, ${sgst}, ${igst}, ${taxSum}, ${grandTotal},
+              ${parseFloat(advance_amount || 0)}, ${initialPaid}, ${pendingAmt}, ${status}, ${effectivePaymentMode},
+              ${bank_sub_type || null}, ${effectiveUtr}, ${cheque_dd_no || null},
+              ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${termsSnapshot},
+              ${financer_id ? parseInt(financer_id) : null}, ${finance_amount ? parseFloat(finance_amount) : 0}, ${discVal}, ${vip_perk_notes || null}, ${user.id},
+              ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal}
+            )
+            RETURNING *
+          `;
+
+          try {
+            await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+            await sql`UPDATE sales SET denominations = ${denomJson}::jsonb WHERE id = ${newSale[0].id}`;
+          } catch (_) {}
+        }
+      }
 
       // If counter customer, auto insert Tax Invoice record into invoices table
       if (isCounter) {
@@ -856,7 +1000,7 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // Save initial payment records (supports single or multi-mode split payments)
+      // Save initial payment records safely (supports single or multi-mode split payments)
       if (splitList.length > 0) {
         for (let idx = 0; idx < splitList.length; idx++) {
           const sp = splitList[idx];
@@ -865,38 +1009,43 @@ module.exports = async function handler(req, res) {
             ? `Initial Part Payment (${sp.payment_mode.toUpperCase()})`
             : `Initial Full POS Payment (${sp.payment_mode.toUpperCase()})`;
           const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
-          await sql`
-            INSERT INTO sale_payments (
-              company_id, sale_id, payment_date, payment_mode, bank_sub_type,
-              transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-              amount, cashier_id, notes, receipt_number, denominations
-            ) VALUES (
-              ${compId}, ${newSale[0].id}, ${invDateVal}, ${sp.payment_mode || 'cash'},
-              ${sp.bank_sub_type || null}, ${sp.transaction_ref || null}, ${sp.cheque_dd_no || null},
-              ${sp.cheque_dd_date || null}, ${sp.receiving_bank || null}, ${sp.bank_account_id || null},
-              ${sp.amount}, ${user.id},
-              ${sp.notes || defaultNote},
-              ${rcptNo},
-              ${spDenom ? JSON.stringify(spDenom) : '{}'}
-            )
-          `;
+          await recordSalePaymentSafely(sql, {
+            compId,
+            saleId: newSale[0].id,
+            invDateVal,
+            paymentMode: sp.payment_mode || 'cash',
+            bankSubType: sp.bank_sub_type || null,
+            transRef: sp.transaction_ref || null,
+            chequeDdNo: sp.cheque_dd_no || null,
+            chequeDdDate: sp.cheque_dd_date || null,
+            receivingBank: sp.receiving_bank || null,
+            bankAccountId: sp.bank_account_id ? parseInt(sp.bank_account_id) : null,
+            amount: sp.amount,
+            cashierId: user.id,
+            notes: sp.notes || defaultNote,
+            rcptNo,
+            denomObj: spDenom
+          });
         }
       } else if (initialPaid > 0) {
         const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
-        await sql`
-          INSERT INTO sale_payments (
-            company_id, sale_id, payment_date, payment_mode, bank_sub_type,
-            transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-            amount, cashier_id, notes, receipt_number, denominations
-          ) VALUES (
-            ${compId}, ${newSale[0].id}, ${invDateVal}, ${payment_mode || 'cash'},
-            ${bank_sub_type || null}, ${utr_number || transaction_ref || null}, ${cheque_dd_no || null},
-            ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${initialPaid}, ${user.id},
-            ${payment_mode === 'credit' ? 'Initial Advance Payment' : (pendingAmt > 0.01 ? 'Initial Part Payment' : 'Initial Full POS Payment')},
-            ${initialRcptNo},
-            ${singleDenom ? JSON.stringify(singleDenom) : '{}'}
-          )
-        `;
+        await recordSalePaymentSafely(sql, {
+          compId,
+          saleId: newSale[0].id,
+          invDateVal,
+          paymentMode: payment_mode || 'cash',
+          bankSubType: bank_sub_type || null,
+          transRef: utr_number || transaction_ref || null,
+          chequeDdNo: cheque_dd_no || null,
+          chequeDdDate: cheque_dd_date || null,
+          receivingBank: receiving_bank || null,
+          bankAccountId: bank_account_id ? parseInt(bank_account_id) : null,
+          amount: initialPaid,
+          cashierId: user.id,
+          notes: payment_mode === 'credit' ? 'Initial Advance Payment' : (pendingAmt > 0.01 ? 'Initial Part Payment' : 'Initial Full POS Payment'),
+          rcptNo: initialRcptNo,
+          denomObj: singleDenom
+        });
       }
 
       // Save items and deduct stock
@@ -1152,48 +1301,56 @@ module.exports = async function handler(req, res) {
 
       const sale = saleArr[0];
 
-      // Record payment in sale_payments (supports single or multi-mode split payments)
+      // Record payment in sale_payments safely (supports single or multi-mode split payments)
       if (splitList.length > 0) {
         for (let idx = 0; idx < splitList.length; idx++) {
           const sp = splitList[idx];
           const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
           const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-          await sql`
-            INSERT INTO sale_payments (
-              company_id, sale_id, payment_date, payment_mode, bank_sub_type,
-              transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-              amount, cashier_id, notes, receipt_number, denominations
-            ) VALUES (
-              ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${sp.payment_mode || 'cash'},
-              ${sp.bank_sub_type || null}, ${sp.transaction_ref || null}, ${sp.cheque_dd_no || null},
-              ${sp.cheque_dd_date || null}, ${sp.receiving_bank || null}, ${sp.bank_account_id || null},
-              ${sp.amount}, ${user.id},
-              ${sp.notes || (sp.payment_mode.toUpperCase() + ' payment collected')},
-              ${newRcptNo},
-              ${spDenom ? JSON.stringify(spDenom) : '{}'}
-            )
-          `;
+          await recordSalePaymentSafely(sql, {
+            compId: sale.company_id,
+            saleId: sale.id,
+            invDateVal: payment_date || 'NOW()',
+            paymentMode: sp.payment_mode || 'cash',
+            bankSubType: sp.bank_sub_type || null,
+            transRef: sp.transaction_ref || null,
+            chequeDdNo: sp.cheque_dd_no || null,
+            chequeDdDate: sp.cheque_dd_date || null,
+            receivingBank: sp.receiving_bank || null,
+            bankAccountId: sp.bank_account_id ? parseInt(sp.bank_account_id) : null,
+            amount: sp.amount,
+            cashierId: user.id,
+            notes: sp.notes || (sp.payment_mode.toUpperCase() + ' payment collected'),
+            rcptNo: newRcptNo,
+            denomObj: spDenom
+          });
         }
       } else {
         const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
         const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-        await sql`
-          INSERT INTO sale_payments (
-            company_id, sale_id, payment_date, payment_mode, bank_sub_type,
-            transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-            amount, cashier_id, notes, receipt_number, denominations
-          ) VALUES (
-            ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${payment_mode || 'cash'},
-            ${bank_sub_type || null}, ${transaction_ref || null}, ${cheque_dd_no || null},
-            ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null},
-            ${payAmount}, ${user.id},
-            ${notes || 'Part/Full payment collected'},
-            ${newRcptNo},
-            ${singleDenom ? JSON.stringify(singleDenom) : '{}'}
-          )
-        `;
+        await recordSalePaymentSafely(sql, {
+          compId: sale.company_id,
+          saleId: sale.id,
+          invDateVal: payment_date || 'NOW()',
+          paymentMode: payment_mode || 'cash',
+          bankSubType: bank_sub_type || null,
+          transRef: transaction_ref || null,
+          chequeDdNo: cheque_dd_no || null,
+          chequeDdDate: cheque_dd_date || null,
+          receivingBank: receiving_bank || null,
+          bankAccountId: bank_account_id ? parseInt(bank_account_id) : null,
+          amount: payAmount,
+          cashierId: user.id,
+          notes: notes || 'Part/Full payment collected',
+          rcptNo: newRcptNo,
+          denomObj: singleDenom
+        });
         if (singleDenom) {
-          try { await sql`UPDATE sales SET denominations = ${JSON.stringify(singleDenom)} WHERE id = ${sale.id}`; } catch (e) {}
+          const sJson = JSON.stringify(singleDenom);
+          try { await sql`UPDATE sales SET denominations = ${sJson}::jsonb WHERE id = ${sale.id}`; }
+          catch (_) {
+            try { await sql`UPDATE sales SET denominations = ${sJson} WHERE id = ${sale.id}`; } catch (__) {}
+          }
         }
       }
 

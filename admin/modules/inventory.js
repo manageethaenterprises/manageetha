@@ -1450,26 +1450,49 @@ async function loadProductsSubTab() {
 
     const action = editingId ? "product-update" : "product-create";
 
-    try {
-      const res = await fetch(`${API_BASE}/inventory?action=${action}`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message || "Product saved successfully", "success");
-        document.getElementById("prodModal").style.display = "none";
-        fetchProducts();
-      } else showToast(data.error || "Failed to save product", "error");
-    } catch (err) {
-      showToast("Error: " + err.message, "error");
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = origHtml;
+    async function sendProductSaveRequest(allowNewHsn = false) {
+      if (allowNewHsn) payload.allow_new_hsn_rate = true;
+      try {
+        const res = await fetch(`${API_BASE}/inventory?action=${action}`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || "Product saved successfully", "success");
+          document.getElementById("prodModal").style.display = "none";
+          fetchProducts();
+        } else if (data.hsn_rate_confirmation_required) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = origHtml;
+          }
+          showConfirmModal({
+            title: "🏷️ HSN Multi-Rate Confirmation",
+            message: `HSN Code <strong>${esc(data.hsn_code)}</strong> is currently registered in HSN Master with <strong>${esc(data.existing_rates_str)}</strong> GST.<br><br>Do you want to add <strong>${data.new_rate}%</strong> as an additional valid rate for this HSN code in HSN Master while keeping ${esc(data.existing_rates_str)}?`,
+            confirmText: `✅ Add ${data.new_rate}% & Save Product`,
+            cancelText: "Cancel",
+            onConfirm: async () => {
+              if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Saving...`;
+              }
+              await sendProductSaveRequest(true);
+            }
+          });
+        } else showToast(data.error || "Failed to save product", "error");
+      } catch (err) {
+        showToast("Error: " + err.message, "error");
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origHtml;
+        }
       }
     }
+
+    await sendProductSaveRequest(false);
   });
 
   fetchProducts();
@@ -1577,6 +1600,92 @@ async function parseSpreadsheetFile(file) {
 
     return { headers, rows };
   }
+}
+
+function showHsnRateMismatchModal(mismatches, onConfirmAdd, onCancel) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.72);z-index:100050;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px);";
+
+  const rowsHtml = (mismatches || []).map(m => `
+    <tr style="border-bottom:1px solid var(--border,#e2e8f0);background:var(--bg-primary,#fff);">
+      <td style="padding:10px 14px;font-family:monospace;font-weight:700;color:var(--text1,#0f172a);">
+        <span class="badge badge-purple" style="font-size:13px;padding:3px 8px;">${esc(m.hsn_code)}</span>
+      </td>
+      <td style="padding:10px 14px;text-align:center;">
+        <span class="badge badge-warning" style="font-size:12px;font-weight:700;padding:3px 8px;">${esc(m.existing_rates_str || (m.existing_rates ? m.existing_rates.map(r=>r+'%').join(', ') : '—'))}</span>
+      </td>
+      <td style="padding:10px 14px;text-align:center;">
+        <span class="badge badge-success" style="font-size:13px;font-weight:700;padding:3px 8px;">${m.new_rate}%</span>
+      </td>
+      <td style="padding:10px 14px;font-size:12px;color:var(--text2,#334155);max-width:280px;">
+        <strong>${m.count || 1} product(s):</strong> ${esc((m.sample_products || []).slice(0, 3).join(', '))}${(m.count || 0) > 3 ? '...' : ''}
+      </td>
+    </tr>
+  `).join("");
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:680px;width:100%;background:var(--bg-primary,#fff);border-radius:12px;padding:24px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.35);border:1px solid var(--border,#cbd5e1);max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;border-bottom:1px solid var(--border,#e2e8f0);padding-bottom:12px;">
+        <div style="width:42px;height:42px;border-radius:10px;background:#fef3c7;color:#d97706;display:flex;align-items:center;justify-content:center;font-size:22px;">🏷️</div>
+        <div>
+          <h3 style="font-size:17px;font-weight:800;color:var(--text1,#0f172a);margin:0 0 2px 0;">
+            HSN Multi-Rate Flexibility Notice
+          </h3>
+          <p style="font-size:12.5px;color:var(--text2,#64748b);margin:0;">
+            Existing HSN code(s) detected with an additional GST percentage
+          </p>
+        </div>
+      </div>
+
+      <div style="background:#f8fafc;padding:12px 16px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:14px;font-size:13px;color:#334155;line-height:1.5;">
+        Under GST regulations, a single HSN code can support multiple GST rates depending on the product category (such as complete agricultural machinery at <strong>5% / 12%</strong> vs. spare parts, springs, and accessories at <strong>18%</strong>).
+      </div>
+
+      <div style="border:1px solid var(--border,#e2e8f0);border-radius:8px;overflow:hidden;margin-bottom:16px;">
+        <table class="data-table" style="width:100%;font-size:12.5px;margin:0;">
+          <thead>
+            <tr style="background:var(--bg-secondary,#f1f5f9);">
+              <th style="padding:10px 14px;text-align:left;">HSN Code</th>
+              <th style="padding:10px 14px;text-align:center;">HSN Master Rate</th>
+              <th style="padding:10px 14px;text-align:center;">New Upload Rate</th>
+              <th style="padding:10px 14px;text-align:left;">Affected Products</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="background:#eff6ff;padding:12px 16px;border-radius:8px;border:1px solid #bfdbfe;margin-bottom:20px;font-size:13px;color:#1e40af;">
+        <strong>Question:</strong> Do you want to add the new percentage as an additional valid rate for this HSN code in <strong>HSN Master</strong> while preserving the existing percentage?
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary" id="cancelHsnConfirmBtn" style="padding:8px 16px;">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary" id="acceptHsnAddBtn" style="background:#16a34a;border-color:#16a34a;color:#fff;font-weight:700;padding:8px 20px;">
+          ✅ Yes, Keep Existing & Add New Rate to HSN Master
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const cleanup = () => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+
+  overlay.querySelector("#cancelHsnConfirmBtn").addEventListener("click", () => {
+    cleanup();
+    if (onCancel) onCancel();
+  });
+
+  overlay.querySelector("#acceptHsnAddBtn").addEventListener("click", () => {
+    cleanup();
+    if (onConfirmAdd) onConfirmAdd();
+  });
 }
 
 function openProductImportModal(onSuccessCallback) {
@@ -1800,29 +1909,45 @@ function openProductImportModal(onSuccessCallback) {
     btn.disabled = true;
     btn.textContent = "⏳ Importing & Matching Products...";
 
-    try {
-      const targetCompId = (!selectedCompanyId || selectedCompanyId === "all") ? (typeof currentCompanies !== 'undefined' && currentCompanies[0]?.id ? currentCompanies[0].id : 1) : selectedCompanyId;
-      const res = await fetch(`${API_BASE}/inventory?action=bulk-create`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ company_id: targetCompId, products: parsedProducts })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message || `Successfully imported ${parsedProducts.length} products!`, "success");
-        overlay.remove();
-        if (onSuccessCallback) onSuccessCallback();
-      } else {
-        const errMsg = (data.details && (data.error === "Server error" || !data.error)) ? data.details : (data.error || data.details || "Failed to import products");
-        showToast(errMsg, "error");
+    async function sendImportRequest(allowNewHsnRates = false) {
+      try {
+        const targetCompId = (!selectedCompanyId || selectedCompanyId === "all") ? (typeof currentCompanies !== 'undefined' && currentCompanies[0]?.id ? currentCompanies[0].id : 1) : selectedCompanyId;
+        const res = await fetch(`${API_BASE}/inventory?action=bulk-create`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ 
+            company_id: targetCompId, 
+            products: parsedProducts,
+            allow_new_hsn_rates: allowNewHsnRates
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || `Successfully imported ${parsedProducts.length} products!`, "success");
+          overlay.remove();
+          if (onSuccessCallback) onSuccessCallback();
+        } else if (data.hsn_rate_confirmation_required && data.mismatches) {
+          btn.disabled = false;
+          btn.textContent = "🚀 Confirm & Import Products Now";
+          showHsnRateMismatchModal(data.mismatches, async () => {
+            btn.disabled = true;
+            btn.textContent = "⏳ Adding HSN Rates & Importing...";
+            await sendImportRequest(true);
+          });
+        } else {
+          const errMsg = (data.details && (data.error === "Server error" || !data.error)) ? data.details : (data.error || data.details || "Failed to import products");
+          showToast(errMsg, "error");
+          btn.disabled = false;
+          btn.textContent = "🚀 Confirm & Import Products Now";
+        }
+      } catch (err) {
+        showToast("Error importing products: " + err.message, "error");
         btn.disabled = false;
         btn.textContent = "🚀 Confirm & Import Products Now";
       }
-    } catch (err) {
-      showToast("Error importing products: " + err.message, "error");
-      btn.disabled = false;
-      btn.textContent = "🚀 Confirm & Import Products Now";
     }
+
+    await sendImportRequest(false);
   });
 }
 
@@ -6356,29 +6481,49 @@ function openPurchaseImportModal(onSuccessCallback) {
       if (parsedGroups[gIdx]) parsedGroups[gIdx].due_date = inp.value || null;
     });
 
-    try {
-      const res = await fetch(`${API_BASE}/inventory?action=bulk-purchase-import`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({ company_id: targetCompId, supplier_groups: parsedGroups })
-      });
-      const d = await res.json();
-      if (d.success) {
-        showToast(d.message || "Bulk purchase import completed successfully!", "success");
-        overlay.remove();
-        if (onSuccessCallback) onSuccessCallback();
-      } else {
-        const errMsg = (d.details && (d.error === "Server error" || !d.error)) ? d.details : (d.error || d.details || "Bulk import failed");
-        showToast(errMsg, "error");
-      }
-    } catch (err) {
-      showToast("Import error: " + err.message, "error");
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = origHtml;
+    async function sendPurchaseImportRequest(allowNewHsnRates = false) {
+      try {
+        const res = await fetch(`${API_BASE}/inventory?action=bulk-purchase-import`, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ 
+            company_id: targetCompId, 
+            supplier_groups: parsedGroups,
+            allow_new_hsn_rates: allowNewHsnRates
+          })
+        });
+        const d = await res.json();
+        if (d.success) {
+          showToast(d.message || "Bulk purchase import completed successfully!", "success");
+          overlay.remove();
+          if (onSuccessCallback) onSuccessCallback();
+        } else if (d.hsn_rate_confirmation_required && d.mismatches) {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+          }
+          showHsnRateMismatchModal(d.mismatches, async () => {
+            if (btn) {
+              btn.disabled = true;
+              btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Adding HSN Rates & Importing...`;
+            }
+            await sendPurchaseImportRequest(true);
+          });
+        } else {
+          const errMsg = (d.details && (d.error === "Server error" || !d.error)) ? d.details : (d.error || d.details || "Bulk import failed");
+          showToast(errMsg, "error");
+        }
+      } catch (err) {
+        showToast("Import error: " + err.message, "error");
+      } finally {
+        if (btn && !btn.disabled) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
       }
     }
+
+    await sendPurchaseImportRequest(false);
   });
 }
 
@@ -7154,7 +7299,8 @@ async function loadHsnMasterSubTab() {
   }
 
   function updateStats(list) {
-    document.getElementById("statTotalHsn").textContent = list.length;
+    const distinctCodes = new Set(list.map(h => (h.code || '').trim().toLowerCase())).size;
+    document.getElementById("statTotalHsn").innerHTML = `${distinctCodes} <span style="font-size:13px;font-weight:600;color:var(--text3);">(${list.length} rates)</span>`;
     document.getElementById("statActiveHsn").textContent = list.filter(h => h.is_active).length;
     document.getElementById("stat18Gst").textContent = list.filter(h => parseFloat(h.gst_rate) === 18).length;
     document.getElementById("stat12Gst").textContent = list.filter(h => parseFloat(h.gst_rate) === 12).length;
@@ -7182,10 +7328,14 @@ async function loadHsnMasterSubTab() {
       infoContainer: "hsnInfo",
       renderRow: (h) => {
         const updatedStr = h.updated_at ? new Date(h.updated_at).toLocaleDateString() : '—';
+        const allRatesForThisCode = hsnList.filter(item => (item.code || '').trim().toLowerCase() === (h.code || '').trim().toLowerCase());
+        const isMultiRate = allRatesForThisCode.length > 1;
+        const multiRateBadge = isMultiRate ? `<span class="badge badge-info" style="font-size:10.5px;padding:2px 6px;margin-left:6px;" title="Supported rates: ${allRatesForThisCode.map(x=>x.gst_rate+'%').join(', ')}">Multi-Rate (${allRatesForThisCode.length})</span>` : '';
         return `
           <tr style="border-bottom:1px solid var(--border,#e2e8f0);">
-            <td style="padding:12px 16px;font-weight:700;font-family:monospace;color:var(--text1,#0f172a);">
+            <td style="padding:12px 16px;font-weight:700;font-family:monospace;color:var(--text1,#0f172a);white-space:nowrap;">
               <span class="badge badge-purple" style="font-size:13px;padding:4px 8px;">${esc(h.code)}</span>
+              ${multiRateBadge}
             </td>
             <td style="padding:12px 16px;color:var(--text2,#334155);max-width:300px;">
               ${esc(h.description || 'Standard Goods/Services HSN Code')}
@@ -7290,7 +7440,7 @@ async function loadHsnMasterSubTab() {
             <input type="text" id="hsnCodeInput" class="form-input" style="width:100%;font-weight:700;" placeholder="e.g. 84328020" value="${esc(hsnObj?.code || '')}" required>
           </div>
           <div class="form-group" style="margin-bottom:14px;">
-            <label class="form-label" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Default GST Rate (%) *</label>
+            <label class="form-label" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">GST Rate (%) *</label>
             <select id="hsnGstRateInput" class="form-select" style="width:100%;font-weight:700;">
               <option value="0" ${hsnObj?.gst_rate == 0 ? 'selected' : ''}>0% (Exempt)</option>
               <option value="5" ${hsnObj?.gst_rate == 5 ? 'selected' : ''}>5% GST</option>
@@ -7298,6 +7448,7 @@ async function loadHsnMasterSubTab() {
               <option value="18" ${!hsnObj || hsnObj?.gst_rate == 18 ? 'selected' : ''}>18% GST (Standard)</option>
               <option value="28" ${hsnObj?.gst_rate == 28 ? 'selected' : ''}>28% GST (Luxury / High)</option>
             </select>
+            <div style="font-size:11.5px;color:var(--text3,#64748b);margin-top:4px;">💡 An HSN code can support multiple rates (e.g. 5% machinery vs. 18% parts). Adding a new rate preserves existing rates for this HSN code.</div>
           </div>
           <div class="form-group" style="margin-bottom:14px;">
             <label class="form-label" style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Description / Category Details</label>

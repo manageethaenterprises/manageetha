@@ -168,36 +168,89 @@ function calculateRates(purchase_rate, purchase_rate_incl_tax, transport_expense
   };
 }
 
-// ── Helper 1: Track and Validate HSN Codes & GST Rates ──
-async function trackAndValidateHsn(sql, hsnCode, gstRate, description = null) {
+let hsnConstraintsMigrated = false;
+async function ensureHsnConstraints(sql) {
+  if (hsnConstraintsMigrated) return;
+  try {
+    await sql`ALTER TABLE hsn_codes DROP CONSTRAINT IF EXISTS hsn_codes_code_key;`;
+    await sql`DROP INDEX IF EXISTS hsn_codes_code_key;`;
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_hsn_codes_code_gst ON hsn_codes (LOWER(TRIM(code)), gst_rate);`;
+    hsnConstraintsMigrated = true;
+  } catch (e) {
+    console.warn("ensureHsnConstraints non-critical:", e.message);
+    hsnConstraintsMigrated = true;
+  }
+}
+
+// ── Helper 1: Track and Validate HSN Codes & GST Rates (Supports Multi-Rate Flexibility) ──
+async function trackAndValidateHsn(sql, hsnCode, gstRate, description = null, options = {}) {
   if (!hsnCode || !hsnCode.toString().trim()) {
-    return { valid: true, hsnCode: null, masterGstRate: parseFloat(gstRate || 0), isMismatch: false };
+    return { valid: true, hsnCode: null, masterGstRate: parseFloat(gstRate || 0), masterGstRates: [parseFloat(gstRate || 0)], isMismatch: false };
   }
   const cleanCode = hsnCode.toString().trim();
   const rate = parseFloat(gstRate || 0);
+  const allowNewRate = Boolean(options.allowNewRate || options.allow_new_hsn_rates || options.allow_new_hsn_rate || options.autoAddNewRates);
+
+  await ensureHsnConstraints(sql);
 
   try {
-    const existing = await sql`SELECT * FROM hsn_codes WHERE LOWER(code) = LOWER(${cleanCode}) LIMIT 1`;
+    const existing = await sql`
+      SELECT * FROM hsn_codes 
+      WHERE LOWER(TRIM(code)) = LOWER(TRIM(${cleanCode})) AND is_active = true
+      ORDER BY gst_rate ASC
+    `;
+
     if (existing.length > 0) {
-      const masterRate = parseFloat(existing[0].gst_rate || 0);
-      const isMismatch = Math.abs(masterRate - rate) > 0.01;
-      if (isMismatch) {
+      const masterRates = existing.map(r => parseFloat(r.gst_rate || 0));
+      const exactMatch = existing.find(r => Math.abs(parseFloat(r.gst_rate || 0) - rate) < 0.01);
+
+      if (exactMatch) {
         return {
-          valid: false,
-          hsnCode: existing[0].code,
-          masterGstRate: masterRate,
+          valid: true,
+          hsnCode: exactMatch.code,
+          masterGstRate: parseFloat(exactMatch.gst_rate || 0),
+          masterGstRates: masterRates,
           providedGstRate: rate,
-          isMismatch: true,
-          error: `HSN GST Rate Mismatch! HSN Code '${cleanCode}' is registered in HSN Master with ${masterRate}% GST rate, but entry/upload specifies ${rate}%. Operation blocked! Only Superadmin can change HSN Master rates or entry rate must match Master.`
+          isMismatch: false,
+          description: exactMatch.description
         };
       }
+
+      // If user confirmed adding this new rate to HSN Master
+      if (allowNewRate) {
+        try {
+          await sql`
+            INSERT INTO hsn_codes (code, description, gst_rate, is_active)
+            VALUES (${cleanCode}, ${description || existing[0]?.description || 'Additional Rate Category'}, ${rate}, true)
+            ON CONFLICT (LOWER(TRIM(code)), gst_rate) DO UPDATE
+            SET is_active = true, updated_at = CURRENT_TIMESTAMP
+          `;
+          return {
+            valid: true,
+            hsnCode: cleanCode,
+            masterGstRate: rate,
+            masterGstRates: [...masterRates, rate],
+            providedGstRate: rate,
+            isMismatch: false,
+            addedNewRate: true
+          };
+        } catch (insErr) {
+          console.warn("trackAndValidateHsn allowNewRate insert:", insErr.message);
+          return { valid: true, hsnCode: cleanCode, masterGstRate: rate, masterGstRates: [...masterRates, rate], providedGstRate: rate, isMismatch: false };
+        }
+      }
+
+      const ratesStr = masterRates.map(r => `${r}%`).join(', ');
       return {
-        valid: true,
-        hsnCode: existing[0].code,
-        masterGstRate: masterRate,
+        valid: false,
+        hsnCode: cleanCode,
+        masterGstRate: masterRates[0],
+        masterGstRates: masterRates,
+        existingRatesStr: ratesStr,
         providedGstRate: rate,
-        isMismatch: false,
-        description: existing[0].description
+        isMismatch: true,
+        canAddRate: true,
+        error: `HSN GST Rate Mismatch! HSN Code '${cleanCode}' is registered in HSN Master with ${ratesStr} GST rate, but entry/upload specifies ${rate}%.`
       };
     } else {
       // HSN code does not exist yet: store in hsn_codes for future tracking
@@ -205,6 +258,7 @@ async function trackAndValidateHsn(sql, hsnCode, gstRate, description = null) {
         await sql`
           INSERT INTO hsn_codes (code, description, gst_rate, is_active)
           VALUES (${cleanCode}, ${description || null}, ${rate}, true)
+          ON CONFLICT (LOWER(TRIM(code)), gst_rate) DO NOTHING
         `;
       } catch (insertErr) {
         console.warn("hsn_codes auto-insert info:", insertErr.message);
@@ -213,6 +267,7 @@ async function trackAndValidateHsn(sql, hsnCode, gstRate, description = null) {
         valid: true,
         hsnCode: cleanCode,
         masterGstRate: rate,
+        masterGstRates: [rate],
         providedGstRate: rate,
         isMismatch: false,
         autoCreated: true
@@ -238,7 +293,7 @@ async function upsertProduct(sql, compId, itemData, options = {}) {
   const gstRate = parseFloat(itemData.gst_rate || 0);
 
   if (hsnClean) {
-    const hsnCheck = await trackAndValidateHsn(sql, hsnClean, gstRate, itemData.hsn_description || null);
+    const hsnCheck = await trackAndValidateHsn(sql, hsnClean, gstRate, itemData.hsn_description || null, options);
     if (!hsnCheck.valid) {
       throw new Error(hsnCheck.error);
     }
@@ -1016,22 +1071,27 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ HSN MASTER / GST RATES ═══════════════
     else if (action === "hsn-list") {
+      await ensureHsnConstraints(sql);
+
+      // Auto-sync missing HSN codes from products into hsn_codes table (supports multiple rates per code)
       try {
         await sql`
           INSERT INTO hsn_codes (code, gst_rate, is_active)
-          SELECT DISTINCT TRIM(p.hsn_sac), MAX(p.gst_rate), true
+          SELECT DISTINCT TRIM(p.hsn_sac), p.gst_rate, true
           FROM products p
           WHERE p.hsn_sac IS NOT NULL AND TRIM(p.hsn_sac) != ''
             AND NOT EXISTS (
-              SELECT 1 FROM hsn_codes h WHERE LOWER(h.code) = LOWER(TRIM(p.hsn_sac))
+              SELECT 1 FROM hsn_codes h 
+              WHERE LOWER(TRIM(h.code)) = LOWER(TRIM(p.hsn_sac))
+                AND ABS(h.gst_rate - p.gst_rate) < 0.01
             )
-          GROUP BY TRIM(p.hsn_sac)
+          GROUP BY TRIM(p.hsn_sac), p.gst_rate
         `;
       } catch (syncErr) {
         console.warn("hsn_codes auto-sync info:", syncErr.message);
       }
 
-      const rows = await sql`SELECT * FROM hsn_codes ORDER BY is_active DESC, code ASC`;
+      const rows = await sql`SELECT * FROM hsn_codes ORDER BY is_active DESC, code ASC, gst_rate ASC`;
       return res.status(200).json({ success: true, hsn_codes: rows });
     }
 
@@ -1040,6 +1100,8 @@ module.exports = async function handler(req, res) {
       if (userRole !== 'superadmin') {
         return res.status(403).json({ error: "Access denied. Only Superadmin can create or edit HSN Master GST rates." });
       }
+
+      await ensureHsnConstraints(sql);
 
       const { id, code, description, gst_rate, is_active } = req.body;
       if (!code || !code.toString().trim()) return res.status(400).json({ error: "HSN / SAC Code is required" });
@@ -1062,19 +1124,24 @@ module.exports = async function handler(req, res) {
         `;
         savedRecord = updated[0];
       } else {
-        const existing = await sql`SELECT id FROM hsn_codes WHERE LOWER(code) = LOWER(${cleanCode}) LIMIT 1`;
-        if (existing.length > 0) {
+        // Multi-rate check: look for exact same code and rate combination
+        const existingWithSameRate = await sql`
+          SELECT id FROM hsn_codes 
+          WHERE LOWER(TRIM(code)) = LOWER(TRIM(${cleanCode})) AND ABS(gst_rate - ${rate}) < 0.01 
+          LIMIT 1
+        `;
+        if (existingWithSameRate.length > 0) {
           const updated = await sql`
             UPDATE hsn_codes SET
               description = ${description || null},
-              gst_rate = ${rate},
               is_active = ${activeStatus},
               updated_at = CURRENT_TIMESTAMP
-            WHERE id = ${existing[0].id}
+            WHERE id = ${existingWithSameRate[0].id}
             RETURNING *
           `;
           savedRecord = updated[0];
         } else {
+          // Add as new rate configuration for this HSN code (preserving any other rates)
           const inserted = await sql`
             INSERT INTO hsn_codes (code, description, gst_rate, is_active)
             VALUES (${cleanCode}, ${description || null}, ${rate}, ${activeStatus})
@@ -1204,9 +1271,18 @@ module.exports = async function handler(req, res) {
       }
 
       if (hsn_sac) {
-        const hsnCheck = await trackAndValidateHsn(sql, hsn_sac, gst_rate);
+        const hsnCheck = await trackAndValidateHsn(sql, hsn_sac, gst_rate, null, { allowNewRate: Boolean(req.body.allow_new_hsn_rate) });
         if (!hsnCheck.valid) {
-          return res.status(400).json({ error: hsnCheck.error });
+          return res.status(200).json({
+            success: false,
+            hsn_rate_confirmation_required: true,
+            hsn_code: hsnCheck.hsnCode,
+            existing_rates: hsnCheck.masterGstRates,
+            existing_rates_str: hsnCheck.existingRatesStr,
+            new_rate: hsnCheck.providedGstRate,
+            error: hsnCheck.error,
+            message: `HSN Code '${hsnCheck.hsnCode}' is currently registered in HSN Master with ${hsnCheck.existingRatesStr} GST. Do you want to add ${hsnCheck.providedGstRate}% as an additional valid rate for this HSN code while keeping ${hsnCheck.existingRatesStr}?`
+          });
         }
       }
 
@@ -1290,9 +1366,18 @@ module.exports = async function handler(req, res) {
       if (!compId || !name) return res.status(400).json({ error: "Company and Product Name required" });
 
       if (hsn_sac) {
-        const hsnCheck = await trackAndValidateHsn(sql, hsn_sac, gst_rate);
+        const hsnCheck = await trackAndValidateHsn(sql, hsn_sac, gst_rate, null, { allowNewRate: Boolean(req.body.allow_new_hsn_rate) });
         if (!hsnCheck.valid) {
-          return res.status(400).json({ error: hsnCheck.error });
+          return res.status(200).json({
+            success: false,
+            hsn_rate_confirmation_required: true,
+            hsn_code: hsnCheck.hsnCode,
+            existing_rates: hsnCheck.masterGstRates,
+            existing_rates_str: hsnCheck.existingRatesStr,
+            new_rate: hsnCheck.providedGstRate,
+            error: hsnCheck.error,
+            message: `HSN Code '${hsnCheck.hsnCode}' is currently registered in HSN Master with ${hsnCheck.existingRatesStr} GST. Do you want to add ${hsnCheck.providedGstRate}% as an additional valid rate for this HSN code while keeping ${hsnCheck.existingRatesStr}?`
+          });
         }
       }
 
@@ -1329,10 +1414,51 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "bulk-create") {
-      const { company_id, products } = req.body;
+      const { company_id, products, allow_new_hsn_rates } = req.body;
       const compId = safeInt(company_id) || safeInt(user.company_id) || 1;
       if (!Array.isArray(products) || products.length === 0) {
         return res.status(400).json({ error: "Array of products required for bulk create" });
+      }
+
+      await ensureHsnConstraints(sql);
+
+      // Pre-check for any HSN rate mismatches across the uploaded batch
+      if (!allow_new_hsn_rates) {
+        const mismatchesMap = {};
+        for (const p of products) {
+          const hsnClean = (p.hsn_sac || p.hsn || p.hsn_code || '').toString().trim();
+          if (!hsnClean) continue;
+          const pRate = parseFloat(p.gst_rate || 0);
+          const hsnCheck = await trackAndValidateHsn(sql, hsnClean, pRate, p.hsn_description || null, { allowNewRate: false });
+          if (!hsnCheck.valid && hsnCheck.isMismatch) {
+            const key = `${hsnClean.toLowerCase()}__${pRate}`;
+            if (!mismatchesMap[key]) {
+              mismatchesMap[key] = {
+                hsn_code: hsnClean,
+                existing_rates: hsnCheck.masterGstRates || [hsnCheck.masterGstRate],
+                existing_rates_str: hsnCheck.existingRatesStr,
+                new_rate: pRate,
+                sample_products: [],
+                count: 0
+              };
+            }
+            mismatchesMap[key].count++;
+            if (mismatchesMap[key].sample_products.length < 3) {
+              mismatchesMap[key].sample_products.push(p.name || p.product_name);
+            }
+          }
+        }
+
+        const mismatchList = Object.values(mismatchesMap);
+        if (mismatchList.length > 0) {
+          const first = mismatchList[0];
+          return res.status(200).json({
+            success: false,
+            hsn_rate_confirmation_required: true,
+            mismatches: mismatchList,
+            message: `HSN Code '${first.hsn_code}' already exists in HSN Master with ${first.existing_rates_str} GST, but your upload specifies ${first.new_rate}% for ${first.count} product(s) (e.g. ${first.sample_products.join(', ')}). Do you want to add ${first.new_rate}% to HSN Master while keeping the existing ${first.existing_rates_str}?`
+          });
+        }
       }
 
       const compList = await sql`SELECT id, LOWER(name) as lower_name FROM companies WHERE is_active = true`;
@@ -1342,6 +1468,7 @@ module.exports = async function handler(req, res) {
       let createdCount = 0;
       let updatedCount = 0;
       const warnings = [];
+      const touchedCompIds = new Set();
 
       for (const p of products) {
         if (!p.name) continue;
@@ -1350,6 +1477,7 @@ module.exports = async function handler(req, res) {
         if (rawCompName && compMap.has(rawCompName)) {
           pCompId = compMap.get(rawCompName);
         }
+        touchedCompIds.add(pCompId);
 
         let supId = safeInt(p.supplier_id);
         const supName = (p.supplier_name || p.supplier || p.dealer || "").toString().trim();
@@ -1373,7 +1501,7 @@ module.exports = async function handler(req, res) {
         }
         p.supplier_id = supId;
 
-        const resObj = await upsertProduct(sql, pCompId, p, { mode: 'inventory_upload' });
+        const resObj = await upsertProduct(sql, pCompId, p, { mode: 'inventory_upload', allowNewRate: Boolean(allow_new_hsn_rates) });
         if (resObj) {
           if (resObj.isCreated) createdCount++;
           if (resObj.isUpdated) updatedCount++;
@@ -2356,11 +2484,55 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "bulk-purchase-import") {
-      const { company_id, supplier_groups } = req.body;
+      const { company_id, supplier_groups, allow_new_hsn_rates } = req.body;
       const defaultCompId = safeInt(company_id) || safeInt(user.company_id) || 1;
 
       if (!Array.isArray(supplier_groups) || supplier_groups.length === 0) {
         return res.status(400).json({ error: "Company ID and supplier_groups array required" });
+      }
+
+      await ensureHsnConstraints(sql);
+
+      // Pre-check for any HSN rate mismatches across the uploaded purchase items
+      if (!allow_new_hsn_rates) {
+        const mismatchesMap = {};
+        for (const group of supplier_groups) {
+          if (!Array.isArray(group.items)) continue;
+          for (const item of group.items) {
+            const hsnClean = (item.hsn_sac || item.hsncode || item.hsn || item.hsnsac || '').toString().trim();
+            if (!hsnClean) continue;
+            const pRate = parseFloat(item.gst_rate || 0);
+            const hsnCheck = await trackAndValidateHsn(sql, hsnClean, pRate, null, { allowNewRate: false });
+            if (!hsnCheck.valid && hsnCheck.isMismatch) {
+              const key = `${hsnClean.toLowerCase()}__${pRate}`;
+              if (!mismatchesMap[key]) {
+                mismatchesMap[key] = {
+                  hsn_code: hsnClean,
+                  existing_rates: hsnCheck.masterGstRates || [hsnCheck.masterGstRate],
+                  existing_rates_str: hsnCheck.existingRatesStr,
+                  new_rate: pRate,
+                  sample_products: [],
+                  count: 0
+                };
+              }
+              mismatchesMap[key].count++;
+              if (mismatchesMap[key].sample_products.length < 3) {
+                mismatchesMap[key].sample_products.push(item.product_name || item.name);
+              }
+            }
+          }
+        }
+
+        const mismatchList = Object.values(mismatchesMap);
+        if (mismatchList.length > 0) {
+          const first = mismatchList[0];
+          return res.status(200).json({
+            success: false,
+            hsn_rate_confirmation_required: true,
+            mismatches: mismatchList,
+            message: `HSN Code '${first.hsn_code}' already exists in HSN Master with ${first.existing_rates_str} GST, but your upload specifies ${first.new_rate}% for ${first.count} item(s) (e.g. ${first.sample_products.join(', ')}). Do you want to add ${first.new_rate}% to HSN Master while keeping the existing ${first.existing_rates_str}?`
+          });
+        }
       }
 
       let totalPurchasesCreated = 0;
@@ -2409,7 +2581,7 @@ module.exports = async function handler(req, res) {
           if (!pName) continue;
 
           item.supplier_id = supId;
-          const resObj = await upsertProduct(sql, groupCompId, item, { mode: 'purchase_upload' });
+          const resObj = await upsertProduct(sql, groupCompId, item, { mode: 'purchase_upload', allowNewRate: Boolean(allow_new_hsn_rates) });
           if (!resObj || !resObj.product) continue;
 
           const prodObj = resObj.product;

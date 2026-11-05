@@ -330,7 +330,7 @@ module.exports = async function handler(req, res) {
     await sql`
       CREATE TABLE IF NOT EXISTS hsn_codes (
         id SERIAL PRIMARY KEY,
-        code VARCHAR(50) UNIQUE NOT NULL,
+        code VARCHAR(50) NOT NULL,
         description TEXT,
         gst_rate NUMERIC(5,2) DEFAULT 0,
         is_active BOOLEAN DEFAULT TRUE,
@@ -343,6 +343,12 @@ module.exports = async function handler(req, res) {
       await sql`ALTER TABLE hsn_codes ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;`;
       await sql`ALTER TABLE hsn_codes ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`;
       await sql`ALTER TABLE hsn_codes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`;
+
+      // Allow multi-rate flexibility: remove single-column unique constraint on code, allow (code, gst_rate) composite uniqueness
+      await sql`ALTER TABLE hsn_codes DROP CONSTRAINT IF EXISTS hsn_codes_code_key;`;
+      await sql`DROP INDEX IF EXISTS hsn_codes_code_key;`;
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_hsn_codes_code_gst ON hsn_codes (LOWER(TRIM(code)), gst_rate);`;
+
       await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS weight NUMERIC(15,3) DEFAULT 0;`;
       await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS pending_amount NUMERIC(15,2) DEFAULT 0;`;
@@ -351,16 +357,18 @@ module.exports = async function handler(req, res) {
       await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS interest_frequency VARCHAR(20) DEFAULT 'monthly';`;
       await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS due_date DATE;`;
 
-      // Auto-sync missing HSN codes from products into hsn_codes table
+      // Auto-sync missing HSN codes from products into hsn_codes table (supports multiple rates per code)
       await sql`
         INSERT INTO hsn_codes (code, gst_rate, is_active)
-        SELECT DISTINCT TRIM(p.hsn_sac), MAX(p.gst_rate), true
+        SELECT DISTINCT TRIM(p.hsn_sac), p.gst_rate, true
         FROM products p
         WHERE p.hsn_sac IS NOT NULL AND TRIM(p.hsn_sac) != ''
           AND NOT EXISTS (
-            SELECT 1 FROM hsn_codes h WHERE LOWER(h.code) = LOWER(TRIM(p.hsn_sac))
+            SELECT 1 FROM hsn_codes h 
+            WHERE LOWER(TRIM(h.code)) = LOWER(TRIM(p.hsn_sac))
+              AND ABS(h.gst_rate - p.gst_rate) < 0.01
           )
-        GROUP BY TRIM(p.hsn_sac)
+        GROUP BY TRIM(p.hsn_sac), p.gst_rate
       `;
     } catch (e) {
       console.log("hsn_codes / products / purchases migration non-critical:", e.message);

@@ -1225,10 +1225,13 @@ async function loaddealersSubTab() {
   const canDeletedealer = isSuperAdmin;
 
   subContent.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <h3 style="font-size:16px;font-weight:600;color:var(--text1);">Dealers Master</h3>
-      <button class="btn btn-outline" id="addDealerLedgerHeaderBtn" style="font-weight:600;"><i class="fas fa-book-open me-1"></i>+ Ledger Entry</button>
-      ${canAddEditdealer ? `<button class="btn btn-primary" id="adddealerBtn">+ Add Dealer (with GST & Finance)</button>` : ''}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+      <h3 style="font-size:16px;font-weight:600;color:var(--text1);margin:0;">Dealers Master</h3>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <input type="text" id="dealerSearchInp" class="form-input" placeholder="🔍 Search dealer, GSTIN, phone, contact..." style="padding:6px 12px;font-size:12.5px;border-radius:6px;width:280px;max-width:100%;">
+        <button class="btn btn-outline" id="addDealerLedgerHeaderBtn" style="font-weight:600;"><i class="fas fa-book-open me-1"></i>+ Ledger Entry</button>
+        ${canAddEditdealer ? `<button class="btn btn-primary" id="adddealerBtn">+ Add Dealer (with GST & Finance)</button>` : ''}
+      </div>
     </div>
 
     <div class="table-container">
@@ -1464,183 +1467,219 @@ async function loaddealersSubTab() {
     }
   }
 
+  let allDealersData = [];
+
+  function attachDealerRowEvents() {
+    document.querySelectorAll(".viewDealerLedgerBtn").forEach(btn => {
+      btn.onclick = () => {
+        if (typeof window.openEntityLedgerModal === "function") {
+          window.openEntityLedgerModal('dealer', btn.dataset.id);
+        } else {
+          showToast("Ledger module loading...", "info");
+        }
+      };
+    });
+
+    document.querySelectorAll(".addDealerLedgerBtn").forEach(btn => {
+      btn.onclick = () => {
+        if (typeof window.openEntityLedgerEntryModal === "function") {
+          window.openEntityLedgerEntryModal('dealer', btn.dataset.id, () => fetchdealers());
+        } else {
+          showToast("Ledger module loading...", "info");
+        }
+      };
+    });
+
+    document.querySelectorAll(".editdealerBtn").forEach(btn => {
+      btn.onclick = () => {
+        const v = allDealersData.find(x => x.id == btn.dataset.id);
+        if (!v) return;
+        document.getElementById("vEditId").value = v.id;
+        populatedealerCompanySelect(v.company_id);
+        populatedealerStateSelect(v.state || "Andhra Pradesh", v.state_code || "");
+        document.getElementById("vLegalName").value = v.legal_name || "";
+        document.getElementById("vTradeName").value = v.trade_name || "";
+        document.getElementById("vGstin").value = v.gstin || "";
+        document.getElementById("vPan").value = v.pan || "";
+        document.getElementById("vContact").value = v.contact_person || "";
+        document.getElementById("vPhone").value = v.phone || "";
+        document.getElementById("vCredit").value = v.credit_terms || "";
+
+        // Bank Details
+        document.getElementById("vBankName").value = v.bank_name || "";
+        document.getElementById("vBankAccountNo").value = v.bank_account_no || "";
+        document.getElementById("vBankIfsc").value = v.bank_ifsc || "";
+        document.getElementById("vBankBranch").value = v.bank_branch || "";
+
+        // Finance Credit Details
+        document.getElementById("vCreditLimit").value = v.credit_limit !== null && v.credit_limit !== undefined ? v.credit_limit : "";
+        document.getElementById("vCreditPeriodDays").value = v.credit_period_days !== null && v.credit_period_days !== undefined ? v.credit_period_days : "";
+        document.getElementById("vCreditInterestRate").value = v.credit_interest_rate !== null && v.credit_interest_rate !== undefined ? v.credit_interest_rate : "";
+
+        // Opening Balance & Doc
+        document.getElementById("vOpeningBalance").value = v.opening_balance !== null && v.opening_balance !== undefined ? v.opening_balance : "";
+        document.getElementById("vOpeningBalanceType").value = v.opening_balance_type || "Payable";
+        document.getElementById("vOpeningBalanceDate").value = v.opening_balance_date || "";
+        document.getElementById("vOpeningBalanceNotes").value = v.opening_balance_notes || "";
+        
+        vOpeningBalanceDocBase64 = v.opening_balance_doc || "";
+        document.getElementById("vOpeningBalanceDocFile").value = "";
+        const previewEl = document.getElementById("vDocPreviewArea");
+        if (previewEl) {
+          if (v.opening_balance_doc) {
+            previewEl.innerHTML = `<span class="badge badge-info">📄 Existing Doc Attached</span> <a href="${API_BASE}/inventory?action=view-doc&type=dealer&id=${v.id}" target="_blank" style="font-size:11px;" class="ms-1">View Document</a>`;
+          } else {
+            previewEl.innerHTML = `<span class="text-muted" style="font-size:11px;">No file uploaded</span>`;
+          }
+        }
+
+        document.getElementById("dealerModalTitle").textContent = "Edit Dealer Details";
+        document.getElementById("dealerModal").style.display = "flex";
+      };
+    });
+
+    document.querySelectorAll(".deletedealerBtn").forEach(btn => {
+      btn.onclick = async () => {
+        const v = allDealersData.find(x => x.id == btn.dataset.id);
+        if (!v) return;
+        if (!confirm(`Are you sure you want to delete dealer "${v.legal_name}"?`)) return;
+        if (btn.disabled) return;
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+
+        try {
+          const res = await fetch(`${API_BASE}/employees?action=dealer-delete`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ id: v.id })
+          });
+          const d = await res.json();
+          if (d.success) {
+            showToast(d.message || "Dealer deleted successfully", "success");
+            fetchdealers();
+          } else {
+            showToast(d.error || "Failed to delete dealer", "error");
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+          }
+        } catch (e) {
+          showToast("Error: " + e.message, "error");
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+        }
+      };
+    });
+  }
+
+  function renderDealersTable() {
+    const tbody = document.getElementById("dealerTableBody");
+    if (!tbody) return;
+
+    const query = (document.getElementById("dealerSearchInp")?.value || "").toLowerCase().trim();
+    const filtered = allDealersData.filter(v => {
+      if (!query) return true;
+      const haystack = [
+        v.legal_name,
+        v.trade_name,
+        v.gstin,
+        v.pan,
+        v.contact_person,
+        v.phone,
+        v.company_name,
+        v.bank_name,
+        v.bank_account_no,
+        v.credit_terms,
+        v.opening_balance_type
+      ].map(x => (x || "").toLowerCase()).join(" ");
+      return haystack.includes(query);
+    });
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">${query ? `No dealers matching "<strong>${esc(query)}</strong>".` : 'No dealers found. Click + Add Dealer above.'}</td></tr>`;
+      if (document.getElementById("dealerInfo")) document.getElementById("dealerInfo").innerHTML = "";
+      if (document.getElementById("dealerPagination")) document.getElementById("dealerPagination").innerHTML = "";
+      return;
+    }
+
+    window.renderPaginatedTable({
+      data: filtered,
+      pageSize: 10,
+      currentPage: 1,
+      tbody: "dealerTableBody",
+      paginationContainer: "dealerPagination",
+      infoContainer: "dealerInfo",
+      renderRow: (v) => {
+        const bankStr = (v.bank_name || v.bank_account_no) ? `${esc(v.bank_name || 'Bank')}<br><small class="text-muted">A/C: ${esc(v.bank_account_no || '—')}</small>${v.bank_ifsc ? `<br><small class="text-muted">IFSC: ${esc(v.bank_ifsc)}</small>` : ''}` : '—';
+        
+        const creditStr = (v.credit_limit || v.credit_period_days || v.credit_terms) ? `
+          <div><strong>Limit:</strong> ₹${parseFloat(v.credit_limit || 0).toLocaleString('en-IN')}</div>
+          <div style="font-size:11px;color:var(--text2);">${v.credit_period_days ? `${v.credit_period_days} Days Net` : ''} ${v.credit_interest_rate ? `(${v.credit_interest_rate}% p.a.)` : ''}</div>
+          ${v.credit_terms ? `<div style="font-size:11px;color:var(--text3);">${esc(v.credit_terms)}</div>` : ''}
+        ` : '—';
+
+        const obTypeBadge = v.opening_balance_type === 'Receivable' ? 'badge-success' : 'badge-warning';
+        const obStr = (v.opening_balance && parseFloat(v.opening_balance) !== 0) ? `
+          <div><strong>₹${parseFloat(v.opening_balance).toLocaleString('en-IN')}</strong></div>
+          <div><span class="badge ${obTypeBadge}" style="font-size:10px;">${esc(v.opening_balance_type || 'Payable')}</span></div>
+          ${v.opening_balance_date ? `<div style="font-size:11px;color:var(--text3);">${v.opening_balance_date}</div>` : ''}
+        ` : '<span class="text-muted">₹0.00</span>';
+
+        const docBtn = v.opening_balance_doc ? `
+          <a href="${API_BASE}/inventory?action=view-doc&type=dealer&id=${v.id}" target="_blank" class="btn btn-xs btn-outline" style="padding:2px 6px;font-size:11px;" title="View Opening Balance Proof Document">📄 View Doc</a>
+        ` : '<span class="text-muted" style="font-size:11px;">No Doc</span>';
+
+        return `
+          <tr>
+            <td>
+              <strong style="color:var(--text1);">${esc(v.legal_name)}</strong>
+              ${v.trade_name ? `<br><small class="text-muted">${esc(v.trade_name)}</small>` : ''}
+              <br><span class="badge badge-outline" style="font-size:10px;margin-top:2px;">${esc(v.company_name || 'Main')}</span>
+            </td>
+            <td>
+              <span class="badge badge-purple">${esc(v.gstin || 'N/A')}</span>
+              ${v.pan ? `<br><small class="text-muted">PAN: ${esc(v.pan)}</small>` : ''}
+            </td>
+            <td>
+              ${esc(v.contact_person || '—')}
+              ${v.phone ? `<br><small class="text-muted">📞 ${esc(v.phone)}</small>` : ''}
+            </td>
+            <td style="font-size:12px;">${bankStr}</td>
+            <td style="font-size:12px;">${creditStr}</td>
+            <td style="font-size:12px;">${obStr}</td>
+            <td>${docBtn}</td>
+            <td style="text-align:right;white-space:nowrap;">
+              <button class="btn btn-xs viewDealerLedgerBtn" data-id="${v.id}" title="View Dealer Ledger Statement" style="background:rgba(126,34,206,0.1);color:#7e22ce;border:1px solid rgba(126,34,206,0.3);font-weight:600;padding:2px 8px;"><i class="fas fa-book-open me-1"></i>📜 Ledger</button>
+              <button class="btn btn-xs btn-outline addDealerLedgerBtn" data-id="${v.id}" title="Add Ledger Entry" style="font-weight:600;padding:2px 8px;margin-left:4px;"><i class="fas fa-plus"></i> Entry</button>
+              ${canAddEditdealer ? `<button class="btn btn-xs btn-outline editdealerBtn" data-id="${v.id}" style="padding:2px 8px;margin-left:4px;" title="Edit Dealer">✏️ Edit</button>` : ''}
+              ${canDeletedealer ? `<button class="btn btn-xs btn-danger deletedealerBtn" data-id="${v.id}" style="padding:2px 8px;margin-left:4px;" title="Delete Dealer">&times; Delete</button>` : ''}
+            </td>
+          </tr>
+        `;
+      },
+      onRender: () => {
+        attachDealerRowEvents();
+      }
+    });
+
+    attachDealerRowEvents();
+  }
+
   async function fetchdealers() {
     try {
       const res = await fetch(`${API_BASE}/employees?action=dealers-list&company_id=${compId}`, { headers: authHeaders() });
       const data = await res.json();
       if (!data.success) return;
-
-      const tbody = document.getElementById("dealerTableBody");
-      if (!tbody) return;
-      if (data.dealers.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3);">No dealers found. Click + Add Dealer above.</td></tr>`;
-        if (document.getElementById("dealerInfo")) document.getElementById("dealerInfo").innerHTML = "";
-        if (document.getElementById("dealerPagination")) document.getElementById("dealerPagination").innerHTML = "";
-        return;
-      }
-
-      window.renderPaginatedTable({
-        data: data.dealers,
-        pageSize: 10,
-        currentPage: 1,
-        tbody: "dealerTableBody",
-        paginationContainer: "dealerPagination",
-        infoContainer: "dealerInfo",
-        renderRow: (v) => {
-          const bankStr = (v.bank_name || v.bank_account_no) ? `${esc(v.bank_name || 'Bank')}<br><small class="text-muted">A/C: ${esc(v.bank_account_no || '—')}</small>${v.bank_ifsc ? `<br><small class="text-muted">IFSC: ${esc(v.bank_ifsc)}</small>` : ''}` : '—';
-          
-          const creditStr = (v.credit_limit || v.credit_period_days || v.credit_terms) ? `
-            <div><strong>Limit:</strong> ₹${parseFloat(v.credit_limit || 0).toLocaleString('en-IN')}</div>
-            <div style="font-size:11px;color:var(--text2);">${v.credit_period_days ? `${v.credit_period_days} Days Net` : ''} ${v.credit_interest_rate ? `(${v.credit_interest_rate}% p.a.)` : ''}</div>
-            ${v.credit_terms ? `<div style="font-size:11px;color:var(--text3);">${esc(v.credit_terms)}</div>` : ''}
-          ` : '—';
-
-          const obTypeBadge = v.opening_balance_type === 'Receivable' ? 'badge-success' : 'badge-warning';
-          const obStr = (v.opening_balance && parseFloat(v.opening_balance) !== 0) ? `
-            <div><strong>₹${parseFloat(v.opening_balance).toLocaleString('en-IN')}</strong></div>
-            <div><span class="badge ${obTypeBadge}" style="font-size:10px;">${esc(v.opening_balance_type || 'Payable')}</span></div>
-            ${v.opening_balance_date ? `<div style="font-size:11px;color:var(--text3);">${v.opening_balance_date}</div>` : ''}
-          ` : '<span class="text-muted">₹0.00</span>';
-
-          const docBtn = v.opening_balance_doc ? `
-            <a href="${API_BASE}/inventory?action=view-doc&type=dealer&id=${v.id}" target="_blank" class="btn btn-xs btn-outline" style="padding:2px 6px;font-size:11px;" title="View Opening Balance Proof Document">📄 View Doc</a>
-          ` : '<span class="text-muted" style="font-size:11px;">No Doc</span>';
-
-          return `
-            <tr>
-              <td>
-                <strong style="color:var(--text1);">${esc(v.legal_name)}</strong>
-                ${v.trade_name ? `<br><small class="text-muted">${esc(v.trade_name)}</small>` : ''}
-                <br><span class="badge badge-outline" style="font-size:10px;margin-top:2px;">${esc(v.company_name || 'Main')}</span>
-              </td>
-              <td>
-                <span class="badge badge-purple">${esc(v.gstin || 'N/A')}</span>
-                ${v.pan ? `<br><small class="text-muted">PAN: ${esc(v.pan)}</small>` : ''}
-              </td>
-              <td>
-                ${esc(v.contact_person || '—')}
-                ${v.phone ? `<br><small class="text-muted">📞 ${esc(v.phone)}</small>` : ''}
-              </td>
-              <td style="font-size:12px;">${bankStr}</td>
-              <td style="font-size:12px;">${creditStr}</td>
-              <td style="font-size:12px;">${obStr}</td>
-              <td>${docBtn}</td>
-              <td style="text-align:right;white-space:nowrap;">
-                <button class="btn btn-xs viewDealerLedgerBtn" data-id="${v.id}" title="View Dealer Ledger Statement" style="background:rgba(126,34,206,0.1);color:#7e22ce;border:1px solid rgba(126,34,206,0.3);font-weight:600;padding:2px 8px;"><i class="fas fa-book-open me-1"></i>📜 Ledger</button>
-                <button class="btn btn-xs btn-outline addDealerLedgerBtn" data-id="${v.id}" title="Add Ledger Entry" style="font-weight:600;padding:2px 8px;margin-left:4px;"><i class="fas fa-plus"></i> Entry</button>
-                ${canAddEditdealer ? `<button class="btn btn-xs btn-outline editdealerBtn" data-id="${v.id}" style="padding:2px 8px;margin-left:4px;" title="Edit Dealer">✏️ Edit</button>` : ''}
-                ${canDeletedealer ? `<button class="btn btn-xs btn-danger deletedealerBtn" data-id="${v.id}" style="padding:2px 8px;margin-left:4px;" title="Delete Dealer">&times; Delete</button>` : ''}
-              </td>
-            </tr>
-          `;
-        }
-      });
-
-      document.querySelectorAll(".viewDealerLedgerBtn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          if (typeof window.openEntityLedgerModal === "function") {
-            window.openEntityLedgerModal('dealer', btn.dataset.id);
-          } else {
-            showToast("Ledger module loading...", "info");
-          }
-        });
-      });
-
-      document.querySelectorAll(".addDealerLedgerBtn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          if (typeof window.openEntityLedgerEntryModal === "function") {
-            window.openEntityLedgerEntryModal('dealer', btn.dataset.id, () => fetchdealers());
-          } else {
-            showToast("Ledger module loading...", "info");
-          }
-        });
-      });
-
-      document.querySelectorAll(".editdealerBtn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const v = data.dealers.find(x => x.id == btn.dataset.id);
-          if (!v) return;
-          document.getElementById("vEditId").value = v.id;
-          populatedealerCompanySelect(v.company_id);
-          populatedealerStateSelect(v.state || "Andhra Pradesh", v.state_code || "");
-          document.getElementById("vLegalName").value = v.legal_name || "";
-          document.getElementById("vTradeName").value = v.trade_name || "";
-          document.getElementById("vGstin").value = v.gstin || "";
-          document.getElementById("vPan").value = v.pan || "";
-          document.getElementById("vContact").value = v.contact_person || "";
-          document.getElementById("vPhone").value = v.phone || "";
-          document.getElementById("vCredit").value = v.credit_terms || "";
-
-          // Bank Details
-          document.getElementById("vBankName").value = v.bank_name || "";
-          document.getElementById("vBankAccountNo").value = v.bank_account_no || "";
-          document.getElementById("vBankIfsc").value = v.bank_ifsc || "";
-          document.getElementById("vBankBranch").value = v.bank_branch || "";
-
-          // Finance Credit Details
-          document.getElementById("vCreditLimit").value = v.credit_limit !== null && v.credit_limit !== undefined ? v.credit_limit : "";
-          document.getElementById("vCreditPeriodDays").value = v.credit_period_days !== null && v.credit_period_days !== undefined ? v.credit_period_days : "";
-          document.getElementById("vCreditInterestRate").value = v.credit_interest_rate !== null && v.credit_interest_rate !== undefined ? v.credit_interest_rate : "";
-
-          // Opening Balance & Doc
-          document.getElementById("vOpeningBalance").value = v.opening_balance !== null && v.opening_balance !== undefined ? v.opening_balance : "";
-          document.getElementById("vOpeningBalanceType").value = v.opening_balance_type || "Payable";
-          document.getElementById("vOpeningBalanceDate").value = v.opening_balance_date || "";
-          document.getElementById("vOpeningBalanceNotes").value = v.opening_balance_notes || "";
-          
-          vOpeningBalanceDocBase64 = v.opening_balance_doc || "";
-          document.getElementById("vOpeningBalanceDocFile").value = "";
-          const previewEl = document.getElementById("vDocPreviewArea");
-          if (previewEl) {
-            if (v.opening_balance_doc) {
-              previewEl.innerHTML = `<span class="badge badge-info">📄 Existing Doc Attached</span> <a href="${API_BASE}/inventory?action=view-doc&type=dealer&id=${v.id}" target="_blank" style="font-size:11px;" class="ms-1">View Document</a>`;
-            } else {
-              previewEl.innerHTML = `<span class="text-muted" style="font-size:11px;">No file uploaded</span>`;
-            }
-          }
-
-          document.getElementById("dealerModalTitle").textContent = "Edit Dealer Details";
-          document.getElementById("dealerModal").style.display = "flex";
-        });
-      });
-
-      document.querySelectorAll(".deletedealerBtn").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const v = data.dealers.find(x => x.id == btn.dataset.id);
-          if (!v) return;
-          if (!confirm(`Are you sure you want to delete dealer "${v.legal_name}"?`)) return;
-          if (btn.disabled) return;
-          const origHtml = btn.innerHTML;
-          btn.disabled = true;
-          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
-
-          try {
-            const res = await fetch(`${API_BASE}/employees?action=dealer-delete`, {
-              method: "POST",
-              headers: authHeaders(),
-              body: JSON.stringify({ id: v.id })
-            });
-            const d = await res.json();
-            if (d.success) {
-              showToast(d.message || "Dealer deleted successfully", "success");
-              fetchdealers();
-            } else {
-              showToast(d.error || "Failed to delete dealer", "error");
-              btn.disabled = false;
-              btn.innerHTML = origHtml;
-            }
-          } catch (e) {
-            showToast("Error: " + e.message, "error");
-            btn.disabled = false;
-            btn.innerHTML = origHtml;
-          }
-        });
-      });
-
+      allDealersData = data.dealers || [];
+      renderDealersTable();
     } catch (err) {
       showToast("Fetch dealers error: " + err.message, "error");
     }
   }
+
+  on("dealerSearchInp", "input", () => {
+    renderDealersTable();
+  });
 
   on("addDealerLedgerHeaderBtn", "click", () => {
     if (typeof window.openEntityLedgerEntryModal === 'function') {

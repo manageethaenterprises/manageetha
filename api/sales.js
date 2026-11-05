@@ -635,7 +635,7 @@ module.exports = async function handler(req, res) {
         transporter_name, transporter_vehicle_no, sale_date, items, payment_mode, bank_sub_type,
         utr_number, transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, advance_amount,
         paid_amount, financer_id, finance_amount, discount_amount, vip_perk_notes,
-        customer_gstin, party_type, dealer_id
+        customer_gstin, party_type, dealer_id, split_payments
       } = req.body;
 
       // Auto-migrate columns if missing
@@ -700,11 +700,28 @@ module.exports = async function handler(req, res) {
       const sgst = isInterstate ? 0 : taxSum / 2;
       const igst = isInterstate ? taxSum : 0;
 
-      const rawPaid = (paid_amount !== undefined && paid_amount !== null && paid_amount !== "" && !isNaN(parseFloat(paid_amount)))
-        ? parseFloat(paid_amount)
-        : (payment_mode === 'credit'
-            ? (parseFloat(advance_amount || 0))
-            : (payment_mode === 'finance' ? (parseFloat(finance_amount || 0)) : grandTotal));
+      const splitList = (Array.isArray(split_payments) ? split_payments : [])
+        .map(p => ({
+          payment_mode: String(p.payment_mode || 'cash').toLowerCase().trim(),
+          amount: Math.round(parseFloat(p.amount || 0) * 100) / 100,
+          bank_sub_type: p.bank_sub_type ? String(p.bank_sub_type).trim() : null,
+          transaction_ref: p.transaction_ref ? String(p.transaction_ref).trim() : (p.utr_number ? String(p.utr_number).trim() : null),
+          cheque_dd_no: p.cheque_dd_no ? String(p.cheque_dd_no).trim() : null,
+          cheque_dd_date: p.cheque_dd_date || null,
+          receiving_bank: p.receiving_bank ? String(p.receiving_bank).trim() : null,
+          bank_account_id: p.bank_account_id ? parseInt(p.bank_account_id) : null,
+          notes: p.notes ? String(p.notes).trim() : null
+        }))
+        .filter(p => p.amount > 0);
+
+      const splitTotal = splitList.reduce((s, p) => s + p.amount, 0);
+      const rawPaid = (splitList.length > 0)
+        ? splitTotal
+        : ((paid_amount !== undefined && paid_amount !== null && paid_amount !== "" && !isNaN(parseFloat(paid_amount)))
+            ? parseFloat(paid_amount)
+            : (payment_mode === 'credit'
+                ? (parseFloat(advance_amount || 0))
+                : (payment_mode === 'finance' ? (parseFloat(finance_amount || 0)) : grandTotal)));
       
       const initialPaid = Math.min(grandTotal, Math.max(0, rawPaid));
       const pendingAmt = Math.max(0, grandTotal - initialPaid);
@@ -712,8 +729,22 @@ module.exports = async function handler(req, res) {
       if (pendingAmt <= 0.01) status = 'paid';
       else if (initialPaid > 0) status = 'partially_paid';
 
+      let effectivePaymentMode = payment_mode || 'cash';
+      if (splitList.length > 1) {
+        const modes = splitList.map(p => p.payment_mode.toUpperCase()).filter((v, i, a) => a.indexOf(v) === i);
+        effectivePaymentMode = modes.join(' + ').substring(0, 50);
+      } else if (splitList.length === 1) {
+        effectivePaymentMode = splitList[0].payment_mode;
+      }
+
+      let effectiveUtr = utr_number || transaction_ref || null;
+      if (splitList.length > 0) {
+        const allRefs = splitList.map(p => p.transaction_ref).filter(Boolean);
+        if (allRefs.length > 0) effectiveUtr = allRefs.join(', ').substring(0, 100);
+      }
+
       // Fetch terms snapshot for payment mode
-      let termsSnapshot = `1. All goods supplied in good working condition.\n2. Payment terms as agreed upon under ${payment_mode.toUpperCase()}.\n3. Warranty as per manufacturer norms.`;
+      let termsSnapshot = `1. All goods supplied in good working condition.\n2. Payment terms as agreed upon under ${effectivePaymentMode.toUpperCase()}.\n3. Warranty as per manufacturer norms.`;
       try {
         const termsObj = await sql`
           SELECT terms_text FROM company_payment_terms WHERE company_id = ${compId} AND payment_mode = ${payment_mode || 'cash'}
@@ -795,8 +826,8 @@ module.exports = async function handler(req, res) {
           ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
           ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
           ${taxableSum}, ${taxableSum}, ${cgst}, ${sgst}, ${igst}, ${taxSum}, ${grandTotal},
-          ${parseFloat(advance_amount || 0)}, ${initialPaid}, ${pendingAmt}, ${status}, ${payment_mode || 'cash'},
-          ${bank_sub_type || null}, ${utr_number || transaction_ref || null}, ${cheque_dd_no || null},
+          ${parseFloat(advance_amount || 0)}, ${initialPaid}, ${pendingAmt}, ${status}, ${effectivePaymentMode},
+          ${bank_sub_type || null}, ${effectiveUtr}, ${cheque_dd_no || null},
           ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${termsSnapshot},
           ${financer_id ? parseInt(financer_id) : null}, ${finance_amount ? parseFloat(finance_amount) : 0}, ${discVal}, ${vip_perk_notes || null}, ${user.id},
           ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal}
@@ -822,8 +853,30 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      // Save initial payment record if paid > 0
-      if (initialPaid > 0) {
+      // Save initial payment records (supports single or multi-mode split payments)
+      if (splitList.length > 0) {
+        for (let idx = 0; idx < splitList.length; idx++) {
+          const sp = splitList[idx];
+          const rcptNo = idx === 0 ? initialRcptNo : await getNextFamilyReceiptNumber(sql, compId);
+          const defaultNote = (pendingAmt > 0.01)
+            ? `Initial Part Payment (${sp.payment_mode.toUpperCase()})`
+            : `Initial Full POS Payment (${sp.payment_mode.toUpperCase()})`;
+          await sql`
+            INSERT INTO sale_payments (
+              company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+              transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+              amount, cashier_id, notes, receipt_number
+            ) VALUES (
+              ${compId}, ${newSale[0].id}, ${invDateVal}, ${sp.payment_mode || 'cash'},
+              ${sp.bank_sub_type || null}, ${sp.transaction_ref || null}, ${sp.cheque_dd_no || null},
+              ${sp.cheque_dd_date || null}, ${sp.receiving_bank || null}, ${sp.bank_account_id || null},
+              ${sp.amount}, ${user.id},
+              ${sp.notes || defaultNote},
+              ${rcptNo}
+            )
+          `;
+        }
+      } else if (initialPaid > 0) {
         await sql`
           INSERT INTO sale_payments (
             company_id, sale_id, payment_date, payment_mode, bank_sub_type,
@@ -1061,10 +1114,29 @@ module.exports = async function handler(req, res) {
     else if (action === "add-payment") {
       const {
         sale_id, payment_date, payment_mode, bank_sub_type, transaction_ref,
-        cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, amount, notes
+        cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, amount, notes,
+        split_payments
       } = req.body;
 
-      if (!sale_id || !amount || parseFloat(amount) <= 0) {
+      const splitList = (Array.isArray(split_payments) ? split_payments : [])
+        .map(p => ({
+          payment_mode: String(p.payment_mode || 'cash').toLowerCase().trim(),
+          amount: Math.round(parseFloat(p.amount || 0) * 100) / 100,
+          bank_sub_type: p.bank_sub_type ? String(p.bank_sub_type).trim() : null,
+          transaction_ref: p.transaction_ref ? String(p.transaction_ref).trim() : (p.utr_number ? String(p.utr_number).trim() : null),
+          cheque_dd_no: p.cheque_dd_no ? String(p.cheque_dd_no).trim() : null,
+          cheque_dd_date: p.cheque_dd_date || null,
+          receiving_bank: p.receiving_bank ? String(p.receiving_bank).trim() : null,
+          bank_account_id: p.bank_account_id ? parseInt(p.bank_account_id) : null,
+          notes: p.notes ? String(p.notes).trim() : null
+        }))
+        .filter(p => p.amount > 0);
+
+      const payAmount = splitList.length > 0
+        ? splitList.reduce((s, p) => s + p.amount, 0)
+        : parseFloat(amount || 0);
+
+      if (!sale_id || payAmount <= 0) {
         return res.status(400).json({ error: "Sale ID and valid payment amount required" });
       }
 
@@ -1072,24 +1144,44 @@ module.exports = async function handler(req, res) {
       if (saleArr.length === 0) return res.status(404).json({ error: "Sale not found" });
 
       const sale = saleArr[0];
-      const payAmount = parseFloat(amount);
 
-      const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-
-      // Record payment in sale_payments
-      const newPay = await sql`
-        INSERT INTO sale_payments (
-          company_id, sale_id, payment_date, payment_mode, bank_sub_type,
-          transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-          amount, cashier_id, notes, receipt_number
-        ) VALUES (
-          ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${payment_mode || 'cash'},
-          ${bank_sub_type || null}, ${transaction_ref || null}, ${cheque_dd_no || null},
-          ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${payAmount}, ${user.id},
-          ${notes || 'Part/Full payment collected'}, ${newRcptNo}
-        )
-        RETURNING *
-      `;
+      // Record payment in sale_payments (supports single or multi-mode split payments)
+      if (splitList.length > 0) {
+        for (let idx = 0; idx < splitList.length; idx++) {
+          const sp = splitList[idx];
+          const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
+          await sql`
+            INSERT INTO sale_payments (
+              company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+              transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+              amount, cashier_id, notes, receipt_number
+            ) VALUES (
+              ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${sp.payment_mode || 'cash'},
+              ${sp.bank_sub_type || null}, ${sp.transaction_ref || null}, ${sp.cheque_dd_no || null},
+              ${sp.cheque_dd_date || null}, ${sp.receiving_bank || null}, ${sp.bank_account_id || null},
+              ${sp.amount}, ${user.id},
+              ${sp.notes || (sp.payment_mode.toUpperCase() + ' payment collected')},
+              ${newRcptNo}
+            )
+          `;
+        }
+      } else {
+        const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
+        await sql`
+          INSERT INTO sale_payments (
+            company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+            transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+            amount, cashier_id, notes, receipt_number
+          ) VALUES (
+            ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${payment_mode || 'cash'},
+            ${bank_sub_type || null}, ${transaction_ref || null}, ${cheque_dd_no || null},
+            ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null},
+            ${payAmount}, ${user.id},
+            ${notes || 'Part/Full payment collected'},
+            ${newRcptNo}
+          )
+        `;
+      }
 
       // Recalculate total payments strictly from sale_payments table
       const sumRes = await sql`

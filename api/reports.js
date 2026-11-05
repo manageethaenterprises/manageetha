@@ -24,6 +24,10 @@ module.exports = async function handler(req, res) {
   if (!user) return res.status(401).json({ error: "Unauthorized. Please login." });
 
   const sql = getSQL();
+  try {
+    await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+    await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+  } catch (e) {}
   const action = req.query.action || req.body?.action || "auditor-transactions";
 
   try {
@@ -472,6 +476,7 @@ module.exports = async function handler(req, res) {
       let totalSGST = 0;
       let totalIGST = 0;
       let totalTax = 0;
+      let totalCashCollected = 0;
 
       const moduleSummaries = {
         sales: { count: 0, total: 0 },
@@ -495,6 +500,11 @@ module.exports = async function handler(req, res) {
         totalIGST += parseFloat(r.igst || 0);
         totalTax += taxAmt;
 
+        const pMode = (r.payment_mode || '').toLowerCase();
+        if (r.flow_type === 'inward' && (pMode.includes('cash') || pMode === 'cash')) {
+          totalCashCollected += inAmt;
+        }
+
         if (moduleSummaries[r.module]) {
           moduleSummaries[r.module].count++;
           moduleSummaries[r.module].total += (inAmt > 0 ? inAmt : outAmt);
@@ -514,10 +524,226 @@ module.exports = async function handler(req, res) {
           totalSGST,
           totalIGST,
           totalTax,
+          totalCashCollected,
           totalTransactions: filteredRows.length
         },
         moduleSummaries,
         rows: filteredRows
+      });
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 1B. CASH DENOMINATIONS REGISTER (Day-to-day & Selected Date Range)
+    // ═════════════════════════════════════════════════════════════════════════
+    else if (action === "cash-denominations") {
+      let paymentsRows;
+      if (isAll) {
+        paymentsRows = await sql`
+          SELECT sp.id,
+                 sp.company_id,
+                 c.name as company_name,
+                 sp.sale_id,
+                 sp.payment_date,
+                 sp.payment_mode,
+                 sp.amount::numeric as amount,
+                 sp.receipt_number,
+                 sp.notes,
+                 sp.denominations as payment_denominations,
+                 s.denominations as sale_denominations,
+                 COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
+                 COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, 'Counter Customer') as party_name,
+                 u.username as cashier_name
+          FROM sale_payments sp
+          LEFT JOIN sales s ON sp.sale_id = s.id
+          LEFT JOIN invoices inv ON inv.sale_id = s.id
+          LEFT JOIN companies c ON sp.company_id = c.id
+          LEFT JOIN customers cust ON s.customer_id = cust.id
+          LEFT JOIN dealers v ON s.dealer_id = v.id
+          LEFT JOIN users u ON sp.cashier_id = u.id
+          WHERE sp.payment_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+            AND (LOWER(sp.payment_mode) LIKE '%cash%' OR sp.denominations IS NOT NULL OR s.denominations IS NOT NULL)
+          ORDER BY sp.payment_date DESC, sp.id DESC
+        `;
+      } else {
+        paymentsRows = await sql`
+          SELECT sp.id,
+                 sp.company_id,
+                 c.name as company_name,
+                 sp.sale_id,
+                 sp.payment_date,
+                 sp.payment_mode,
+                 sp.amount::numeric as amount,
+                 sp.receipt_number,
+                 sp.notes,
+                 sp.denominations as payment_denominations,
+                 s.denominations as sale_denominations,
+                 COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
+                 COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, 'Counter Customer') as party_name,
+                 u.username as cashier_name
+          FROM sale_payments sp
+          LEFT JOIN sales s ON sp.sale_id = s.id
+          LEFT JOIN invoices inv ON inv.sale_id = s.id
+          LEFT JOIN companies c ON sp.company_id = c.id
+          LEFT JOIN customers cust ON s.customer_id = cust.id
+          LEFT JOIN dealers v ON s.dealer_id = v.id
+          LEFT JOIN users u ON sp.cashier_id = u.id
+          WHERE (sp.company_id = ${targetCompId} OR sp.company_id IN (SELECT id FROM companies WHERE parent_company_id = ${targetCompId}))
+            AND sp.payment_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+            AND (LOWER(sp.payment_mode) LIKE '%cash%' OR sp.denominations IS NOT NULL OR s.denominations IS NOT NULL)
+          ORDER BY sp.payment_date DESC, sp.id DESC
+        `;
+      }
+
+      // Also fetch direct cash sales in date range if any was recorded without sale_payments row
+      const recordedSaleIds = new Set((paymentsRows || []).map(p => p.sale_id).filter(Boolean));
+      let standaloneSales;
+      if (isAll) {
+        standaloneSales = await sql`
+          SELECT s.id as sale_id,
+                 s.company_id,
+                 c.name as company_name,
+                 s.sale_date as payment_date,
+                 s.payment_mode,
+                 COALESCE(s.paid_amount, s.grand_total, 0)::numeric as amount,
+                 s.challan_number as receipt_number,
+                 'Direct Cash Sale' as notes,
+                 s.denominations as payment_denominations,
+                 s.denominations as sale_denominations,
+                 COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
+                 COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, 'Counter Customer') as party_name,
+                 u.username as cashier_name
+          FROM sales s
+          LEFT JOIN invoices inv ON inv.sale_id = s.id
+          LEFT JOIN companies c ON s.company_id = c.id
+          LEFT JOIN customers cust ON s.customer_id = cust.id
+          LEFT JOIN dealers v ON s.dealer_id = v.id
+          LEFT JOIN users u ON s.created_by = u.id
+          WHERE s.sale_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+            AND (LOWER(s.payment_mode) LIKE '%cash%' OR s.denominations IS NOT NULL)
+            AND COALESCE(s.paid_amount, s.grand_total, 0) > 0
+          ORDER BY s.sale_date DESC, s.id DESC
+        `;
+      } else {
+        standaloneSales = await sql`
+          SELECT s.id as sale_id,
+                 s.company_id,
+                 c.name as company_name,
+                 s.sale_date as payment_date,
+                 s.payment_mode,
+                 COALESCE(s.paid_amount, s.grand_total, 0)::numeric as amount,
+                 s.challan_number as receipt_number,
+                 'Direct Cash Sale' as notes,
+                 s.denominations as payment_denominations,
+                 s.denominations as sale_denominations,
+                 COALESCE(NULLIF(inv.invoice_number, ''), NULLIF(s.invoice_number, ''), NULLIF(s.challan_number, ''), 'SALE-' || s.id) as ref_no,
+                 COALESCE(NULLIF(s.customer_name, ''), cust.name, v.legal_name, 'Counter Customer') as party_name,
+                 u.username as cashier_name
+          FROM sales s
+          LEFT JOIN invoices inv ON inv.sale_id = s.id
+          LEFT JOIN companies c ON s.company_id = c.id
+          LEFT JOIN customers cust ON s.customer_id = cust.id
+          LEFT JOIN dealers v ON s.dealer_id = v.id
+          LEFT JOIN users u ON s.created_by = u.id
+          WHERE (s.company_id = ${targetCompId} OR s.company_id IN (SELECT id FROM companies WHERE parent_company_id = ${targetCompId}))
+            AND s.sale_date::date BETWEEN ${startDate}::date AND ${endDate}::date
+            AND (LOWER(s.payment_mode) LIKE '%cash%' OR s.denominations IS NOT NULL)
+            AND COALESCE(s.paid_amount, s.grand_total, 0) > 0
+          ORDER BY s.sale_date DESC, s.id DESC
+        `;
+      }
+
+      const mergedList = [...(paymentsRows || [])];
+      (standaloneSales || []).forEach(ss => {
+        if (!recordedSaleIds.has(ss.sale_id)) {
+          mergedList.push(ss);
+        }
+      });
+
+      mergedList.sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date));
+
+      const standardNotes = [2000, 500, 200, 100, 50, 20, 10];
+      const rangeTotals = {
+        totalCashCollected: 0,
+        totalNotesCount: 0,
+        notes: { 2000: 0, 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0 },
+        notesValue: { 2000: 0, 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0 },
+        calculatedNotesTotal: 0,
+        totalTransactions: mergedList.length
+      };
+
+      const dailyMap = {};
+
+      const processedTransactions = mergedList.map(tx => {
+        let denomObj = tx.payment_denominations || tx.sale_denominations || {};
+        if (typeof denomObj === 'string') {
+          try { denomObj = JSON.parse(denomObj); } catch(e) { denomObj = {}; }
+        }
+        denomObj = denomObj || {};
+
+        const cleanedDenom = {};
+        let txNotesCount = 0;
+        let txNotesValue = 0;
+
+        standardNotes.forEach(val => {
+          const count = parseInt(denomObj[val] || denomObj[String(val)], 10) || 0;
+          cleanedDenom[val] = count;
+          txNotesCount += count;
+          txNotesValue += (count * val);
+
+          rangeTotals.notes[val] += count;
+          rangeTotals.notesValue[val] += (count * val);
+        });
+
+        const txCashAmt = parseFloat(tx.amount || 0);
+        rangeTotals.totalCashCollected += txCashAmt;
+        rangeTotals.totalNotesCount += txNotesCount;
+        rangeTotals.calculatedNotesTotal += txNotesValue;
+
+        const dateStr = (tx.payment_date ? String(tx.payment_date).slice(0, 10) : new Date().toISOString().slice(0, 10));
+
+        if (!dailyMap[dateStr]) {
+          dailyMap[dateStr] = {
+            date: dateStr,
+            totalCashCollected: 0,
+            calculatedNotesTotal: 0,
+            totalNotesCount: 0,
+            transactionsCount: 0,
+            notes: { 2000: 0, 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0 },
+            notesValue: { 2000: 0, 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0 },
+            transactions: []
+          };
+        }
+
+        const dEntry = dailyMap[dateStr];
+        dEntry.totalCashCollected += txCashAmt;
+        dEntry.calculatedNotesTotal += txNotesValue;
+        dEntry.totalNotesCount += txNotesCount;
+        dEntry.transactionsCount += 1;
+
+        standardNotes.forEach(val => {
+          const c = cleanedDenom[val];
+          dEntry.notes[val] += c;
+          dEntry.notesValue[val] += (c * val);
+        });
+
+        const item = {
+          ...tx,
+          denominations: cleanedDenom,
+          notesCount: txNotesCount,
+          notesValue: txNotesValue
+        };
+        dEntry.transactions.push(item);
+        return item;
+      });
+
+      const dailyRegister = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      return res.status(200).json({
+        success: true,
+        period: { startDate, endDate },
+        totals: rangeTotals,
+        dailyRegister: dailyRegister,
+        transactions: processedTransactions
       });
     }
 

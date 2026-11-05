@@ -83,6 +83,9 @@ async function loadGSTReportSubTab() {
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-outline btn-sm" id="auditorCashDenomBtn" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;background:rgba(16,185,129,0.1);color:#047857;border:1.5px solid rgba(16,185,129,0.4);">
+            <span>💵</span> Cash Denominations Register
+          </button>
           <button class="btn btn-secondary btn-sm" id="auditorExportCsvBtn" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
             <span>📥</span> Export CSV
           </button>
@@ -347,7 +350,28 @@ async function loadGSTReportSubTab() {
           <span>${t.totalTransactions || 0} Total Records Tracked</span>
         </div>
       </div>
+
+      <div class="report-kpi-card green" id="auditorCashCollectedCard" style="background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(5,150,105,0.03));border:1.5px solid rgba(16,185,129,0.35);cursor:pointer;" title="Click to view Cash Denominations Register (Day-to-Day & Selected Range)">
+        <div class="report-kpi-header">
+          <span class="report-kpi-title" style="color:#059669;font-weight:700;">💵 Cash Collected</span>
+          <span class="report-kpi-icon" style="color:#059669;">🏦</span>
+        </div>
+        <div class="report-kpi-value" style="color:#059669;">${formatCurrency(t.totalCashCollected || 0)}</div>
+        <div class="report-kpi-sub" style="display:flex;justify-content:space-between;align-items:center;">
+          <span>Day-to-Day Register</span>
+          <span style="font-weight:700;color:#2563eb;text-decoration:underline;">View Notes ➔</span>
+        </div>
+      </div>
     `;
+
+    const cashCard = document.getElementById("auditorCashCollectedCard");
+    if (cashCard) {
+      cashCard.onclick = () => {
+        if (typeof window.openCashDenominationsModal === "function") {
+          window.openCashDenominationsModal(startInp.value, endInp.value, compSelect.value);
+        }
+      };
+    }
   }
 
   function renderModulePills(ms) {
@@ -470,6 +494,16 @@ async function loadGSTReportSubTab() {
           </td>
           <td style="font-size:12px;">
             <span class="badge" style="background:var(--bg-secondary);border:1px solid var(--border);">${esc(r.payment_mode || 'Cash')}</span>
+            ${(() => {
+              let d = r.denominations;
+              if (typeof d === 'string') { try { d = JSON.parse(d); } catch(e) { d = null; } }
+              const hasNotes = d && Object.values(d).some(v => parseInt(v, 10) > 0);
+              const count = hasNotes ? Object.values(d).reduce((s, v) => s + (parseInt(v, 10) || 0), 0) : 0;
+              if (hasNotes) {
+                return `<br><button type="button" class="btn btn-xs view-denom-row-btn" data-row-idx="${(currentPage - 1) * pageSize + idx}" style="margin-top:3px;font-size:10px;padding:1px 6px;background:#f0fdf4;color:#166534;border:1px solid #86efac;border-radius:4px;font-weight:700;cursor:pointer;" title="View exact notes breakdown"><i class="fas fa-coins me-1"></i>Notes (${count})</button>`;
+              }
+              return '';
+            })()}
           </td>
           <td>
             <span class="badge ${r.payment_status === 'paid' || r.payment_status === 'completed' || r.payment_status === 'approved' ? 'badge-success' : 'badge-warning'}">
@@ -481,6 +515,16 @@ async function loadGSTReportSubTab() {
     }).join("");
 
     renderPaginationControls(list.length, totalPages);
+
+    tbody.querySelectorAll(".view-denom-row-btn").forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.rowIdx, 10);
+        const item = list[idx] || rawTransactions[idx];
+        if (item && typeof window.openSingleTransactionDenomModal === "function") {
+          window.openSingleTransactionDenomModal(item);
+        }
+      };
+    });
   }
 
   function renderPaginationControls(totalItems, totalPages) {
@@ -511,6 +555,11 @@ async function loadGSTReportSubTab() {
 
   // Filter Listeners
   on("auditorFilterBtn", "click", fetchTransactions);
+  on("auditorCashDenomBtn", "click", () => {
+    if (typeof window.openCashDenominationsModal === "function") {
+      window.openCashDenominationsModal(startInp.value, endInp.value, compSelect.value);
+    }
+  });
   on("auditorModuleSelect", "change", () => {
     activeModuleChip = document.getElementById("auditorModuleSelect")?.value || "all";
     fetchTransactions();
@@ -1558,3 +1607,734 @@ async function loadSalesReportSubTab() {
   // Initial load
   fetchSalesAnalytics();
 }
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// 💵 CASH NOTES DENOMINATIONS & DAY-TO-DAY CASH REGISTER SYSTEM
+// ══════════════════════════════════════════════════════════════════════════
+
+window.openCashDenominationsModal = async function(initialStart = null, initialEnd = null, initialCompId = null) {
+  const existing = document.getElementById("cashDenominationsModalOverlay");
+  if (existing) existing.remove();
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const firstDayMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+
+  let curStart = initialStart || firstDayMonth;
+  let curEnd = initialEnd || todayStr;
+  let curCompId = initialCompId || getActiveCompId() || "all";
+
+  const overlay = document.createElement("div");
+  overlay.id = "cashDenominationsModalOverlay";
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.6);backdrop-filter:blur(4px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;";
+
+  const compList = (window.currentCompanies && window.currentCompanies.length > 0)
+    ? window.currentCompanies
+    : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="background:var(--bg-card, #ffffff);color:var(--text1, #0f172a);max-width:1050px;width:100%;max-height:92vh;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.2),0 10px 10px -5px rgba(0,0,0,0.1);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--border-color, #e2e8f0);">
+      
+      <!-- MODAL HEADER -->
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border-color, #e2e8f0);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg, #f0fdf4, #ffffff);">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:22px;">💵</span>
+            <h3 style="margin:0;font-size:17px;font-weight:700;color:#065f46;">Cash Notes Denominations & Day-to-Day Cash Register</h3>
+          </div>
+          <div style="font-size:12px;color:#047857;margin-top:2px;">
+            Physical currency notes tracking, cashier daybook, and consolidated date-range breakdown
+          </div>
+        </div>
+        <button type="button" class="btn btn-xs btn-outline" id="closeCashDenomModalBtn" style="font-size:16px;width:32px;height:32px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:6px;">&times;</button>
+      </div>
+
+      <!-- FILTER & ACTIONS TOOLBAR -->
+      <div style="padding:12px 20px;background:var(--bg-secondary, #f8fafc);border-bottom:1px solid var(--border-color, #e2e8f0);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;">
+        
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btn btn-xs btn-outline cdn-preset-btn" data-preset="today" style="font-weight:600;">Today</button>
+          <button type="button" class="btn btn-xs btn-outline cdn-preset-btn" data-preset="yesterday" style="font-weight:600;">Yesterday</button>
+          <button type="button" class="btn btn-xs btn-outline cdn-preset-btn" data-preset="week" style="font-weight:600;">This Week</button>
+          <button type="button" class="btn btn-xs btn-outline cdn-preset-btn" data-preset="month" style="font-weight:600;background:#dcfce7;color:#166534;border-color:#86efac;">This Month</button>
+          <button type="button" class="btn btn-xs btn-outline cdn-preset-btn" data-preset="fy" style="font-weight:600;">This FY</button>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <label style="font-size:11.5px;font-weight:600;color:var(--text3);margin:0;">From:</label>
+            <input type="date" id="cdnStartInp" value="${curStart}" class="form-input" style="height:32px;font-size:12px;padding:2px 8px;width:130px;">
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <label style="font-size:11.5px;font-weight:600;color:var(--text3);margin:0;">To:</label>
+            <input type="date" id="cdnEndInp" value="${curEnd}" class="form-input" style="height:32px;font-size:12px;padding:2px 8px;width:130px;">
+          </div>
+
+          <select id="cdnCompSelect" class="form-select" style="height:32px;font-size:12px;padding:2px 8px;max-width:180px;">
+            <option value="all" ${curCompId === 'all' ? 'selected' : ''}>🌐 All Companies</option>
+            ${compList.map(c => `<option value="${c.id}" ${String(c.id) === String(curCompId) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select>
+
+          <button type="button" class="btn btn-sm btn-primary" id="cdnApplyFilterBtn" style="height:32px;padding:4px 14px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">
+            <span>🔍</span> Filter
+          </button>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" class="btn btn-sm btn-secondary" id="cdnExportCsvBtn" style="height:32px;padding:4px 12px;font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+            <span>📥</span> Export CSV
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" id="cdnPrintSlipBtn" style="height:32px;padding:4px 14px;font-weight:700;background:#059669;color:#ffffff;border:none;display:inline-flex;align-items:center;gap:4px;">
+            <span>🖨️</span> Print Cash Register
+          </button>
+        </div>
+
+      </div>
+
+      <!-- MODAL BODY CONTAINER (Scrollable) -->
+      <div id="cdnModalBody" style="padding:20px;overflow-y:auto;flex:1;">
+        <div style="text-align:center;padding:40px;color:var(--text3);">
+          <div class="spinner" style="margin-bottom:10px;"></div>
+          Fetching cash notes denominations & day-to-day register...
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#closeCashDenomModalBtn").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  let currentDenomData = null;
+
+  async function loadData() {
+    const sDate = document.getElementById("cdnStartInp").value;
+    const eDate = document.getElementById("cdnEndInp").value;
+    const cId = document.getElementById("cdnCompSelect").value;
+    const bodyEl = document.getElementById("cdnModalBody");
+    if (!bodyEl) return;
+
+    bodyEl.innerHTML = `
+      <div style="text-align:center;padding:40px;color:var(--text3);">
+        <div class="spinner" style="margin-bottom:10px;"></div>
+        Fetching cash notes denominations & day-to-day register...
+      </div>
+    `;
+
+    try {
+      const res = await fetch(`${API_BASE}/reports?action=cash-denominations&company_id=${cId}&start_date=${sDate}&end_date=${eDate}`, {
+        headers: authHeaders()
+      });
+      const data = await res.json();
+      if (!data.success) {
+        bodyEl.innerHTML = `<div class="alert alert-danger" style="margin:20px;">${esc(data.error || "Failed to load denominations")}</div>`;
+        return;
+      }
+
+      currentDenomData = data;
+      renderDenominationsView(data, sDate, eDate);
+    } catch (err) {
+      bodyEl.innerHTML = `<div class="alert alert-danger" style="margin:20px;">Error loading denominations: ${esc(err.message)}</div>`;
+    }
+  }
+
+  function renderDenominationsView(data, sDate, eDate) {
+    const bodyEl = document.getElementById("cdnModalBody");
+    if (!bodyEl) return;
+
+    const t = data.totals || {};
+    const notes = t.notes || {};
+    const notesVal = t.notesValue || {};
+    const daily = data.dailyRegister || [];
+    const standardNotes = [2000, 500, 200, 100, 50, 20, 10];
+
+    const totalCollected = parseFloat(t.totalCashCollected || 0);
+    const calculatedNotes = parseFloat(t.calculatedNotesTotal || 0);
+    const totalPcs = parseInt(t.totalNotesCount, 10) || 0;
+    const totalTxns = parseInt(t.totalTransactions, 10) || 0;
+
+    // Check discrepancy
+    const hasDiscrepancy = Math.abs(totalCollected - calculatedNotes) > 0.01 && calculatedNotes > 0;
+
+    bodyEl.innerHTML = `
+      <!-- KPI CARDS ROW -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:14px;margin-bottom:20px;">
+        
+        <div style="background:linear-gradient(135deg, rgba(16,185,129,0.12), rgba(5,150,105,0.04));border:1.5px solid rgba(16,185,129,0.3);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#047857;letter-spacing:0.5px;">Gross Cash Collected</span>
+            <span style="font-size:18px;">💵</span>
+          </div>
+          <div style="font-size:22px;font-weight:800;color:#065f46;margin-top:4px;">${formatCurrency(totalCollected)}</div>
+          <div style="font-size:11.5px;color:#047857;margin-top:4px;">Across ${totalTxns} Cash Receipts / Sales</div>
+        </div>
+
+        <div style="background:linear-gradient(135deg, rgba(59,130,246,0.12), rgba(37,99,235,0.04));border:1.5px solid rgba(59,130,246,0.3);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#1e40af;letter-spacing:0.5px;">Total Currency Notes</span>
+            <span style="font-size:18px;">🔢</span>
+          </div>
+          <div style="font-size:22px;font-weight:800;color:#1d4ed8;margin-top:4px;">${totalPcs.toLocaleString('en-IN')} <span style="font-size:14px;font-weight:600;">Pieces</span></div>
+          <div style="font-size:11.5px;color:#1e40af;margin-top:4px;">Calculated Value: ${formatCurrency(calculatedNotes)}</div>
+        </div>
+
+        <div style="background:linear-gradient(135deg, rgba(168,85,247,0.12), rgba(126,34,206,0.04));border:1.5px solid rgba(168,85,247,0.3);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7e22ce;letter-spacing:0.5px;">Active Cash Days</span>
+            <span style="font-size:18px;">📅</span>
+          </div>
+          <div style="font-size:22px;font-weight:800;color:#6b21a8;margin-top:4px;">${daily.length} <span style="font-size:14px;font-weight:600;">Days</span></div>
+          <div style="font-size:11.5px;color:#7e22ce;margin-top:4px;">In selected period (${sDate} to ${eDate})</div>
+        </div>
+
+        <div style="background:linear-gradient(135deg, rgba(245,158,11,0.12), rgba(217,119,6,0.04));border:1.5px solid rgba(245,158,11,0.3);border-radius:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#b45309;letter-spacing:0.5px;">Average Daily Cash</span>
+            <span style="font-size:18px;">📊</span>
+          </div>
+          <div style="font-size:22px;font-weight:800;color:#92400e;margin-top:4px;">${formatCurrency(daily.length > 0 ? (totalCollected / daily.length) : 0)}</div>
+          <div style="font-size:11.5px;color:#b45309;margin-top:4px;">Per active cash collection day</div>
+        </div>
+
+      </div>
+
+      ${hasDiscrepancy ? `
+        <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:18px;display:flex;align-items:center;gap:10px;font-size:12.5px;color:#92400e;">
+          <span>⚠️</span>
+          <div>
+            <strong>Notice:</strong> Detailed physical note counts recorded total <strong>${formatCurrency(calculatedNotes)}</strong>, while gross cash amount entered was <strong>${formatCurrency(totalCollected)}</strong>. 
+            (Some earlier transactions may not have had individual note counts entered).
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- SECTION 1: CONSOLIDATED CURRENCY NOTES BREAKDOWN (RANGE SUMMARY) -->
+      <div style="background:var(--bg-card, #ffffff);border:1px solid var(--border-color, #e2e8f0);border-radius:10px;padding:16px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div>
+            <h4 style="margin:0;font-size:15px;font-weight:700;color:var(--text1);display:flex;align-items:center;gap:6px;">
+              <span>🧮</span> Consolidated Currency Notes Breakdown
+            </h4>
+            <span style="font-size:12px;color:var(--text3);">Total count and subtotal value for each Indian Rupee note denomination</span>
+          </div>
+          <span class="badge badge-success" style="font-size:12px;padding:4px 10px;">
+            Total: ${totalPcs.toLocaleString('en-IN')} Notes = ${formatCurrency(calculatedNotes || totalCollected)}
+          </span>
+        </div>
+
+        <!-- 7 Denominations Grid -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;">
+          ${standardNotes.map(n => {
+            const count = notes[n] || 0;
+            const amt = notesVal[n] || (count * n);
+            const pct = calculatedNotes > 0 ? Math.round((amt / calculatedNotes) * 100) : 0;
+            const isNoteActive = count > 0;
+            return `
+              <div style="background:${isNoteActive ? 'linear-gradient(135deg, #f0fdf4, #ffffff)' : 'var(--bg-secondary, #f8fafc)'};border:1.5px solid ${isNoteActive ? '#86efac' : 'var(--border-color, #e2e8f0)'};border-radius:8px;padding:10px;text-align:center;transition:transform 0.15s ease;">
+                <div style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:800;background:${isNoteActive ? '#166534' : '#64748b'};color:#ffffff;margin-bottom:6px;">
+                  ₹${n} Note
+                </div>
+                <div style="font-size:18px;font-weight:800;color:${isNoteActive ? '#15803d' : 'var(--text3)'};">
+                  ${count.toLocaleString('en-IN')} <span style="font-size:11px;font-weight:500;">pcs</span>
+                </div>
+                <div style="font-size:13px;font-weight:700;color:var(--text1);margin-top:2px;">
+                  ${formatCurrency(amt)}
+                </div>
+                <div style="background:#e2e8f0;border-radius:10px;height:4px;width:100%;margin-top:6px;overflow:hidden;">
+                  <div style="background:#16a34a;height:100%;width:${pct}%;"></div>
+                </div>
+                <div style="font-size:10px;color:var(--text3);margin-top:3px;">${pct}% of value</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- SECTION 2: DAY-TO-DAY CASH REGISTER -->
+      <div style="background:var(--bg-card, #ffffff);border:1px solid var(--border-color, #e2e8f0);border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h4 style="margin:0;font-size:15px;font-weight:700;color:var(--text1);display:flex;align-items:center;gap:6px;">
+              <span>📅</span> Day-to-Day Cash Collection & Denominations Register
+            </h4>
+            <span style="font-size:12px;color:var(--text3);">Daily cashier closing breakdown sorted chronologically</span>
+          </div>
+          <span style="font-size:12px;color:var(--text3);">${daily.length} active collection days found</span>
+        </div>
+
+        ${daily.length === 0 ? `
+          <div style="text-align:center;padding:36px;color:var(--text3);">
+            No cash collections recorded in this date range.
+          </div>
+        ` : `
+          <div style="overflow-x:auto;">
+            <table class="data-table" style="margin:0;font-size:12px;">
+              <thead>
+                <tr style="background:var(--bg-secondary);">
+                  <th style="min-width:110px;">Date</th>
+                  <th style="text-align:center;">Txns</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹2000</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹500</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹200</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹100</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹50</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹20</th>
+                  <th style="text-align:center;background:rgba(16,185,129,0.05);">₹10</th>
+                  <th style="text-align:center;">Total Notes</th>
+                  <th style="text-align:right;font-weight:700;color:#047857;">Day Total (₹)</th>
+                  <th style="text-align:center;width:90px;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${daily.map((d, dIdx) => {
+                  const dObj = new Date(d.date + 'T00:00:00');
+                  const weekday = dObj.toLocaleDateString('en-IN', { weekday: 'short' });
+                  const dateFormatted = dObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                  return `
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                      <td>
+                        <strong style="color:var(--text1);">${dateFormatted}</strong>
+                        <div style="font-size:10.5px;color:var(--text3);">${weekday}</div>
+                      </td>
+                      <td style="text-align:center;">
+                        <span class="badge badge-outline" style="font-weight:700;">${d.transactionsCount}</span>
+                      </td>
+                      <td style="text-align:center;font-weight:${d.notes[2000] > 0 ? '700' : 'normal'};color:${d.notes[2000] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[2000] || '—'}</td>
+                      <td style="text-align:center;font-weight:${d.notes[500] > 0 ? '700' : 'normal'};color:${d.notes[500] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[500] || '—'}</td>
+                      <td style="text-align:center;font-weight:${d.notes[2000] > 0 ? '700' : 'normal'};color:${d.notes[200] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[200] || '—'}</td>
+                      <td style="text-align:center;font-weight:${d.notes[100] > 0 ? '700' : 'normal'};color:${d.notes[100] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[100] || '—'}</td>
+                      <td style="text-align:center;font-weight:${d.notes[50] > 0 ? '700' : 'normal'};color:${d.notes[50] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[50] || '—'}</td>
+                      <td style="text-align:center;font-weight:${d.notes[20] > 0 ? '700' : 'normal'};color:${d.notes[20] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[20] || '—'}</td>
+                      <td style="text-align:center;font-weight:${d.notes[10] > 0 ? '700' : 'normal'};color:${d.notes[10] > 0 ? '#15803d' : 'var(--text3)'};">${d.notes[10] || '—'}</td>
+                      <td style="text-align:center;font-weight:600;">${d.totalNotesCount.toLocaleString('en-IN')} pcs</td>
+                      <td style="text-align:right;font-weight:800;color:#047857;font-size:13px;">
+                        ${formatCurrency(d.totalCashCollected)}
+                      </td>
+                      <td style="text-align:center;">
+                        <button type="button" class="btn btn-xs btn-outline toggle-day-details-btn" data-day-idx="${dIdx}" style="padding:2px 8px;font-size:11px;font-weight:600;">
+                          👁️ Bills (${d.transactions.length})
+                        </button>
+                      </td>
+                    </tr>
+                    <!-- Expandable Day Vouchers Row -->
+                    <tr id="dayDetailRow_${dIdx}" style="display:none;background:var(--bg-secondary);">
+                      <td colspan="12" style="padding:10px 14px;">
+                        <div style="font-size:11.5px;font-weight:700;color:var(--text2);margin-bottom:6px;">
+                          🧾 Individual Cash Bills & Receipts for ${dateFormatted}:
+                        </div>
+                        <table style="width:100%;font-size:11.5px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;border-collapse:collapse;">
+                          <thead>
+                            <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1;text-align:left;">
+                              <th style="padding:5px 8px;">Voucher / Receipt #</th>
+                              <th style="padding:5px 8px;">Party / Customer</th>
+                              <th style="padding:5px 8px;">Cashier</th>
+                              <th style="padding:5px 8px;">Denominations Breakdown</th>
+                              <th style="padding:5px 8px;text-align:right;">Cash Amount</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${d.transactions.map(t => {
+                              const noteParts = [];
+                              standardNotes.forEach(val => {
+                                if (t.denominations && t.denominations[val] > 0) {
+                                  noteParts.push(`${val}×${t.denominations[val]}`);
+                                }
+                              });
+                              const denomStr = noteParts.length > 0 ? noteParts.join(', ') : '<span style="color:var(--text3);">No note breakdown</span>';
+                              return `
+                                <tr style="border-bottom:1px solid #e2e8f0;">
+                                  <td style="padding:5px 8px;font-weight:700;">${esc(t.receipt_number || t.ref_no)}</td>
+                                  <td style="padding:5px 8px;">${esc(t.party_name)}</td>
+                                  <td style="padding:5px 8px;color:var(--text3);">${esc(t.cashier_name || 'System')}</td>
+                                  <td style="padding:5px 8px;font-family:monospace;font-size:11px;color:#15803d;">${denomStr}</td>
+                                  <td style="padding:5px 8px;text-align:right;font-weight:700;">${formatCurrency(t.amount)}</td>
+                                </tr>
+                              `;
+                            }).join('')}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    `;
+
+    // Attach toggle accordion listeners
+    bodyEl.querySelectorAll(".toggle-day-details-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const dIdx = btn.dataset.dayIdx;
+        const row = document.getElementById("dayDetailRow_" + dIdx);
+        if (!row) return;
+        if (row.style.display === "none") {
+          row.style.display = "table-row";
+          btn.textContent = "✕ Close";
+        } else {
+          row.style.display = "none";
+          const count = daily[dIdx]?.transactions?.length || 0;
+          btn.textContent = "👁️ Bills (" + count + ")";
+        }
+      });
+    });
+  }
+
+  // Presets handling
+  overlay.querySelectorAll(".cdn-preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      overlay.querySelectorAll(".cdn-preset-btn").forEach(b => {
+        b.style.background = "";
+        b.style.color = "";
+        b.style.borderColor = "";
+      });
+      btn.style.background = "#dcfce7";
+      btn.style.color = "#166534";
+      btn.style.borderColor = "#86efac";
+
+      const preset = btn.dataset.preset;
+      const n = new Date();
+      let s = todayStr, e = todayStr;
+
+      if (preset === "today") {
+        s = todayStr; e = todayStr;
+      } else if (preset === "yesterday") {
+        const y = new Date(n);
+        y.setDate(y.getDate() - 1);
+        s = y.toISOString().slice(0, 10);
+        e = s;
+      } else if (preset === "week") {
+        const day = n.getDay();
+        const diff = n.getDate() - day + (day === 0 ? -6 : 1);
+        const mon = new Date(n.setDate(diff));
+        s = mon.toISOString().slice(0, 10);
+        e = todayStr;
+      } else if (preset === "month") {
+        s = firstDayMonth;
+        e = todayStr;
+      } else if (preset === "fy") {
+        const curM = n.getMonth();
+        const curY = n.getFullYear();
+        const fyStart = (curM >= 3) ? curY : (curY - 1);
+        s = `${fyStart}-04-01`;
+        e = todayStr;
+      }
+
+      document.getElementById("cdnStartInp").value = s;
+      document.getElementById("cdnEndInp").value = e;
+      loadData();
+    });
+  });
+
+  overlay.querySelector("#cdnApplyFilterBtn").addEventListener("click", loadData);
+
+  // Export CSV
+  overlay.querySelector("#cdnExportCsvBtn").addEventListener("click", () => {
+    if (!currentDenomData || !currentDenomData.dailyRegister || currentDenomData.dailyRegister.length === 0) {
+      return showToast("No denomination data available to export", "warning");
+    }
+
+    const headers = ["Date", "Transactions Count", "Rs 2000", "Rs 500", "Rs 200", "Rs 100", "Rs 50", "Rs 20", "Rs 10", "Total Notes (Pcs)", "Total Cash Collected (Rs)"];
+    let csv = headers.map(h => `"${h}"`).join(",") + "\n";
+
+    currentDenomData.dailyRegister.forEach(d => {
+      const row = [
+        d.date,
+        d.transactionsCount,
+        d.notes[2000] || 0,
+        d.notes[500] || 0,
+        d.notes[200] || 0,
+        d.notes[100] || 0,
+        d.notes[50] || 0,
+        d.notes[20] || 0,
+        d.notes[10] || 0,
+        d.totalNotesCount || 0,
+        d.totalCashCollected || 0
+      ];
+      csv += row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",") + "\n";
+    });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Cash_Denominations_Register_${document.getElementById("cdnStartInp").value}_to_${document.getElementById("cdnEndInp").value}.csv`;
+    link.click();
+    showToast("Cash denominations exported to CSV!", "success");
+  });
+
+  // Print Cash Register (Bank Deposit Slip / Daybook)
+  overlay.querySelector("#cdnPrintSlipBtn").addEventListener("click", () => {
+    if (!currentDenomData) return showToast("No data to print", "warning");
+    const sDate = document.getElementById("cdnStartInp").value;
+    const eDate = document.getElementById("cdnEndInp").value;
+    const cSel = document.getElementById("cdnCompSelect");
+    const cName = cSel.options[cSel.selectedIndex]?.text || "All Companies";
+    window.printCashDenominationsReport(currentDenomData, sDate, eDate, cName);
+  });
+
+  // Load initially
+  loadData();
+};
+
+// ── Single Transaction Denominations Popup ──
+window.openSingleTransactionDenomModal = function(tx) {
+  const existing = document.getElementById("singleTxDenomModalOverlay");
+  if (existing) existing.remove();
+
+  let denom = tx.denominations;
+  if (typeof denom === 'string') {
+    try { denom = JSON.parse(denom); } catch(e) { denom = {}; }
+  }
+  denom = denom || {};
+
+  const standardNotes = [2000, 500, 200, 100, 50, 20, 10];
+  let totalPcs = 0;
+  let totalVal = 0;
+
+  const rows = standardNotes.map(n => {
+    const c = parseInt(denom[n] || denom[String(n)], 10) || 0;
+    const v = c * n;
+    totalPcs += c;
+    totalVal += v;
+    return { note: n, count: c, val: v };
+  });
+
+  const overlay = document.createElement("div");
+  overlay.id = "singleTxDenomModalOverlay";
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.6);backdrop-filter:blur(3px);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;";
+
+  overlay.innerHTML = `
+    <div class="modal-box" style="background:#ffffff;color:#0f172a;max-width:440px;width:100%;border-radius:10px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.25);overflow:hidden;border:1px solid #cbd5e1;">
+      <div style="padding:14px 18px;border-bottom:1px solid #e2e8f0;background:linear-gradient(135deg, #f0fdf4, #ffffff);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-weight:700;font-size:15px;color:#065f46;display:flex;align-items:center;gap:6px;">
+          <span>💵</span> Cash Notes Breakdown
+        </div>
+        <button type="button" class="btn btn-xs btn-outline" id="closeSingleDenomBtn" style="font-size:16px;width:28px;height:28px;padding:0;">&times;</button>
+      </div>
+
+      <div style="padding:16px;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:12px;line-height:1.6;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#64748b;">Ref / Voucher:</span>
+            <strong>${esc(tx.ref_no || tx.receipt_number || 'TX-' + tx.raw_id)}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#64748b;">Date:</span>
+            <span>${esc(tx.transaction_date || tx.payment_date || '')}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:#64748b;">Party Name:</span>
+            <strong style="color:#0f172a;">${esc(tx.party_name || 'Counter Customer')}</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;border-top:1px dashed #cbd5e1;padding-top:4px;margin-top:4px;">
+            <span style="color:#047857;font-weight:600;">Recorded Amount:</span>
+            <strong style="color:#047857;font-size:13px;">${formatCurrency(tx.amount_in || tx.amount || 0)}</strong>
+          </div>
+        </div>
+
+        <table style="width:100%;font-size:12px;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+          <thead>
+            <tr style="background:#f1f5f9;border-bottom:1px solid #cbd5e1;text-align:left;">
+              <th style="padding:6px 10px;">Denomination</th>
+              <th style="padding:6px 10px;text-align:center;">Count (Pcs)</th>
+              <th style="padding:6px 10px;text-align:right;">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => `
+              <tr style="border-bottom:1px solid #f1f5f9;background:${r.count > 0 ? '#f0fdf4' : '#ffffff'};">
+                <td style="padding:6px 10px;font-weight:600;">₹${r.note}</td>
+                <td style="padding:6px 10px;text-align:center;font-weight:${r.count > 0 ? '700' : 'normal'};color:${r.count > 0 ? '#15803d' : '#94a3b8'};">
+                  ${r.count > 0 ? r.count : '—'}
+                </td>
+                <td style="padding:6px 10px;text-align:right;font-weight:${r.count > 0 ? '700' : 'normal'};color:${r.count > 0 ? '#0f172a' : '#94a3b8'};">
+                  ${r.count > 0 ? formatCurrency(r.val) : '—'}
+                </td>
+              </tr>
+            `).join('')}
+            <tr style="background:#ecfdf5;border-top:2px solid #86efac;font-weight:800;">
+              <td style="padding:8px 10px;color:#065f46;">TOTAL</td>
+              <td style="padding:8px 10px;text-align:center;color:#065f46;">${totalPcs} pcs</td>
+              <td style="padding:8px 10px;text-align:right;color:#065f46;">${formatCurrency(totalVal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="padding:10px 18px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;">
+        <button type="button" class="btn btn-sm btn-secondary" id="closeSingleDenomBottomBtn">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("#closeSingleDenomBtn").onclick = () => overlay.remove();
+  overlay.querySelector("#closeSingleDenomBottomBtn").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+};
+
+// ── Print Cash Register & Bank Deposit Slip ──
+window.printCashDenominationsReport = function(data, sDate, eDate, compName = "All Companies") {
+  const printWin = window.open("", "_blank", "width=900,height=960");
+  if (!printWin) return alert("Please allow popups to print cash register.");
+
+  const t = data.totals || {};
+  const notes = t.notes || {};
+  const notesVal = t.notesValue || {};
+  const daily = data.dailyRegister || [];
+  const standardNotes = [2000, 500, 200, 100, 50, 20, 10];
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Cash Register & Denominations (${sDate} to ${eDate})</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; padding: 24px; color: #000000; background: #fff; font-size: 12px; }
+    .header-box { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 16px; }
+    .comp-name { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+    .doc-title { font-size: 14px; font-weight: 700; margin-top: 4px; text-transform: uppercase; color: #1e3a8a; }
+    .doc-period { font-size: 12px; color: #475569; margin-top: 3px; }
+    .kpi-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 18px; border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; }
+    .kpi-item { text-align: center; flex: 1; }
+    .kpi-title { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; }
+    .kpi-val { font-size: 16px; font-weight: 800; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11.5px; }
+    th, td { border: 1px solid #94a3b8; padding: 6px 8px; text-align: left; }
+    th { background: #f1f5f9; font-weight: 700; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .bold { font-weight: 700; }
+    .sign-section { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; }
+    .sign-box { border-top: 1px dashed #000; width: 200px; text-align: center; padding-top: 6px; font-size: 11px; font-weight: 600; }
+    @media print {
+      body { padding: 10mm; }
+      @page { size: A4 portrait; margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header-box">
+    <div class="comp-name">${esc(compName)}</div>
+    <div class="doc-title">DAILY CASH REGISTER & CURRENCY DENOMINATIONS STATEMENT</div>
+    <div class="doc-period">Audit Period: ${sDate} to ${eDate} | Generated on ${new Date().toLocaleString('en-IN')}</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-item">
+      <div class="kpi-title">Gross Cash Collected</div>
+      <div class="kpi-val">₹${parseFloat(t.totalCashCollected || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-title">Total Currency Notes</div>
+      <div class="kpi-val">${parseInt(t.totalNotesCount || 0, 10).toLocaleString('en-IN')} Pcs</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-title">Calculated Notes Value</div>
+      <div class="kpi-val">₹${parseFloat(t.calculatedNotesTotal || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
+    </div>
+    <div class="kpi-item">
+      <div class="kpi-title">Collection Days</div>
+      <div class="kpi-val">${daily.length} Days (${t.totalTransactions || 0} Bills)</div>
+    </div>
+  </div>
+
+  <h4 style="margin-bottom:8px;font-size:12px;text-transform:uppercase;">1. Consolidated Currency Notes Breakdown (Bank Deposit Format)</h4>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:25%;">Denomination</th>
+        <th style="width:25%;" class="text-center">Count / Pieces</th>
+        <th style="width:25%;" class="text-right">Subtotal Value (₹)</th>
+        <th style="width:25%;" class="text-right">% of Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${standardNotes.map(n => {
+        const c = notes[n] || 0;
+        const v = notesVal[n] || (c * n);
+        const p = t.calculatedNotesTotal > 0 ? ((v / t.calculatedNotesTotal) * 100).toFixed(1) : '0.0';
+        return `
+          <tr>
+            <td class="bold">₹${n} Note</td>
+            <td class="text-center">${c > 0 ? c.toLocaleString('en-IN') : '—'}</td>
+            <td class="text-right bold">${v > 0 ? '₹' + v.toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+            <td class="text-right">${p}%</td>
+          </tr>
+        `;
+      }).join('')}
+      <tr style="background:#f8fafc;font-weight:800;">
+        <td>TOTALS</td>
+        <td class="text-center">${parseInt(t.totalNotesCount || 0, 10).toLocaleString('en-IN')} pcs</td>
+        <td class="text-right">₹${parseFloat(t.calculatedNotesTotal || t.totalCashCollected || 0).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+        <td class="text-right">100.0%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4 style="margin-bottom:8px;font-size:12px;text-transform:uppercase;">2. Day-to-Day Cash Register & Cashier Closings</h4>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th class="text-center">Txns</th>
+        <th class="text-center">2000</th>
+        <th class="text-center">500</th>
+        <th class="text-center">200</th>
+        <th class="text-center">100</th>
+        <th class="text-center">50</th>
+        <th class="text-center">20</th>
+        <th class="text-center">10</th>
+        <th class="text-center">Total Notes</th>
+        <th class="text-right">Day Cash Total (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${daily.map(d => `
+        <tr>
+          <td class="bold">${d.date}</td>
+          <td class="text-center">${d.transactionsCount}</td>
+          <td class="text-center">${d.notes[2000] || '—'}</td>
+          <td class="text-center">${d.notes[500] || '—'}</td>
+          <td class="text-center">${d.notes[200] || '—'}</td>
+          <td class="text-center">${d.notes[100] || '—'}</td>
+          <td class="text-center">${d.notes[50] || '—'}</td>
+          <td class="text-center">${d.notes[20] || '—'}</td>
+          <td class="text-center">${d.notes[10] || '—'}</td>
+          <td class="text-center">${d.totalNotesCount} pcs</td>
+          <td class="text-right bold">₹${parseFloat(d.totalCashCollected).toLocaleString('en-IN', {minimumFractionDigits:2})}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <div class="sign-section">
+    <div class="sign-box">Cashier / Collected By</div>
+    <div class="sign-box">Accounts Auditor</div>
+    <div class="sign-box">Authorized Store Manager</div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+  printWin.document.write(html);
+  printWin.document.close();
+};

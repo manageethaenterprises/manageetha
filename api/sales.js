@@ -38,6 +38,8 @@ module.exports = async function handler(req, res) {
   const sql = getSQL();
   try {
     await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(50);`;
+    await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+    await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
   } catch (e) {}
 
   const action = req.query.action || req.body?.action || "list";
@@ -817,7 +819,7 @@ module.exports = async function handler(req, res) {
           cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
           payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
           receiving_bank, bank_account_id, terms_conditions, financer_id, finance_amount, discount_amount, vip_perk_notes, created_by,
-          invoice_number, invoice_date, warranty_term, warranty_months
+          invoice_number, invoice_date, warranty_term, warranty_months, denominations
         ) VALUES (
           ${compId}, ${finalCustId}, ${customer_name || null},
           ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
@@ -830,7 +832,8 @@ module.exports = async function handler(req, res) {
           ${bank_sub_type || null}, ${effectiveUtr}, ${cheque_dd_no || null},
           ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${termsSnapshot},
           ${financer_id ? parseInt(financer_id) : null}, ${finance_amount ? parseFloat(finance_amount) : 0}, ${discVal}, ${vip_perk_notes || null}, ${user.id},
-          ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal}
+          ${isCounter ? invNo : null}, ${isCounter ? invDateVal : null}, ${warrantyTermVal}, ${warrantyMonthsVal},
+          ${denominations ? JSON.stringify(denominations) : '{}'}
         )
         RETURNING *
       `;
@@ -861,33 +864,37 @@ module.exports = async function handler(req, res) {
           const defaultNote = (pendingAmt > 0.01)
             ? `Initial Part Payment (${sp.payment_mode.toUpperCase()})`
             : `Initial Full POS Payment (${sp.payment_mode.toUpperCase()})`;
+          const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
           await sql`
             INSERT INTO sale_payments (
               company_id, sale_id, payment_date, payment_mode, bank_sub_type,
               transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-              amount, cashier_id, notes, receipt_number
+              amount, cashier_id, notes, receipt_number, denominations
             ) VALUES (
               ${compId}, ${newSale[0].id}, ${invDateVal}, ${sp.payment_mode || 'cash'},
               ${sp.bank_sub_type || null}, ${sp.transaction_ref || null}, ${sp.cheque_dd_no || null},
               ${sp.cheque_dd_date || null}, ${sp.receiving_bank || null}, ${sp.bank_account_id || null},
               ${sp.amount}, ${user.id},
               ${sp.notes || defaultNote},
-              ${rcptNo}
+              ${rcptNo},
+              ${spDenom ? JSON.stringify(spDenom) : '{}'}
             )
           `;
         }
       } else if (initialPaid > 0) {
+        const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
         await sql`
           INSERT INTO sale_payments (
             company_id, sale_id, payment_date, payment_mode, bank_sub_type,
             transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-            amount, cashier_id, notes, receipt_number
+            amount, cashier_id, notes, receipt_number, denominations
           ) VALUES (
             ${compId}, ${newSale[0].id}, ${invDateVal}, ${payment_mode || 'cash'},
             ${bank_sub_type || null}, ${utr_number || transaction_ref || null}, ${cheque_dd_no || null},
             ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null}, ${initialPaid}, ${user.id},
             ${payment_mode === 'credit' ? 'Initial Advance Payment' : (pendingAmt > 0.01 ? 'Initial Part Payment' : 'Initial Full POS Payment')},
-            ${initialRcptNo}
+            ${initialRcptNo},
+            ${singleDenom ? JSON.stringify(singleDenom) : '{}'}
           )
         `;
       }
@@ -1149,38 +1156,45 @@ module.exports = async function handler(req, res) {
       if (splitList.length > 0) {
         for (let idx = 0; idx < splitList.length; idx++) {
           const sp = splitList[idx];
+          const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
           const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
           await sql`
             INSERT INTO sale_payments (
               company_id, sale_id, payment_date, payment_mode, bank_sub_type,
               transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-              amount, cashier_id, notes, receipt_number
+              amount, cashier_id, notes, receipt_number, denominations
             ) VALUES (
               ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${sp.payment_mode || 'cash'},
               ${sp.bank_sub_type || null}, ${sp.transaction_ref || null}, ${sp.cheque_dd_no || null},
               ${sp.cheque_dd_date || null}, ${sp.receiving_bank || null}, ${sp.bank_account_id || null},
               ${sp.amount}, ${user.id},
               ${sp.notes || (sp.payment_mode.toUpperCase() + ' payment collected')},
-              ${newRcptNo}
+              ${newRcptNo},
+              ${spDenom ? JSON.stringify(spDenom) : '{}'}
             )
           `;
         }
       } else {
+        const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
         const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
         await sql`
           INSERT INTO sale_payments (
             company_id, sale_id, payment_date, payment_mode, bank_sub_type,
             transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-            amount, cashier_id, notes, receipt_number
+            amount, cashier_id, notes, receipt_number, denominations
           ) VALUES (
             ${sale.company_id}, ${sale.id}, ${payment_date || 'NOW()'}, ${payment_mode || 'cash'},
             ${bank_sub_type || null}, ${transaction_ref || null}, ${cheque_dd_no || null},
             ${cheque_dd_date || null}, ${receiving_bank || null}, ${bank_account_id ? parseInt(bank_account_id) : null},
             ${payAmount}, ${user.id},
             ${notes || 'Part/Full payment collected'},
-            ${newRcptNo}
+            ${newRcptNo},
+            ${singleDenom ? JSON.stringify(singleDenom) : '{}'}
           )
         `;
+        if (singleDenom) {
+          try { await sql`UPDATE sales SET denominations = ${JSON.stringify(singleDenom)} WHERE id = ${sale.id}`; } catch (e) {}
+        }
       }
 
       // Recalculate total payments strictly from sale_payments table

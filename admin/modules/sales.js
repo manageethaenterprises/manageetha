@@ -4109,6 +4109,26 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
         refNo = overlay.querySelector("#modalCreditNotes")?.value.trim();
       }
 
+      let modalDenoms = null;
+      if (pMode === "cash" || (modalSplitPayments && modalSplitPayments.some(p => p.payment_mode === 'cash'))) {
+        const d = {
+          2000: parseInt(overlay.querySelector("#modalNote2000")?.value, 10) || 0,
+          500:  parseInt(overlay.querySelector("#modalNote500")?.value, 10) || 0,
+          200:  parseInt(overlay.querySelector("#modalNote200")?.value, 10) || 0,
+          100:  parseInt(overlay.querySelector("#modalNote100")?.value, 10) || 0,
+          50:   parseInt(overlay.querySelector("#modalNote50")?.value, 10) || 0,
+          20:   parseInt(overlay.querySelector("#modalNote20")?.value, 10) || 0,
+          10:   parseInt(overlay.querySelector("#modalNote10")?.value, 10) || 0
+        };
+        if (Object.values(d).some(v => v > 0)) {
+          modalDenoms = d;
+        }
+      }
+      if (modalSplitPayments && modalDenoms) {
+        const cashRow = modalSplitPayments.find(p => p.payment_mode === 'cash');
+        if (cashRow) cashRow.denominations = modalDenoms;
+      }
+
       const payload = {
         sale_id: saleId,
         payment_date: overlay.querySelector("#modalPayDate").value,
@@ -4124,7 +4144,8 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
         receiving_bank: recBankText,
         bank_account_id: bankAccountId,
         notes: overlay.querySelector("#modalPayNotes")?.value.trim(),
-        split_payments: modalSplitPayments
+        split_payments: modalSplitPayments,
+        denominations: modalDenoms
       };
 
       try {
@@ -6752,6 +6773,23 @@ async function loadSalesPOSSubTab() {
       combinedLeadStr = leadPhoneStr;
     }
 
+    const posDenoms = {
+      2000: parseInt(document.getElementById("note2000")?.value, 10) || 0,
+      500:  parseInt(document.getElementById("note500")?.value, 10) || 0,
+      200:  parseInt(document.getElementById("note200")?.value, 10) || 0,
+      100:  parseInt(document.getElementById("note100")?.value, 10) || 0,
+      50:   parseInt(document.getElementById("note50")?.value, 10) || 0,
+      20:   parseInt(document.getElementById("note20")?.value, 10) || 0,
+      10:   parseInt(document.getElementById("note10")?.value, 10) || 0
+    };
+    const hasPosDenom = Object.values(posDenoms).some(v => v > 0);
+    const validPosDenoms = hasPosDenom ? posDenoms : null;
+
+    if (split_payments && validPosDenoms) {
+      const cashRow = split_payments.find(p => p.payment_mode === 'cash');
+      if (cashRow) cashRow.denominations = validPosDenoms;
+    }
+
     const payload = {
       company_id: targetCompId,
       party_type: party_type,
@@ -6789,6 +6827,7 @@ async function loadSalesPOSSubTab() {
       warranty_term: document.getElementById("posWarrantyTerm")?.value || "1_year",
       transporter_name: document.getElementById("posTransName").value.trim() || null,
       transporter_vehicle_no: document.getElementById("posVehicleNo").value.trim() || null,
+      denominations: validPosDenoms,
       items: finalCartItems
     };
 
@@ -6835,6 +6874,12 @@ async function loadSalesPOSSubTab() {
         activateSplitMode(false);
         splitRowsData = [];
         document.getElementById("posCheckoutForm").reset();
+        ['note2000', 'note500', 'note200', 'note100', 'note50', 'note20', 'note10'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        const notesSumTxt = document.getElementById("notesCalcSumText");
+        if (notesSumTxt) notesSumTxt.textContent = "Total: ₹0";
         paySubContainer.style.display = "none";
         schemeSubFields.style.display = "none";
         leadIncGrp.style.display = "none";

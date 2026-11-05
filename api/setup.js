@@ -714,9 +714,14 @@ module.exports = async function handler(req, res) {
         amount NUMERIC(15,2) NOT NULL,
         cashier_id INT REFERENCES users(id) ON DELETE SET NULL,
         notes TEXT,
+        receipt_number VARCHAR(50),
+        denominations JSONB DEFAULT '{}'::jsonb,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `;
+
+    await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+    await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
 
     await sql`
       CREATE TABLE IF NOT EXISTS company_payment_terms (

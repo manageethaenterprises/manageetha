@@ -8221,7 +8221,6 @@ function openBarcodePrintModal(products) {
 
   const isSingle = prods.length === 1;
   const pSingle = isSingle ? prods[0] : null;
-  let currentSelectedProduct = pSingle;
 
   // Calculate in-stock count helper
   const getProductStock = (p) => {
@@ -8239,30 +8238,31 @@ function openBarcodePrintModal(products) {
     return 'RACK: ' + r.toUpperCase();
   };
 
-  // Compute bulk print breakdown (quantities up to 35; > 35 excluded for separate printing)
-  const computeBulkPrintItems = (list, maxStockLimit = 40) => {
-    const included = [];
-    const excludedHighStock = [];
-    const excludedZeroStock = [];
+  // State map: { [prodId]: { selected: boolean, count: number, stock: number } }
+  const productStates = {};
+  availableProducts.forEach(p => {
+    const stk = getProductStock(p);
+    let isSelected = false;
+    let initialCount = stk > 0 ? (stk > 40 ? 40 : stk) : 1;
 
-    (list || []).forEach(p => {
-      const stk = getProductStock(p);
-      if (stk <= 0) {
-        excludedZeroStock.push({ product: p, stock: stk });
-      } else if (stk > maxStockLimit) {
-        excludedHighStock.push({ product: p, stock: stk });
-      } else {
-        included.push({ product: p, count: stk });
-      }
-    });
+    if (pSingle) {
+      isSelected = String(p.id) === String(pSingle.id);
+      if (isSelected && stk > 0) initialCount = stk;
+    } else {
+      // Bulk view: preselect products with in-stock 1 to 40
+      isSelected = (stk > 0 && stk <= 40);
+    }
 
-    const totalLabels = included.reduce((sum, item) => sum + item.count, 0);
-    return { included, excludedHighStock, excludedZeroStock, totalLabels };
-  };
+    productStates[p.id] = {
+      selected: isSelected,
+      count: initialCount,
+      stock: stk
+    };
+  });
 
-  const initialStock = pSingle ? getProductStock(pSingle) : 0;
-  const initialQty = pSingle ? (initialStock > 0 ? initialStock : 1) : 1;
-  const initialBulk = computeBulkPrintItems(availableProducts, 40);
+  let activePreviewProduct = pSingle || availableProducts.find(p => productStates[p.id] && productStates[p.id].selected) || availableProducts[0];
+  let currentSearchQuery = "";
+  let currentFilterTab = "all"; // 'all', 'selected', 'instock', 'highstock', 'outstock'
 
   const overlay = document.createElement("div");
   overlay.id = "barcodePrintModalOverlay";
@@ -8271,163 +8271,335 @@ function openBarcodePrintModal(products) {
   overlay.style.zIndex = "99999";
 
   overlay.innerHTML = `
-    <div class="modal-box" style="max-width:820px;width:95%;">
-      <div class="modal-header">
-        <h3 style="margin:0;font-size:16px;font-weight:700;">🏷️ Print Barcode Sticker Labels</h3>
-        <button class="modal-close" id="closeBarcodePrintModal">&times;</button>
+    <div class="modal-box" style="max-width:1150px;width:96vw;max-height:94vh;display:flex;flex-direction:column;overflow:hidden;border-radius:12px;box-shadow:0 20px 45px rgba(0,0,0,0.25);">
+      <!-- Header -->
+      <div class="modal-header" style="background:var(--bg-secondary);padding:14px 20px;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;">
+            <span>🏷️</span>
+            <span>Print Barcode Sticker Labels</span>
+            <span class="badge badge-info" style="font-size:11px;padding:3px 8px;font-weight:600;">Multi-Product Sheet Saver</span>
+          </h3>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px;">
+            Select multiple products with custom quantities to pack A4 sheets tightly and eliminate wasted sticker space.
+          </div>
+        </div>
+        <button class="modal-close" id="closeBarcodePrintModal" style="font-size:22px;border:none;background:transparent;cursor:pointer;color:var(--text3);">&times;</button>
       </div>
-      <div class="modal-body" style="padding:18px;">
-        <!-- Dynamic Header Notice Banner -->
-        <div id="bcInfoBanner" style="background:var(--bg-secondary);padding:12px 16px;border-radius:8px;margin-bottom:14px;border:1px solid var(--border-color);">
-          ${pSingle ? `
-            <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
-              Target Product: ${esc(pSingle.name)} (${esc(pSingle.sku || pSingle.display_sku || 'SKU-' + pSingle.id)})
-            </div>
-            <div style="font-size:12px;color:var(--text3);">
-              In Stock: <strong style="color:var(--text1);">${initialStock} ${esc(pSingle.unit_of_measure || 'NOS')}</strong> &bull; Defaulted labels count to in-stock count. You can adjust it anytime.
-              ${pSingle.model ? ` &bull; Model: <strong>${esc(pSingle.model)}</strong>` : ''}
-              ${pSingle.rack_no ? ` &bull; Rack: <strong>${esc(pSingle.rack_no)}</strong>` : ''}
-            </div>
-          ` : `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <div style="font-size:13px;font-weight:700;color:var(--text1);">
-                📦 All Products Bulk Print (In-Stock Quantities)
+
+      <!-- Modal Body -->
+      <div class="modal-body" style="padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;flex:1;">
+        
+        <!-- Top Row: Settings & Live Preview -->
+        <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:stretch;">
+          
+          <!-- Left: Printer Format, Content Toggles & Sheet Utilization -->
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            
+            <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:10px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-weight:600;font-size:12.5px;margin-bottom:4px;">Printer / Format Type</label>
+                <select id="bcFormatSelect" class="form-select" style="font-weight:600;font-size:12.5px;padding:7px 10px;">
+                  <option value="a4_40" selected>📄 A4 Sticker Sheet (40 Labels - 4x10 Grid)</option>
+                  <option value="a4_24">📄 A4 Sticker Sheet (24 Labels - 3x8 Grid)</option>
+                  <option value="a4_sheet">📄 A4 Sheet (Standard 3x8 Grid / Normal Printer)</option>
+                  <option value="thermal">🖨️ Thermal Roll (50mm x 25mm / 2x1 inch)</option>
+                  <option value="thermal_large">🖨️ Large Thermal Roll (50mm x 38mm / 2x1.5 inch)</option>
+                </select>
               </div>
-              <span class="badge badge-success" style="font-size:11.5px;padding:3px 10px;font-weight:700;">
-                Total: ${initialBulk.totalLabels} Labels
+
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-weight:600;font-size:12.5px;margin-bottom:4px;" title="Offset for partially used sticker sheets">
+                  Skip Used Labels on 1st Page
+                </label>
+                <input type="number" id="bcSkipLabelsInput" class="form-input" min="0" max="39" value="0" style="font-weight:700;font-size:12.5px;padding:7px 10px;" placeholder="0 (start at top-left)">
+              </div>
+            </div>
+
+            <!-- Content Toggles -->
+            <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;padding:8px 12px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-color);align-items:center;">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;">
+                <input type="checkbox" id="bcShowComp" checked> Company
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;">
+                <input type="checkbox" id="bcShowModel" checked> 🏷️ Model
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;">
+                <input type="checkbox" id="bcShowPrice" checked> MRP / Price
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;">
+                <input type="checkbox" id="bcShowHsn" checked> HSN
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-weight:600;color:#dc2626;">
+                <input type="checkbox" id="bcShowRack" checked> 📍 Rack (Vertical Red)
+              </label>
+            </div>
+
+            <!-- Space-Saver & Packing Status Card -->
+            <div id="bcPackingCard" style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:6px;">
+              <!-- Dynamic packing metrics injected here -->
+            </div>
+
+          </div>
+
+          <!-- Right: Live Sticker Preview Box -->
+          <div style="background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:8px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:12px;font-weight:700;color:var(--text1);">Live Sticker Preview</span>
+              <span id="bcPreviewProdTag" style="font-size:11px;color:var(--text3);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+            </div>
+            <div id="bcLivePreview" style="background:#fff;color:#000;border:2px dashed #94a3b8;border-radius:6px;padding:10px;text-align:center;max-width:320px;margin:0 auto;width:100%;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
+            </div>
+            <div style="font-size:10.5px;color:var(--text3);text-align:center;margin-top:6px;">
+              Click the <strong style="color:var(--text1);">👁️</strong> icon on any product row below to preview its sticker here.
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Section B: Products Multi-Selection List -->
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+          
+          <!-- Section Header & Quick Batch Buttons -->
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <h4 style="margin:0;font-size:14px;font-weight:700;color:var(--text1);">📦 Products Selection List</h4>
+              <span id="bcSelectedSummaryBadge" class="badge badge-primary" style="font-size:11px;padding:3px 10px;font-weight:700;">
+                0 Selected
               </span>
             </div>
-            <div style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.4;">
-              Printing each product's <strong>full in-stock quantity</strong> (1 to 40 units per item).
+
+            <!-- Batch Action Buttons -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm btn-outline" id="bcSelectInStockBtn" style="font-size:11.5px;font-weight:600;padding:4px 10px;">
+                ⚡ Select In-Stock (1-40)
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="bcSelectVisibleBtn" style="font-size:11.5px;font-weight:600;padding:4px 10px;">
+                ✅ Select Filtered
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="bcDeselectAllBtn" style="font-size:11.5px;font-weight:600;padding:4px 10px;">
+                ❌ Deselect All
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" id="bcSetStockQtyBtn" style="font-size:11.5px;font-weight:600;padding:4px 10px;color:#059669;border-color:#10b981;" title="Reset copies to each item's in-stock count">
+                🔄 Qty = In-Stock
+              </button>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;">
-              <span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:4px;font-weight:600;">
-                ✅ ${initialBulk.included.length} Products Included (${initialBulk.totalLabels} labels)
-              </span>
-              ${initialBulk.excludedHighStock.length > 0 ? `
-                <span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:4px;font-weight:600;" title="${initialBulk.excludedHighStock.map(x => x.product.name + ' (' + x.stock + ')').join(', ')}">
-                  ⚠️ ${initialBulk.excludedHighStock.length} Products with Stock &gt; 40 Excluded (Print Separately)
-                </span>
-              ` : ''}
-              ${initialBulk.excludedZeroStock.length > 0 ? `
-                <span style="background:#f1f5f9;color:#64748b;padding:3px 8px;border-radius:4px;">
-                  ${initialBulk.excludedZeroStock.length} Out-of-Stock Excluded
-                </span>
-              ` : ''}
+          </div>
+
+          <!-- Search & Filter Chips Bar -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;background:var(--bg-secondary);padding:8px 12px;border-radius:8px;border:1px solid var(--border-color);">
+            <div style="flex:1;min-width:240px;position:relative;">
+              <input type="text" id="bcProductSearchInput" class="form-input" placeholder="🔍 Search by product name, SKU, model, rack..." style="font-size:12px;padding:6px 12px;width:100%;">
             </div>
-          `}
-        </div>
-
-        <!-- Products Dropdown Selection -->
-        <div class="form-group" style="margin-bottom:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <label class="form-label" style="font-weight:600;margin:0;">Select Product to Print</label>
-            <span id="bcStockNotice" style="font-size:12px;font-weight:700;">
-              ${pSingle ? (initialStock > 0 ? `<span class="badge badge-success" style="font-size:11px;padding:3px 8px;">📦 In Stock: ${initialStock} ${esc(pSingle.unit_of_measure || 'NOS')}</span>` : `<span class="badge badge-danger" style="font-size:11px;padding:3px 8px;">⚠️ Out of Stock (0)</span>`) : ''}
-            </span>
-          </div>
-          <div style="margin-bottom:6px;">
-            <input type="text" id="bcProductSearch" class="form-input" placeholder="🔍 Quick search product name, SKU, model, rack..." style="font-size:12px;padding:7px 12px;">
-          </div>
-          <select id="bcProductSelect" class="form-select" style="font-weight:600;width:100%;">
-            <option value="all" ${!pSingle ? 'selected' : ''}>
-              📦 All Products (${initialBulk.included.length} in-stock items ready &bull; ${initialBulk.totalLabels} labels; Stock 1-40)
-            </option>
-            ${availableProducts.map(p => {
-              const stk = getProductStock(p);
-              const sku = p.sku || p.display_sku || ('SKU-' + p.id);
-              const isSel = pSingle && String(pSingle.id) === String(p.id);
-              const modelStr = p.model ? ' (Model: ' + p.model + ')' : '';
-              const rackStr = p.rack_no ? ' • Rack: ' + p.rack_no : '';
-              let stockTag = 'In Stock: ' + stk + ' ' + (p.unit_of_measure || 'NOS');
-              if (stk > 40) {
-                stockTag += ' ⚠️ [Stock > 40: Select to print separately]';
-              } else if (stk <= 0) {
-                stockTag += ' (Out of Stock)';
-              }
-              return `<option value="${p.id}" ${isSel ? 'selected' : ''} data-stock="${stk}">
-                ${esc(p.name)}${esc(modelStr)} [${esc(sku)}] — ${esc(stockTag)}${esc(rackStr)}
-              </option>`;
-            }).join('')}
-          </select>
-        </div>
-
-        <div class="form-grid" style="grid-template-columns:1.2fr 1fr;gap:14px;margin-bottom:14px;">
-          <div class="form-group">
-            <label class="form-label" style="font-weight:600;">Printer / Format Type</label>
-            <select id="bcFormatSelect" class="form-select" style="font-weight:600;">
-              <option value="a4_sheet">📄 A4 Sheet (Grid - Multiple Labels per Page / Office Printer & PDF)</option>
-              <option value="a4_24">📄 A4 Sticker Sheet (24 Labels - 3x8 Grid)</option>
-              <option value="a4_40">📄 A4 Sticker Sheet (40 Labels - 4x10 Grid)</option>
-              <option value="thermal">🖨️ Thermal Roll (50mm x 25mm / 2x1 inch - 1 label per roll)</option>
-              <option value="thermal_large">🖨️ Large Thermal Roll (50mm x 38mm / 2x1.5 inch - 1 label per roll)</option>
-            </select>
+            
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="bcFilterChipsContainer">
+              <button type="button" class="btn btn-sm bc-filter-chip active" data-tab="all" style="font-size:11px;padding:3px 8px;border-radius:12px;">All (${availableProducts.length})</button>
+              <button type="button" class="btn btn-sm bc-filter-chip" data-tab="selected" style="font-size:11px;padding:3px 8px;border-radius:12px;">Selected (<span id="chipCountSelected">0</span>)</button>
+              <button type="button" class="btn btn-sm bc-filter-chip" data-tab="instock" style="font-size:11px;padding:3px 8px;border-radius:12px;">In-Stock 1-40</button>
+              <button type="button" class="btn btn-sm bc-filter-chip" data-tab="highstock" style="font-size:11px;padding:3px 8px;border-radius:12px;">Stock &gt; 40</button>
+              <button type="button" class="btn btn-sm bc-filter-chip" data-tab="outstock" style="font-size:11px;padding:3px 8px;border-radius:12px;">Out of Stock</button>
+            </div>
           </div>
 
-          <div class="form-group" id="bcQtyContainer">
-            ${!pSingle ? `
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <label id="bcQtyLabel" class="form-label" style="font-weight:600;margin:0;">Quantity Mode</label>
-                <span style="font-size:11px;color:var(--text3);">(Bulk Print)</span>
-              </div>
-              <select id="bcQtyModeSelect" class="form-select" style="font-weight:600;margin-bottom:4px;">
-                <option value="stock_qty" selected>📦 Each Product's In-Stock Qty (1 to 40)</option>
-                <option value="fixed_qty">🔢 Fixed Copies per Product</option>
-              </select>
-              <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="1" style="font-weight:600;display:none;" placeholder="Copies per product">
-            ` : `
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <label id="bcQtyLabel" class="form-label" style="font-weight:600;margin:0;">Labels Count (to print)</label>
-                <span style="font-size:11px;color:var(--text3);">(Adjustable)</span>
-              </div>
-              <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="${initialQty}" style="font-weight:600;">
-            `}
+          <!-- Products Table / List -->
+          <div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden;background:var(--bg-primary,#fff);max-height:360px;display:flex;flex-direction:column;">
+            <div style="overflow-y:auto;flex:1;">
+              <table class="table" style="width:100%;margin:0;font-size:12.5px;border-collapse:collapse;">
+                <thead style="position:sticky;top:0;background:var(--bg-secondary);z-index:2;border-bottom:1.5px solid var(--border-color);box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                  <tr>
+                    <th style="width:46px;text-align:center;padding:8px 6px;">
+                      <input type="checkbox" id="bcMasterCheckbox" style="cursor:pointer;width:16px;height:16px;accent-color:#2563eb;" title="Toggle visible products">
+                    </th>
+                    <th style="padding:8px 10px;text-align:left;">Product Details (Name, SKU, Model, Rack)</th>
+                    <th style="width:140px;text-align:center;padding:8px 10px;">In Stock</th>
+                    <th style="width:170px;text-align:center;padding:8px 10px;">Labels to Print</th>
+                    <th style="width:70px;text-align:center;padding:8px 6px;">Preview</th>
+                  </tr>
+                </thead>
+                <tbody id="bcProductTableBody">
+                  <!-- Product Rows injected dynamically -->
+                </tbody>
+              </table>
+            </div>
           </div>
+
         </div>
 
-        <!-- Customization Checkboxes Row -->
-        <div style="display:flex;gap:18px;margin-bottom:14px;flex-wrap:wrap;font-size:13px;padding:10px 14px;background:var(--bg-secondary);border-radius:6px;border:1px solid var(--border-color);align-items:center;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
-            <input type="checkbox" id="bcShowComp" checked> Show Company Name
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:#0f172a;">
-            <input type="checkbox" id="bcShowModel" checked> 🏷️ Show Model
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
-            <input type="checkbox" id="bcShowPrice" checked> Show MRP / Price
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
-            <input type="checkbox" id="bcShowHsn" checked> Show HSN Code
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:#2563eb;">
-            <input type="checkbox" id="bcShowRack" checked> 📍 Show Rack No (Vertical)
-          </label>
-        </div>
-
-        <!-- Live Preview Box -->
-        <div style="margin-top:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <label class="form-label" style="font-weight:600;margin:0;">Preview of Sticker</label>
-            <span style="font-size:11.5px;color:var(--text3);">Right strip displays Rack Number vertically</span>
-          </div>
-          <div id="bcLivePreview" style="background:#fff;color:#000;border:2px dashed #94a3b8;border-radius:6px;padding:14px;text-align:center;max-width:340px;margin:0 auto;box-shadow:0 2px 6px rgba(0,0,0,0.06);">
-          </div>
-        </div>
       </div>
-      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;background:var(--bg-secondary);border-top:1px solid var(--border-color);">
-        <button type="button" class="btn btn-secondary" id="cancelBarcodePrint">Cancel</button>
-        <button type="button" class="btn btn-primary" id="doPrintBarcodeBtn" style="font-weight:700;">🖨️ Open Print Preview</button>
+
+      <!-- Footer -->
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--bg-secondary);border-top:1px solid var(--border-color);flex-wrap:wrap;gap:10px;">
+        <div id="bcFooterSummary" style="font-size:12.5px;color:var(--text2);">
+          <!-- Footer live summary injected here -->
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <button type="button" class="btn btn-secondary" id="cancelBarcodePrint">Cancel</button>
+          <button type="button" class="btn btn-primary" id="doPrintBarcodeBtn" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;padding:8px 20px;">
+            <span>🖨️</span>
+            <span id="doPrintBarcodeBtnText">Open Print Preview</span>
+          </button>
+        </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(overlay);
 
+  // ── Calculation & Metrics Engine ──
+  const getPackingMetrics = (formatVal, skipCountVal = 0) => {
+    const selectedItems = availableProducts
+      .filter(p => productStates[p.id] && productStates[p.id].selected && productStates[p.id].count > 0)
+      .map(p => ({ product: p, count: productStates[p.id].count }));
+
+    const totalLabels = selectedItems.reduce((sum, item) => sum + item.count, 0);
+    const skipCount = Math.max(0, parseInt(skipCountVal, 10) || 0);
+
+    let perPage = 24;
+    let isRoll = false;
+    let formatLabel = "A4 24-Grid (3x8)";
+    if (formatVal === 'a4_40') {
+      perPage = 40;
+      formatLabel = "A4 40-Grid (4x10)";
+    } else if (formatVal === 'a4_24' || formatVal === 'a4_sheet') {
+      perPage = 24;
+      formatLabel = "A4 24-Grid (3x8)";
+    } else if (formatVal === 'thermal') {
+      perPage = 1;
+      isRoll = true;
+      formatLabel = "Thermal Roll (50x25mm)";
+    } else if (formatVal === 'thermal_large') {
+      perPage = 1;
+      isRoll = true;
+      formatLabel = "Thermal Roll (50x38mm)";
+    }
+
+    if (isRoll) {
+      return {
+        selectedItems,
+        totalLabels,
+        totalPages: totalLabels,
+        blankSlotsOnLastPage: 0,
+        perPage: 1,
+        isRoll: true,
+        percentFull: 100,
+        skipCount: 0,
+        formatLabel
+      };
+    }
+
+    const totalSlots = skipCount + totalLabels;
+    const totalPages = totalSlots > 0 ? Math.ceil(totalSlots / perPage) : 0;
+    const fullCapacity = totalPages * perPage;
+    const blankSlotsOnLastPage = totalPages > 0 ? (fullCapacity - totalSlots) : 0;
+    const usedOnLastPage = totalPages > 0 ? (perPage - blankSlotsOnLastPage) : 0;
+    const percentFull = totalPages > 0 ? Math.round((usedOnLastPage / perPage) * 100) : 0;
+
+    return {
+      selectedItems,
+      totalLabels,
+      totalPages,
+      blankSlotsOnLastPage,
+      perPage,
+      isRoll: false,
+      percentFull,
+      skipCount,
+      formatLabel
+    };
+  };
+
+  // ── Render Packing Card & Footer ──
+  const updatePackingCard = () => {
+    const format = document.getElementById("bcFormatSelect")?.value || 'a4_40';
+    const skipVal = parseInt(document.getElementById("bcSkipLabelsInput")?.value, 10) || 0;
+    const metrics = getPackingMetrics(format, skipVal);
+
+    const packingCard = document.getElementById("bcPackingCard");
+    const footerSummary = document.getElementById("bcFooterSummary");
+    const printBtnText = document.getElementById("doPrintBarcodeBtnText");
+    const printBtn = document.getElementById("doPrintBarcodeBtn");
+    const selBadge = document.getElementById("bcSelectedSummaryBadge");
+    const chipCount = document.getElementById("chipCountSelected");
+
+    if (chipCount) chipCount.textContent = metrics.selectedItems.length;
+    if (selBadge) selBadge.textContent = metrics.selectedItems.length + ' Products (' + metrics.totalLabels + ' Labels)';
+
+    if (printBtnText) printBtnText.textContent = 'Open Print Preview (' + metrics.totalLabels + ' Labels)';
+    if (printBtn) {
+      printBtn.disabled = (metrics.totalLabels === 0);
+      printBtn.style.opacity = (metrics.totalLabels === 0) ? '0.5' : '1';
+    }
+
+    if (footerSummary) {
+      footerSummary.innerHTML = 'Selected: <strong style="color:var(--text1);">' + metrics.selectedItems.length + ' products</strong> &bull; Total: <strong style="color:#2563eb;">' + metrics.totalLabels + ' stickers</strong>' + (!metrics.isRoll ? (' &bull; Est. <strong style="color:var(--text1);">' + metrics.totalPages + ' ' + (metrics.totalPages === 1 ? 'sheet' : 'sheets') + '</strong> (' + metrics.formatLabel + ')') : '');
+    }
+
+    if (packingCard) {
+      if (metrics.isRoll) {
+        packingCard.style.background = "#eff6ff";
+        packingCard.style.borderColor = "#93c5fd";
+        packingCard.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:700;font-size:12.5px;color:#1e40af;">🖨️ Continuous Roll Mode</span>
+            <span class="badge badge-primary" style="font-size:11px;padding:2px 8px;">${metrics.totalLabels} Labels Total</span>
+          </div>
+          <div style="font-size:11.5px;color:#1e3a8a;">
+            Stickers will print continuously one after another on the roll with zero blank space.
+          </div>
+        `;
+      } else {
+        if (metrics.totalLabels === 0) {
+          packingCard.style.background = "#f8fafc";
+          packingCard.style.borderColor = "#cbd5e1";
+          packingCard.innerHTML = `
+            <div style="font-size:12px;color:var(--text3);text-align:center;">
+              Select at least one product with quantity &gt; 0 to calculate sheet utilization.
+            </div>
+          `;
+        } else if (metrics.blankSlotsOnLastPage === 0) {
+          packingCard.style.background = "#f0fdf4";
+          packingCard.style.borderColor = "#86efac";
+          packingCard.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-weight:700;font-size:12.5px;color:#166534;">🎉 100% Sheet Utilization (Zero Blank Waste!)</span>
+              <span class="badge badge-success" style="font-size:11px;padding:2px 8px;">${metrics.totalPages} Full Sheet${metrics.totalPages > 1 ? 's' : ''}</span>
+            </div>
+            <div style="font-size:11.5px;color:#14532d;">
+              Exact fit! All ${metrics.totalLabels} sticker slots are filled with <strong>0 blank spaces</strong> remaining on the page.
+            </div>
+          `;
+        } else {
+          packingCard.style.background = "#fffbeb";
+          packingCard.style.borderColor = "#fcd34d";
+          packingCard.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <span style="font-weight:700;font-size:12.5px;color:#92400e;">📐 Sheet Space Saver: ${metrics.blankSlotsOnLastPage} Blank Stickers Left</span>
+              <span style="font-size:11px;font-weight:700;background:#fde68a;color:#78350f;padding:2px 8px;border-radius:4px;">
+                Page ${metrics.totalPages}: ${metrics.percentFull}% Full
+              </span>
+            </div>
+            <div style="font-size:11.5px;color:#78350f;line-height:1.35;">
+              Currently uses <strong>${metrics.totalPages} ${metrics.totalPages === 1 ? 'page' : 'pages'}</strong>.
+              The last sheet has <strong>${metrics.blankSlotsOnLastPage} blank sticker${metrics.blankSlotsOnLastPage > 1 ? 's' : ''}</strong> available.
+              <br><strong style="color:#b45309;">💡 Sheet-Saving Tip:</strong> Check ${metrics.blankSlotsOnLastPage} more label${metrics.blankSlotsOnLastPage > 1 ? 's' : ''} from the list below to use the full sheet completely!
+            </div>
+          `;
+        }
+      }
+    }
+  };
+
+  // ── Render Live Sticker Preview ──
   const updatePreview = (targetProd) => {
     const previewEl = document.getElementById("bcLivePreview");
+    const tagEl = document.getElementById("bcPreviewProdTag");
     if (!previewEl) return;
-    const sample = targetProd || currentSelectedProduct || availableProducts[0] || prods[0];
+
+    const sample = targetProd || activePreviewProduct || availableProducts[0] || prods[0];
     if (!sample) return;
+    activePreviewProduct = sample;
+
+    if (tagEl) tagEl.textContent = sample.name;
 
     const showComp = document.getElementById("bcShowComp")?.checked ?? true;
     const showModel = document.getElementById("bcShowModel")?.checked ?? true;
@@ -8475,172 +8647,338 @@ function openBarcodePrintModal(products) {
     `;
   };
 
-  const onProductSelectChange = () => {
-    const selVal = document.getElementById("bcProductSelect").value;
-    const qtyContainer = document.getElementById("bcQtyContainer");
-    const stockNotice = document.getElementById("bcStockNotice");
-    const infoBanner = document.getElementById("bcInfoBanner");
+  // ── Render Products Table Rows with Live Filters ──
+  const renderProductTable = () => {
+    const tbody = document.getElementById("bcProductTableBody");
+    if (!tbody) return;
 
-    if (selVal === "all") {
-      currentSelectedProduct = null;
-      stockNotice.innerHTML = "";
-      const bulk = computeBulkPrintItems(availableProducts, 40);
+    const q = (currentSearchQuery || '').toLowerCase().trim();
+    const visibleProducts = availableProducts.filter(p => {
+      const state = productStates[p.id];
+      const stk = state.stock;
 
-      infoBanner.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <div style="font-size:13px;font-weight:700;color:var(--text1);">
-            📦 All Products Bulk Print (In-Stock Quantities)
-          </div>
-          <span class="badge badge-success" style="font-size:11.5px;padding:3px 10px;font-weight:700;">
-            Total: ${bulk.totalLabels} Labels
-          </span>
-        </div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.4;">
-          Printing each product's <strong>full in-stock quantity</strong> (1 to 40 units per item).
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px;">
-          <span style="background:#dcfce7;color:#166534;padding:3px 8px;border-radius:4px;font-weight:600;">
-            ✅ ${bulk.included.length} Products Included (${bulk.totalLabels} labels)
-          </span>
-          ${bulk.excludedHighStock.length > 0 ? `
-            <span style="background:#fef3c7;color:#92400e;padding:3px 8px;border-radius:4px;font-weight:600;" title="${bulk.excludedHighStock.map(x => x.product.name + ' (' + x.stock + ')').join(', ')}">
-              ⚠️ ${bulk.excludedHighStock.length} Products with Stock &gt; 40 Excluded (Print Separately)
-            </span>
-          ` : ''}
-          ${bulk.excludedZeroStock.length > 0 ? `
-            <span style="background:#f1f5f9;color:#64748b;padding:3px 8px;border-radius:4px;">
-              ${bulk.excludedZeroStock.length} Out-of-Stock Excluded
-            </span>
-          ` : ''}
-        </div>
-      `;
+      // Filter Tab logic
+      if (currentFilterTab === 'selected' && !state.selected) return false;
+      if (currentFilterTab === 'instock' && (stk <= 0 || stk > 40)) return false;
+      if (currentFilterTab === 'highstock' && stk <= 40) return false;
+      if (currentFilterTab === 'outstock' && stk > 0) return false;
 
-      qtyContainer.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <label id="bcQtyLabel" class="form-label" style="font-weight:600;margin:0;">Quantity Mode</label>
-          <span style="font-size:11px;color:var(--text3);">(Bulk Print)</span>
-        </div>
-        <select id="bcQtyModeSelect" class="form-select" style="font-weight:600;margin-bottom:4px;">
-          <option value="stock_qty" selected>📦 Each Product's In-Stock Qty (1 to 40; Total: ${bulk.totalLabels} labels)</option>
-          <option value="fixed_qty">🔢 Fixed Copies per Product</option>
-        </select>
-        <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="1" style="font-weight:600;display:none;" placeholder="Copies per product">
-      `;
-
-      const modeSelect = document.getElementById("bcQtyModeSelect");
-      const qtyInput = document.getElementById("bcQtyInput");
-      modeSelect.addEventListener("change", () => {
-        if (modeSelect.value === "fixed_qty") {
-          qtyInput.style.display = "block";
-        } else {
-          qtyInput.style.display = "none";
-        }
-      });
-
-      updatePreview(availableProducts[0]);
-    } else {
-      const chosen = availableProducts.find(p => String(p.id) === String(selVal));
-      if (chosen) {
-        currentSelectedProduct = chosen;
-        const inStock = getProductStock(chosen);
-        const sku = chosen.sku || chosen.display_sku || ('SKU-' + chosen.id);
-        const unit = chosen.unit_of_measure || 'NOS';
-        const defaultQty = inStock > 0 ? inStock : 1;
-
-        if (inStock > 0) {
-          stockNotice.innerHTML = `<span class="badge badge-success" style="font-size:11px;padding:3px 8px;">📦 In Stock: ${inStock} ${esc(unit)}</span>`;
-        } else {
-          stockNotice.innerHTML = `<span class="badge badge-danger" style="font-size:11px;padding:3px 8px;">⚠️ Out of Stock (0 ${esc(unit)})</span>`;
-        }
-
-        infoBanner.innerHTML = `
-          <div style="font-size:13px;font-weight:600;color:var(--text1);margin-bottom:4px;">
-            Target Product: ${esc(chosen.name)} (${esc(sku)})
-          </div>
-          <div style="font-size:12px;color:var(--text3);">
-            In Stock: <strong style="color:var(--text1);">${inStock} ${esc(unit)}</strong> &bull; Defaulted to In-Stock count (${defaultQty}). You can adjust it anytime.
-            ${chosen.model ? ` &bull; Model: <strong>${esc(chosen.model)}</strong>` : ''}
-            ${chosen.rack_no ? ` &bull; Rack: <strong style="color:#2563eb;">${esc(chosen.rack_no)}</strong>` : ''}
-          </div>
-        `;
-
-        qtyContainer.innerHTML = `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <label id="bcQtyLabel" class="form-label" style="font-weight:600;margin:0;">Labels Count (to print)</label>
-            <span style="font-size:11px;color:var(--text3);">(Adjustable)</span>
-          </div>
-          <input type="number" id="bcQtyInput" class="form-input" min="1" max="10000" value="${defaultQty}" style="font-weight:600;">
-        `;
-
-        updatePreview(chosen);
+      // Search Query logic
+      if (q) {
+        const nameMatch = (p.name || '').toLowerCase().includes(q);
+        const skuMatch = (p.sku || p.display_sku || ('SKU-' + p.id)).toLowerCase().includes(q);
+        const modelMatch = (p.model || '').toLowerCase().includes(q);
+        const rackMatch = (p.rack_no || '').toLowerCase().includes(q);
+        if (!nameMatch && !skuMatch && !modelMatch && !rackMatch) return false;
       }
+
+      return true;
+    });
+
+    if (visibleProducts.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align:center;padding:28px 14px;color:var(--text3);font-size:13px;">
+            No products match the search and filter criteria.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = visibleProducts.map(p => {
+      const state = productStates[p.id];
+      const stk = state.stock;
+      const sku = p.sku || p.display_sku || ('SKU-' + p.id);
+      const isChecked = Boolean(state.selected);
+
+      let stockBadgeHtml = '';
+      if (stk <= 0) {
+        stockBadgeHtml = '<span class="badge" style="background:#fee2e2;color:#991b1b;font-size:11px;padding:3px 8px;font-weight:600;">Out of Stock (0)</span>';
+      } else if (stk > 40) {
+        stockBadgeHtml = '<span class="badge" style="background:#fef3c7;color:#92400e;font-size:11px;padding:3px 8px;font-weight:700;" title="Stock > 40: High quantity item">' + stk + ' ' + esc(p.unit_of_measure || 'NOS') + ' ⚠️</span>';
+      } else {
+        stockBadgeHtml = '<span class="badge" style="background:#dcfce7;color:#166534;font-size:11px;padding:3px 8px;font-weight:700;">' + stk + ' ' + esc(p.unit_of_measure || 'NOS') + '</span>';
+      }
+
+      const rowBg = isChecked ? 'background:rgba(37,99,235,0.06);border-left:3px solid #2563eb;' : 'border-left:3px solid transparent;';
+
+      return `
+        <tr class="bc-prod-row" data-id="${p.id}" style="cursor:pointer;transition:background 0.12s ease;${rowBg}">
+          <td style="width:46px;text-align:center;padding:8px 6px;">
+            <input type="checkbox" class="bc-prod-chk" data-id="${p.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer;width:16px;height:16px;accent-color:#2563eb;">
+          </td>
+          <td style="padding:8px 10px;">
+            <div style="font-weight:700;font-size:13px;color:var(--text1);line-height:1.3;">
+              ${esc(p.name)}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px;font-size:11px;">
+              <span style="color:#dc2626;font-weight:800;font-family:Consolas,monospace;letter-spacing:0.5px;">${esc(sku)}</span>
+              ${p.model ? `<span style="background:var(--bg-secondary);padding:1px 6px;border-radius:4px;font-weight:600;color:var(--text2);border:1px solid var(--border-color);">🏷️ ${esc(p.model)}</span>` : ''}
+              ${p.rack_no ? `<span style="color:#dc2626;font-weight:800;background:#fff5f5;padding:1px 6px;border-radius:4px;border:1px dashed #ef4444;">📍 ${esc(getRackText(p))}</span>` : ''}
+            </div>
+          </td>
+          <td style="width:140px;text-align:center;padding:8px 10px;">
+            ${stockBadgeHtml}
+          </td>
+          <td style="width:170px;text-align:center;padding:8px 10px;" onclick="event.stopPropagation()">
+            <div style="display:inline-flex;align-items:center;gap:3px;">
+              <button type="button" class="btn btn-sm btn-outline bc-qty-minus" data-id="${p.id}" style="padding:2px 7px;font-weight:bold;font-size:12px;">−</button>
+              <input type="number" class="form-input bc-qty-inp" data-id="${p.id}" min="1" max="10000" value="${state.count}" style="width:55px;text-align:center;font-weight:700;font-size:12px;padding:3px 4px;margin:0;">
+              <button type="button" class="btn btn-sm btn-outline bc-qty-plus" data-id="${p.id}" style="padding:2px 7px;font-weight:bold;font-size:12px;">+</button>
+              <button type="button" class="btn btn-sm btn-outline bc-qty-max" data-id="${p.id}" title="Set copies to current in-stock count" style="padding:2px 5px;font-size:10px;font-weight:700;color:#059669;border-color:#10b981;">Max</button>
+            </div>
+          </td>
+          <td style="width:70px;text-align:center;padding:8px 6px;" onclick="event.stopPropagation()">
+            <button type="button" class="btn btn-sm btn-outline bc-preview-btn" data-id="${p.id}" title="Preview this sticker" style="padding:3px 8px;font-size:12px;">
+              👁️
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Update master checkbox state
+    const masterChk = document.getElementById("bcMasterCheckbox");
+    if (masterChk) {
+      const allVisibleChecked = visibleProducts.length > 0 && visibleProducts.every(p => productStates[p.id].selected);
+      const someVisibleChecked = visibleProducts.some(p => productStates[p.id].selected);
+      masterChk.checked = allVisibleChecked;
+      masterChk.indeterminate = (!allVisibleChecked && someVisibleChecked);
     }
   };
 
-  overlay.querySelector("#bcProductSelect").addEventListener("change", onProductSelectChange);
+  // ── Event Handlers ──
 
-  // Wire up quantity mode toggle for initial 'all' state if applicable
-  const initialModeSelect = overlay.querySelector("#bcQtyModeSelect");
-  const initialQtyInput = overlay.querySelector("#bcQtyInput");
-  if (initialModeSelect && initialQtyInput) {
-    initialModeSelect.addEventListener("change", () => {
-      if (initialModeSelect.value === "fixed_qty") {
-        initialQtyInput.style.display = "block";
-      } else {
-        initialQtyInput.style.display = "none";
-      }
-    });
-  }
+  // Format and Skip input changes
+  overlay.querySelector("#bcFormatSelect")?.addEventListener("change", () => {
+    updatePackingCard();
+    updatePreview();
+  });
+  overlay.querySelector("#bcSkipLabelsInput")?.addEventListener("input", updatePackingCard);
 
-  overlay.querySelector("#bcProductSearch")?.addEventListener("input", (e) => {
-    const filterText = e.target.value.toLowerCase().trim();
-    const selectEl = document.getElementById("bcProductSelect");
-    if (!selectEl) return;
-
-    Array.from(selectEl.options).forEach(opt => {
-      if (opt.value === "all") {
-        opt.hidden = false;
-        return;
-      }
-      const text = opt.textContent.toLowerCase();
-      opt.hidden = !text.includes(filterText);
-    });
+  // Content toggles
+  overlay.querySelectorAll("#bcShowComp, #bcShowModel, #bcShowPrice, #bcShowHsn, #bcShowRack").forEach(chk => {
+    chk.addEventListener("change", () => updatePreview());
   });
 
-  overlay.querySelector("#closeBarcodePrintModal").addEventListener("click", () => overlay.remove());
-  overlay.querySelector("#cancelBarcodePrint").addEventListener("click", () => overlay.remove());
-  overlay.querySelectorAll("#bcShowComp, #bcShowModel, #bcShowPrice, #bcShowHsn, #bcShowRack").forEach(el => el.addEventListener("change", () => updatePreview()));
+  // Search input
+  overlay.querySelector("#bcProductSearchInput")?.addEventListener("input", (e) => {
+    currentSearchQuery = e.target.value;
+    renderProductTable();
+  });
 
-  overlay.querySelector("#doPrintBarcodeBtn").addEventListener("click", () => {
-    const format = document.getElementById("bcFormatSelect").value;
+  // Filter Chips click
+  overlay.querySelector("#bcFilterChipsContainer")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".bc-filter-chip");
+    if (!chip) return;
+    overlay.querySelectorAll(".bc-filter-chip").forEach(c => {
+      c.classList.remove("active", "btn-primary");
+      c.classList.add("btn-outline");
+    });
+    chip.classList.add("active", "btn-primary");
+    chip.classList.remove("btn-outline");
+    currentFilterTab = chip.getAttribute("data-tab") || 'all';
+    renderProductTable();
+  });
+
+  // Batch action buttons
+  overlay.querySelector("#bcSelectInStockBtn")?.addEventListener("click", () => {
+    availableProducts.forEach(p => {
+      const stk = productStates[p.id].stock;
+      if (stk > 0 && stk <= 40) {
+        productStates[p.id].selected = true;
+        productStates[p.id].count = stk;
+      } else {
+        productStates[p.id].selected = false;
+      }
+    });
+    renderProductTable();
+    updatePackingCard();
+  });
+
+  overlay.querySelector("#bcSelectVisibleBtn")?.addEventListener("click", () => {
+    const q = (currentSearchQuery || '').toLowerCase().trim();
+    availableProducts.forEach(p => {
+      const state = productStates[p.id];
+      const stk = state.stock;
+
+      let match = true;
+      if (currentFilterTab === 'selected' && !state.selected) match = false;
+      if (currentFilterTab === 'instock' && (stk <= 0 || stk > 40)) match = false;
+      if (currentFilterTab === 'highstock' && stk <= 40) match = false;
+      if (currentFilterTab === 'outstock' && stk > 0) match = false;
+
+      if (q && match) {
+        const nameMatch = (p.name || '').toLowerCase().includes(q);
+        const skuMatch = (p.sku || p.display_sku || ('SKU-' + p.id)).toLowerCase().includes(q);
+        const modelMatch = (p.model || '').toLowerCase().includes(q);
+        const rackMatch = (p.rack_no || '').toLowerCase().includes(q);
+        if (!nameMatch && !skuMatch && !modelMatch && !rackMatch) match = false;
+      }
+
+      if (match) {
+        state.selected = true;
+        if (state.count <= 0) state.count = stk > 0 ? (stk > 40 ? 40 : stk) : 1;
+      }
+    });
+    renderProductTable();
+    updatePackingCard();
+  });
+
+  overlay.querySelector("#bcDeselectAllBtn")?.addEventListener("click", () => {
+    availableProducts.forEach(p => {
+      productStates[p.id].selected = false;
+    });
+    renderProductTable();
+    updatePackingCard();
+  });
+
+  overlay.querySelector("#bcSetStockQtyBtn")?.addEventListener("click", () => {
+    availableProducts.forEach(p => {
+      const stk = productStates[p.id].stock;
+      if (productStates[p.id].selected && stk > 0) {
+        productStates[p.id].count = stk;
+      }
+    });
+    renderProductTable();
+    updatePackingCard();
+    showToast("Updated quantities to in-stock counts for selected items", "info");
+  });
+
+  // Master Checkbox
+  overlay.querySelector("#bcMasterCheckbox")?.addEventListener("change", (e) => {
+    const isChecked = e.target.checked;
+    const q = (currentSearchQuery || '').toLowerCase().trim();
+    availableProducts.forEach(p => {
+      const state = productStates[p.id];
+      const stk = state.stock;
+
+      let match = true;
+      if (currentFilterTab === 'selected' && !state.selected) match = false;
+      if (currentFilterTab === 'instock' && (stk <= 0 || stk > 40)) match = false;
+      if (currentFilterTab === 'highstock' && stk <= 40) match = false;
+      if (currentFilterTab === 'outstock' && stk > 0) match = false;
+
+      if (q && match) {
+        const nameMatch = (p.name || '').toLowerCase().includes(q);
+        const skuMatch = (p.sku || p.display_sku || ('SKU-' + p.id)).toLowerCase().includes(q);
+        const modelMatch = (p.model || '').toLowerCase().includes(q);
+        const rackMatch = (p.rack_no || '').toLowerCase().includes(q);
+        if (!nameMatch && !skuMatch && !modelMatch && !rackMatch) match = false;
+      }
+
+      if (match) {
+        state.selected = isChecked;
+        if (isChecked && state.count <= 0) {
+          state.count = stk > 0 ? (stk > 40 ? 40 : stk) : 1;
+        }
+      }
+    });
+    renderProductTable();
+    updatePackingCard();
+  });
+
+  // Table Body Delegation: Row Click, Checkbox, Stepper buttons, Preview
+  overlay.querySelector("#bcProductTableBody")?.addEventListener("click", (e) => {
+    const row = e.target.closest(".bc-prod-row");
+    if (!row) return;
+    const prodId = row.getAttribute("data-id");
+    const state = productStates[prodId];
+    if (!state) return;
+
+    // Preview button clicked
+    if (e.target.closest(".bc-preview-btn")) {
+      const prod = availableProducts.find(x => String(x.id) === String(prodId));
+      if (prod) updatePreview(prod);
+      return;
+    }
+
+    // Plus button clicked
+    if (e.target.closest(".bc-qty-plus")) {
+      state.count = Math.min(10000, (parseInt(state.count, 10) || 0) + 1);
+      state.selected = true;
+      renderProductTable();
+      updatePackingCard();
+      return;
+    }
+
+    // Minus button clicked
+    if (e.target.closest(".bc-qty-minus")) {
+      state.count = Math.max(1, (parseInt(state.count, 10) || 1) - 1);
+      renderProductTable();
+      updatePackingCard();
+      return;
+    }
+
+    // Max button clicked
+    if (e.target.closest(".bc-qty-max")) {
+      state.count = state.stock > 0 ? state.stock : 1;
+      state.selected = true;
+      renderProductTable();
+      updatePackingCard();
+      return;
+    }
+
+    // Checkbox directly clicked
+    if (e.target.classList.contains("bc-prod-chk")) {
+      state.selected = e.target.checked;
+      if (state.selected && state.count <= 0) {
+        state.count = state.stock > 0 ? (state.stock > 40 ? 40 : state.stock) : 1;
+      }
+      const prod = availableProducts.find(x => String(x.id) === String(prodId));
+      if (prod && state.selected) updatePreview(prod);
+      renderProductTable();
+      updatePackingCard();
+      return;
+    }
+
+    // Row body clicked (outside inputs) -> toggle selection
+    state.selected = !state.selected;
+    if (state.selected && state.count <= 0) {
+      state.count = state.stock > 0 ? (state.stock > 40 ? 40 : state.stock) : 1;
+    }
+    const prod = availableProducts.find(x => String(x.id) === String(prodId));
+    if (prod && state.selected) updatePreview(prod);
+    renderProductTable();
+    updatePackingCard();
+  });
+
+  // Table Body Delegation for direct input typing in quantity input
+  overlay.querySelector("#bcProductTableBody")?.addEventListener("change", (e) => {
+    if (e.target.classList.contains("bc-qty-inp")) {
+      const prodId = e.target.getAttribute("data-id");
+      const state = productStates[prodId];
+      if (state) {
+        const val = parseInt(e.target.value, 10);
+        state.count = isNaN(val) || val <= 0 ? 1 : Math.min(10000, val);
+        state.selected = true;
+        renderProductTable();
+        updatePackingCard();
+      }
+    }
+  });
+
+  // Modal Close & Cancel
+  overlay.querySelector("#closeBarcodePrintModal")?.addEventListener("click", () => overlay.remove());
+  overlay.querySelector("#cancelBarcodePrint")?.addEventListener("click", () => overlay.remove());
+
+  // Print Action Button
+  overlay.querySelector("#doPrintBarcodeBtn")?.addEventListener("click", () => {
+    const format = document.getElementById("bcFormatSelect")?.value || 'a4_40';
+    const skipCount = parseInt(document.getElementById("bcSkipLabelsInput")?.value, 10) || 0;
     const showComp = document.getElementById("bcShowComp")?.checked ?? true;
     const showModel = document.getElementById("bcShowModel")?.checked ?? true;
     const showPrice = document.getElementById("bcShowPrice")?.checked ?? true;
     const showHsn = document.getElementById("bcShowHsn")?.checked ?? true;
     const showRack = document.getElementById("bcShowRack")?.checked ?? true;
 
-    const selVal = document.getElementById("bcProductSelect").value;
-    let itemsToPrint = [];
-    let excludedList = [];
+    const itemsToPrint = availableProducts
+      .filter(p => productStates[p.id] && productStates[p.id].selected && productStates[p.id].count > 0)
+      .map(p => ({ product: p, count: productStates[p.id].count }));
 
-    if (selVal === "all") {
-      const mode = document.getElementById("bcQtyModeSelect")?.value || "stock_qty";
-      if (mode === "stock_qty") {
-        const bulk = computeBulkPrintItems(availableProducts, 40);
-        itemsToPrint = bulk.included;
-        excludedList = bulk.excludedHighStock;
-        if (!itemsToPrint.length) {
-          return showToast("No products found with in-stock quantity between 1 and 40. Please select an individual product to print.", "warning");
-        }
-      } else {
-        const fixedQty = parseInt(document.getElementById("bcQtyInput")?.value, 10) || 1;
-        itemsToPrint = availableProducts.map(p => ({ product: p, count: fixedQty }));
-      }
-    } else {
-      const chosen = availableProducts.find(x => String(x.id) === String(selVal));
-      if (!chosen) return showToast("Selected product not found", "error");
-      const singleQty = parseInt(document.getElementById("bcQtyInput")?.value, 10) || 1;
-      itemsToPrint = [{ product: chosen, count: singleQty }];
+    if (!itemsToPrint.length) {
+      return showToast("Please select at least one product with quantity > 0 to print.", "warning");
     }
 
     printBarcodeStickersWindow({
@@ -8651,14 +8989,18 @@ function openBarcodePrintModal(products) {
       showPrice,
       showHsn,
       showRack,
-      excludedHighStock: excludedList
+      skipLabels: skipCount
     });
   });
 
-  updatePreview(pSingle || availableProducts[0]);
+  // Initial Renders
+  renderProductTable();
+  updatePackingCard();
+  updatePreview(activePreviewProduct);
 }
 
-function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showModel = true, showPrice, showHsn, showRack = true, excludedHighStock = [] }) {
+
+function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showModel = true, showPrice, showHsn, showRack = true, excludedHighStock = [], skipLabels = 0 }) {
   const printWin = window.open("", "_blank", "width=940,height=960");
   if (!printWin) return alert("Please allow popups to print barcode stickers.");
 
@@ -8697,6 +9039,12 @@ function printBarcodeStickersWindow({ prods, items, format, qty, showComp, showM
   }
 
   let stickersHtml = '';
+  const skipCount = Math.max(0, parseInt(skipLabels, 10) || 0);
+  if (skipCount > 0 && !initialFormat.startsWith('thermal')) {
+    for (let s = 0; s < skipCount; s++) {
+      stickersHtml += '<div class="barcode-sticker empty-skip-slot" style="visibility:hidden !important;border:none !important;background:transparent !important;box-shadow:none !important;" aria-hidden="true"></div>';
+    }
+  }
 
   printItems.forEach(({ product: p, count: itemCount }) => {
     const count = parseInt(itemCount, 10) || 1;

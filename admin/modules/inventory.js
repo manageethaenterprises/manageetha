@@ -5638,7 +5638,7 @@ async function loadStockReceiptSubTab() {
 // ═══════════════════════════════════════════════════
 // INLINE QUICK ADD NEW PRODUCT MODAL
 // ═══════════════════════════════════════════════════
-function openQuickAddProductModal(onProductCreated) {
+function openQuickAddProductModal(onProductCreated, defaultSupplierId = null) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px);";
@@ -5659,6 +5659,16 @@ function openQuickAddProductModal(onProductCreated) {
             <div class="form-group" style="grid-column: span 2;margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Product Name *</label>
               <input type="text" id="qpName" class="form-input" required placeholder="e.g. Engine Oil 15W40 5L" style="padding:6px 10px;font-size:13px;">
+            </div>
+
+            <div class="form-group" style="grid-column: span 2;margin-bottom:0;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                <label class="form-label" style="font-size:12px;font-weight:600;margin:0;">Assigned Supplier / Dealer</label>
+                <button type="button" class="btn btn-xs btn-outline" id="qpQuickSupBtn" style="padding:1px 6px;font-size:11px;">+ New Supplier</button>
+              </div>
+              <select id="qpSupplierId" class="form-select" style="padding:6px 10px;font-size:13px;">
+                <option value="">-- Select Supplier (Optional) --</option>
+              </select>
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
@@ -5726,6 +5736,49 @@ function openQuickAddProductModal(onProductCreated) {
   document.body.appendChild(overlay);
   overlay.querySelectorAll(".closeQpModal").forEach(b => b.addEventListener("click", () => overlay.remove()));
 
+  async function loadQpSuppliers() {
+    try {
+      let sups = (typeof cachedModalSuppliers !== 'undefined' && cachedModalSuppliers && cachedModalSuppliers.length > 0) ? cachedModalSuppliers : [];
+      if (sups.length === 0) {
+        const curCompId = getActiveCompId();
+        const compParam = (curCompId && curCompId !== 'all') ? `&company_id=${curCompId}` : (curCompId === 'all' ? `&company_id=all` : '');
+        const res = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
+        const data = await res.json();
+        if (data.success && data.suppliers) {
+          sups = data.suppliers;
+          cachedModalSuppliers = sups;
+        }
+      }
+      const sel = overlay.querySelector("#qpSupplierId");
+      if (sel) {
+        sel.innerHTML = `<option value="">-- Select Supplier (Optional) --</option>` +
+          sups.map(s => `<option value="${s.id}" ${defaultSupplierId == s.id ? 'selected' : ''}>${esc(s.legal_name)}${s.trade_name ? ` (${esc(s.trade_name)})` : ''}</option>`).join("");
+      }
+    } catch (err) {
+      console.error("loadQpSuppliers error:", err);
+    }
+  }
+  loadQpSuppliers();
+
+  const quickSupBtn = overlay.querySelector("#qpQuickSupBtn");
+  if (quickSupBtn) {
+    quickSupBtn.addEventListener("click", () => {
+      openSupplierModal(null, (newSup) => {
+        if (newSup) {
+          if (typeof cachedModalSuppliers !== 'undefined') cachedModalSuppliers.push(newSup);
+          const sel = overlay.querySelector("#qpSupplierId");
+          if (sel) {
+            const opt = document.createElement("option");
+            opt.value = newSup.id;
+            opt.textContent = `${newSup.legal_name}${newSup.trade_name ? ` (${newSup.trade_name})` : ''}`;
+            opt.selected = true;
+            sel.appendChild(opt);
+          }
+        }
+      }, compId !== 'all' ? compId : null);
+    });
+  }
+
   overlay.querySelector("#quickAddProductForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const submitBtn = e.target.querySelector("button[type='submit']");
@@ -5736,17 +5789,29 @@ function openQuickAddProductModal(onProductCreated) {
       submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Creating Product...`;
     }
 
+    const chosenSupId = safeInt(overlay.querySelector("#qpSupplierId")?.value);
+    const purRate = parseFloat(overlay.querySelector("#qpPurRate").value || 0);
+    const gstRateVal = parseFloat(overlay.querySelector("#qpGst").value || 18);
+    const purRateIncl = Math.round(purRate * (1 + gstRateVal / 100) * 100) / 100;
+
     const payload = {
       company_id: targetCompId,
       name: overlay.querySelector("#qpName").value.trim(),
+      supplier_id: chosenSupId || null,
+      suppliers: chosenSupId ? [{
+        supplier_id: chosenSupId,
+        is_primary: true,
+        purchase_rate: purRate,
+        purchase_rate_incl_tax: purRateIncl
+      }] : [],
       brand: overlay.querySelector("#qpBrand").value.trim() || null,
       model: overlay.querySelector("#qpModel").value.trim() || null,
       hsn_sac: overlay.querySelector("#qpHsn").value.trim() || null,
       unit_of_measure: overlay.querySelector("#qpUnit").value,
-      gst_rate: parseFloat(overlay.querySelector("#qpGst").value || 18),
+      gst_rate: gstRateVal,
       weight: parseFloat(overlay.querySelector("#qpWeight").value || 0),
-      purchase_rate: parseFloat(overlay.querySelector("#qpPurRate").value || 0),
-      purchase_rate_incl_tax: Math.round(parseFloat(overlay.querySelector("#qpPurRate").value || 0) * (1 + parseFloat(overlay.querySelector("#qpGst").value || 18)/100) * 100) / 100,
+      purchase_rate: purRate,
+      purchase_rate_incl_tax: purRateIncl,
       selling_rate: parseFloat(overlay.querySelector("#qpSelling").value || 0),
       mrp: parseFloat(overlay.querySelector("#qpSelling").value || 0),
       initial_stock: 0,
@@ -6328,6 +6393,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     });
 
     tr.querySelector(".mpInlineAddProdBtn").addEventListener("click", () => {
+      const curSupId = overlay.querySelector("#mpSupplierId")?.value || null;
       openQuickAddProductModal((newP) => {
         loadedProducts.push(newP);
         tbody.querySelectorAll(".mpProdSel").forEach(sel => {
@@ -6343,7 +6409,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         if (modelInp) modelInp.value = newP.model || "";
         dynInputs.forEach(adjustInputToValue);
         calcRowTotal();
-      });
+      }, curSupId);
     });
 
     tr.querySelector(".mpDelRowBtn").addEventListener("click", () => {
@@ -6523,6 +6589,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
 
   overlay.querySelector("#mpAddRowBtn").addEventListener("click", () => addRow());
   overlay.querySelector("#mpAddQuickProdHeaderBtn").addEventListener("click", () => {
+    const curSupId = overlay.querySelector("#mpSupplierId")?.value || null;
     openQuickAddProductModal((newP) => {
       loadedProducts.push(newP);
       tbody.querySelectorAll(".mpProdSel").forEach(sel => {
@@ -6530,7 +6597,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         sel.innerHTML = renderProductOptionsHtml(val);
       });
       addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18, '', newP.model || '', newP.packaging_charges || 0, newP.transport_expenses || 0, 0);
-    });
+    }, curSupId);
   });
 
   overlay.querySelector("#multiPurchaseForm").addEventListener("submit", async (e) => {

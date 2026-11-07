@@ -8655,8 +8655,8 @@ function openBarcodePrintModal(products) {
       isSelected = String(p.id) === String(pSingle.id);
       if (isSelected && stk > 0) initialCount = stk;
     } else {
-      // Bulk view: preselect products with in-stock 1 to 40
-      isSelected = (stk > 0 && stk <= 40);
+      // Bulk view: All unselected by default on opening as requested
+      isSelected = false;
     }
 
     productStates[p.id] = {
@@ -9005,7 +9005,10 @@ function openBarcodePrintModal(products) {
     if (!sample) return;
     activePreviewProduct = sample;
 
-    if (tagEl) tagEl.textContent = sample.name;
+    if (tagEl) {
+      tagEl.textContent = sample.name || '';
+      tagEl.title = sample.name || '';
+    }
 
     const showComp = document.getElementById("bcShowComp")?.checked ?? true;
     const showModel = document.getElementById("bcShowModel")?.checked ?? true;
@@ -9016,7 +9019,9 @@ function openBarcodePrintModal(products) {
     const compName = sample.company_name || 'MANASWINI ENTERPRISES';
     const skuCode = sample.sku || sample.display_sku || ('SKU-' + sample.id);
     const priceVal = sample.mrp ? '₹' + parseFloat(sample.mrp).toLocaleString('en-IN') : (sample.selling_rate ? '₹' + parseFloat(sample.selling_rate).toLocaleString('en-IN') : '');
-    const svgCode = window.generateBarcodeSVG(skuCode, 32, true, '#dc2626');
+    const svgCode = (typeof window.generateBarcodeSVG === 'function')
+      ? window.generateBarcodeSVG(skuCode, 32, true, '#dc2626')
+      : `<div style="font-family:monospace;font-weight:bold;font-size:12px;letter-spacing:2px;padding:2px 0;">*${esc(skuCode)}*</div>`;
     const rackVal = (sample.rack_no && sample.rack_no.trim()) ? getRackText(sample) : 'RACK: A-01';
     const modelText = sample.model ? String(sample.model).trim() : '';
 
@@ -9051,6 +9056,17 @@ function openBarcodePrintModal(products) {
         ` : ''}
       </div>
     `;
+
+    // Subtle pulse animation on preview container for instant visual feedback
+    previewEl.style.transition = 'transform 0.15s ease, border-color 0.15s ease';
+    previewEl.style.transform = 'scale(1.02)';
+    previewEl.style.borderColor = '#2563eb';
+    setTimeout(() => {
+      if (previewEl) {
+        previewEl.style.transform = 'scale(1)';
+        previewEl.style.borderColor = '#94a3b8';
+      }
+    }, 200);
   };
 
   // ── Render Products Table Rows with Live Filters ──
@@ -9107,6 +9123,11 @@ function openBarcodePrintModal(products) {
         stockBadgeHtml = '<span class="badge" style="background:#dcfce7;color:#166534;font-size:11px;padding:3px 8px;font-weight:700;">' + stk + ' ' + esc(p.unit_of_measure || 'NOS') + '</span>';
       }
 
+      const isPreviewActive = activePreviewProduct && String(activePreviewProduct.id) === String(p.id);
+      const previewBtnStyle = isPreviewActive
+        ? 'padding:3px 8px;font-size:12px;background:#e0e7ff;border-color:#6366f1;color:#4338ca;font-weight:700;'
+        : 'padding:3px 8px;font-size:12px;';
+
       const rowBg = isChecked ? 'background:rgba(37,99,235,0.06);border-left:3px solid #2563eb;' : 'border-left:3px solid transparent;';
 
       return `
@@ -9127,7 +9148,7 @@ function openBarcodePrintModal(products) {
           <td style="width:140px;text-align:center;padding:8px 10px;">
             ${stockBadgeHtml}
           </td>
-          <td style="width:170px;text-align:center;padding:8px 10px;" onclick="event.stopPropagation()">
+          <td style="width:170px;text-align:center;padding:8px 10px;">
             <div style="display:inline-flex;align-items:center;gap:3px;">
               <button type="button" class="btn btn-sm btn-outline bc-qty-minus" data-id="${p.id}" style="padding:2px 7px;font-weight:bold;font-size:12px;">−</button>
               <input type="number" class="form-input bc-qty-inp" data-id="${p.id}" min="1" max="10000" value="${state.count}" style="width:55px;text-align:center;font-weight:700;font-size:12px;padding:3px 4px;margin:0;">
@@ -9135,14 +9156,38 @@ function openBarcodePrintModal(products) {
               <button type="button" class="btn btn-sm btn-outline bc-qty-max" data-id="${p.id}" title="Set copies to current in-stock count" style="padding:2px 5px;font-size:10px;font-weight:700;color:#059669;border-color:#10b981;">Max</button>
             </div>
           </td>
-          <td style="width:70px;text-align:center;padding:8px 6px;" onclick="event.stopPropagation()">
-            <button type="button" class="btn btn-sm btn-outline bc-preview-btn" data-id="${p.id}" title="Preview this sticker" style="padding:3px 8px;font-size:12px;">
+          <td style="width:70px;text-align:center;padding:8px 6px;">
+            <button type="button" class="btn btn-sm btn-outline bc-preview-btn" data-id="${p.id}" title="Preview this sticker" style="${previewBtnStyle}">
               👁️
             </button>
           </td>
         </tr>
       `;
     }).join('');
+
+    // Attach direct click listeners to preview buttons for instant responsiveness
+    tbody.querySelectorAll(".bc-preview-btn").forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        const pId = btn.getAttribute("data-id");
+        const prod = availableProducts.find(x => String(x.id) === String(pId));
+        if (prod) {
+          activePreviewProduct = prod;
+          updatePreview(prod);
+          tbody.querySelectorAll(".bc-preview-btn").forEach(b => {
+            b.style.background = "";
+            b.style.borderColor = "";
+            b.style.color = "";
+            b.style.fontWeight = "";
+          });
+          btn.style.background = "#e0e7ff";
+          btn.style.borderColor = "#6366f1";
+          btn.style.color = "#4338ca";
+          btn.style.fontWeight = "700";
+        }
+      });
+    });
 
     // Update master checkbox state
     const masterChk = document.getElementById("bcMasterCheckbox");
@@ -9294,14 +9339,33 @@ function openBarcodePrintModal(products) {
     if (!state) return;
 
     // Preview button clicked
-    if (e.target.closest(".bc-preview-btn")) {
-      const prod = availableProducts.find(x => String(x.id) === String(prodId));
-      if (prod) updatePreview(prod);
+    const previewBtn = e.target.closest(".bc-preview-btn");
+    if (previewBtn) {
+      e.stopPropagation();
+      e.preventDefault();
+      const pId = previewBtn.getAttribute("data-id") || prodId;
+      const prod = availableProducts.find(x => String(x.id) === String(pId));
+      if (prod) {
+        activePreviewProduct = prod;
+        updatePreview(prod);
+        overlay.querySelectorAll(".bc-preview-btn").forEach(b => {
+          b.style.background = "";
+          b.style.borderColor = "";
+          b.style.color = "";
+          b.style.fontWeight = "";
+        });
+        previewBtn.style.background = "#e0e7ff";
+        previewBtn.style.borderColor = "#6366f1";
+        previewBtn.style.color = "#4338ca";
+        previewBtn.style.fontWeight = "700";
+      }
       return;
     }
 
     // Plus button clicked
     if (e.target.closest(".bc-qty-plus")) {
+      e.stopPropagation();
+      e.preventDefault();
       state.count = Math.min(10000, (parseInt(state.count, 10) || 0) + 1);
       state.selected = true;
       renderProductTable();
@@ -9311,6 +9375,8 @@ function openBarcodePrintModal(products) {
 
     // Minus button clicked
     if (e.target.closest(".bc-qty-minus")) {
+      e.stopPropagation();
+      e.preventDefault();
       state.count = Math.max(1, (parseInt(state.count, 10) || 1) - 1);
       renderProductTable();
       updatePackingCard();
@@ -9319,10 +9385,18 @@ function openBarcodePrintModal(products) {
 
     // Max button clicked
     if (e.target.closest(".bc-qty-max")) {
+      e.stopPropagation();
+      e.preventDefault();
       state.count = state.stock > 0 ? state.stock : 1;
       state.selected = true;
       renderProductTable();
       updatePackingCard();
+      return;
+    }
+
+    // Direct clicks on quantity inputs -> do not toggle row selection
+    if (e.target.closest(".bc-qty-inp") || e.target.closest("input[type='number']")) {
+      e.stopPropagation();
       return;
     }
 
@@ -9336,6 +9410,11 @@ function openBarcodePrintModal(products) {
       if (prod && state.selected) updatePreview(prod);
       renderProductTable();
       updatePackingCard();
+      return;
+    }
+
+    // Guard: ignore clicks on any remaining interactive controls
+    if (e.target.closest("button, input, select, label")) {
       return;
     }
 

@@ -417,6 +417,40 @@ module.exports = async function handler(req, res) {
     try { await sql`ALTER TABLE products ALTER COLUMN selling_percentage TYPE NUMERIC(15,2);`; } catch(e){}
     try { await sql`ALTER TABLE products ALTER COLUMN gst_rate TYPE NUMERIC(15,2);`; } catch(e){}
 
+    // Product Suppliers Junction Table (One Product -> Multiple Suppliers / Multi-Sourcing)
+    await sql`
+      CREATE TABLE IF NOT EXISTS product_suppliers (
+        id SERIAL PRIMARY KEY,
+        company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+        product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        supplier_id INT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+        is_primary BOOLEAN DEFAULT false,
+        supplier_part_no VARCHAR(100),
+        purchase_rate NUMERIC(15,2) DEFAULT 0,
+        purchase_rate_incl_tax NUMERIC(15,2) DEFAULT 0,
+        min_order_qty INT DEFAULT 1,
+        lead_time_days INT DEFAULT 0,
+        last_purchase_date DATE,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT uq_product_supplier UNIQUE(product_id, supplier_id)
+      )
+    `;
+    try { await sql`CREATE INDEX IF NOT EXISTS idx_prod_sup_product ON product_suppliers(product_id)`; } catch(e){}
+    try { await sql`CREATE INDEX IF NOT EXISTS idx_prod_sup_supplier ON product_suppliers(supplier_id)`; } catch(e){}
+
+    // Backfill existing single-supplier links into product_suppliers
+    try {
+      await sql`
+        INSERT INTO product_suppliers (company_id, product_id, supplier_id, is_primary, purchase_rate, purchase_rate_incl_tax)
+        SELECT p.company_id, p.id, p.supplier_id, true, COALESCE(p.purchase_rate, 0), COALESCE(p.purchase_rate_incl_tax, 0)
+        FROM products p
+        WHERE p.supplier_id IS NOT NULL AND p.is_active = true
+        ON CONFLICT (product_id, supplier_id) DO NOTHING;
+      `;
+    } catch(e){}
+
     try {
       await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(15,2) DEFAULT 0;`;
       await sql`ALTER TABLE purchases ADD COLUMN IF NOT EXISTS pending_amount NUMERIC(15,2) DEFAULT 0;`;

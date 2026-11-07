@@ -39,6 +39,130 @@ async function ensureExpensesColumns(sql) {
   }
 }
 
+let productSuppliersTableEnsured = false;
+async function ensureProductSuppliersTable(sql) {
+  if (productSuppliersTableEnsured) return;
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS product_suppliers (
+        id SERIAL PRIMARY KEY,
+        company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+        product_id INT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        supplier_id INT NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+        is_primary BOOLEAN DEFAULT false,
+        supplier_part_no VARCHAR(100),
+        purchase_rate NUMERIC(15,2) DEFAULT 0,
+        purchase_rate_incl_tax NUMERIC(15,2) DEFAULT 0,
+        min_order_qty INT DEFAULT 1,
+        lead_time_days INT DEFAULT 0,
+        last_purchase_date DATE,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT uq_product_supplier UNIQUE(product_id, supplier_id)
+      )
+    `;
+    try { await sql`CREATE INDEX IF NOT EXISTS idx_prod_sup_product ON product_suppliers(product_id)`; } catch(e){}
+    try { await sql`CREATE INDEX IF NOT EXISTS idx_prod_sup_supplier ON product_suppliers(supplier_id)`; } catch(e){}
+
+    // Backfill existing single-supplier links into product_suppliers
+    try {
+      await sql`
+        INSERT INTO product_suppliers (company_id, product_id, supplier_id, is_primary, purchase_rate, purchase_rate_incl_tax)
+        SELECT p.company_id, p.id, p.supplier_id, true, COALESCE(p.purchase_rate, 0), COALESCE(p.purchase_rate_incl_tax, 0)
+        FROM products p
+        WHERE p.supplier_id IS NOT NULL AND p.is_active = true
+        ON CONFLICT (product_id, supplier_id) DO NOTHING;
+      `;
+    } catch(e){}
+
+    productSuppliersTableEnsured = true;
+  } catch (err) {
+    console.error("ensureProductSuppliersTable error:", err.message);
+  }
+}
+
+async function syncProductSuppliers(sql, compId, productId, suppliersList, primarySupplierId) {
+  const pId = safeInt(productId);
+  if (!pId) return;
+  const cId = safeInt(compId) || 1;
+
+  if (!Array.isArray(suppliersList) || suppliersList.length === 0) {
+    const singleSupId = safeInt(primarySupplierId);
+    if (singleSupId) {
+      await sql`
+        INSERT INTO product_suppliers (company_id, product_id, supplier_id, is_primary, updated_at)
+        VALUES (${cId}, ${pId}, ${singleSupId}, true, NOW())
+        ON CONFLICT (product_id, supplier_id) DO UPDATE SET is_primary = true, updated_at = NOW();
+      `;
+      await sql`UPDATE product_suppliers SET is_primary = false WHERE product_id = ${pId} AND supplier_id != ${singleSupId}`;
+      await sql`UPDATE products SET supplier_id = ${singleSupId} WHERE id = ${pId}`;
+    }
+    return;
+  }
+
+  // Find which supplier is primary
+  let primarySup = suppliersList.find(s => Boolean(s.is_primary));
+  if (!primarySup && primarySupplierId) {
+    primarySup = suppliersList.find(s => safeInt(s.supplier_id) === safeInt(primarySupplierId));
+  }
+  if (!primarySup) {
+    primarySup = suppliersList[0];
+  }
+  const resolvedPrimaryId = safeInt(primarySup?.supplier_id);
+
+  const incomingSupIds = [];
+  for (const s of suppliersList) {
+    const sId = safeInt(s.supplier_id);
+    if (!sId) continue;
+    incomingSupIds.push(sId);
+
+    const isPrimary = (sId === resolvedPrimaryId);
+    const partNo = (s.supplier_part_no || s.part_no || '').toString().trim() || null;
+    const pRate = safeNum(s.purchase_rate, 0);
+    const pRateIncl = safeNum(s.purchase_rate_incl_tax, 0);
+    const minQty = safeInt(s.min_order_qty, 1);
+    const leadDays = safeInt(s.lead_time_days, 0);
+    const lastDate = s.last_purchase_date ? new Date(s.last_purchase_date) : null;
+    const notes = (s.notes || '').toString().trim() || null;
+
+    await sql`
+      INSERT INTO product_suppliers (
+        company_id, product_id, supplier_id, is_primary, supplier_part_no,
+        purchase_rate, purchase_rate_incl_tax, min_order_qty, lead_time_days,
+        last_purchase_date, notes, created_at, updated_at
+      ) VALUES (
+        ${cId}, ${pId}, ${sId}, ${isPrimary}, ${partNo},
+        ${pRate}, ${pRateIncl}, ${minQty}, ${leadDays},
+        ${lastDate}, ${notes}, NOW(), NOW()
+      )
+      ON CONFLICT (product_id, supplier_id) DO UPDATE SET
+        is_primary = EXCLUDED.is_primary,
+        supplier_part_no = COALESCE(EXCLUDED.supplier_part_no, product_suppliers.supplier_part_no),
+        purchase_rate = CASE WHEN EXCLUDED.purchase_rate > 0 THEN EXCLUDED.purchase_rate ELSE product_suppliers.purchase_rate END,
+        purchase_rate_incl_tax = CASE WHEN EXCLUDED.purchase_rate_incl_tax > 0 THEN EXCLUDED.purchase_rate_incl_tax ELSE product_suppliers.purchase_rate_incl_tax END,
+        min_order_qty = COALESCE(EXCLUDED.min_order_qty, product_suppliers.min_order_qty),
+        lead_time_days = COALESCE(EXCLUDED.lead_time_days, product_suppliers.lead_time_days),
+        last_purchase_date = COALESCE(EXCLUDED.last_purchase_date, product_suppliers.last_purchase_date),
+        notes = COALESCE(EXCLUDED.notes, product_suppliers.notes),
+        updated_at = NOW();
+    `;
+  }
+
+  // Remove suppliers that were deleted from the list
+  if (incomingSupIds.length > 0) {
+    await sql`
+      DELETE FROM product_suppliers
+      WHERE product_id = ${pId} AND supplier_id != ALL(${incomingSupIds});
+    `;
+  }
+
+  // Keep products.supplier_id synced with the primary supplier
+  if (resolvedPrimaryId) {
+    await sql`UPDATE products SET supplier_id = ${resolvedPrimaryId} WHERE id = ${pId}`;
+  }
+}
+
 async function resequenceCompanySkus(sql, compId) {
   const cid = safeInt(compId);
   if (!cid) return;
@@ -394,7 +518,7 @@ async function upsertProduct(sql, compId, itemData, options = {}) {
       RETURNING *
     `;
 
-    return { product: updated[0], isCreated: false, isUpdated: true, warning: null };
+    var targetProduct = updated[0];
   } else {
     let finalSku = skuClean;
     if (!finalSku) {
@@ -417,8 +541,51 @@ async function upsertProduct(sql, compId, itemData, options = {}) {
       RETURNING *
     `;
 
-    return { product: created[0], isCreated: true, isUpdated: false, warning: null };
+    var targetProduct = created[0];
   }
+
+  const targetProdId = targetProduct.id;
+  try {
+    if (Array.isArray(itemData.suppliers) && itemData.suppliers.length > 0) {
+      await syncProductSuppliers(sql, compId, targetProdId, itemData.suppliers, supId);
+    } else if (supId) {
+      const existingPs = await sql`
+        SELECT supplier_id, is_primary FROM product_suppliers WHERE product_id = ${targetProdId}
+      `;
+      const hasPrimary = existingPs.some(row => row.is_primary);
+      const shouldBePrimary = !hasPrimary || (targetProduct.supplier_id === supId);
+      const lastDate = (options.mode === 'purchase_upload' && itemData.bill_date)
+        ? new Date(itemData.bill_date)
+        : (options.mode === 'purchase_upload' ? new Date() : null);
+      const partNo = (itemData.supplier_part_no || itemData.part_no || '').toString().trim() || null;
+
+      await sql`
+        INSERT INTO product_suppliers (
+          company_id, product_id, supplier_id, is_primary, supplier_part_no,
+          purchase_rate, purchase_rate_incl_tax, last_purchase_date, updated_at
+        ) VALUES (
+          ${compId}, ${targetProdId}, ${supId}, ${shouldBePrimary}, ${partNo},
+          ${rates.purchase_rate || 0}, ${rates.purchase_rate_incl_tax || 0}, ${lastDate}, NOW()
+        )
+        ON CONFLICT (product_id, supplier_id) DO UPDATE SET
+          is_primary = CASE WHEN ${shouldBePrimary} THEN true ELSE product_suppliers.is_primary END,
+          purchase_rate = CASE WHEN EXCLUDED.purchase_rate > 0 THEN EXCLUDED.purchase_rate ELSE product_suppliers.purchase_rate END,
+          purchase_rate_incl_tax = CASE WHEN EXCLUDED.purchase_rate_incl_tax > 0 THEN EXCLUDED.purchase_rate_incl_tax ELSE product_suppliers.purchase_rate_incl_tax END,
+          supplier_part_no = COALESCE(EXCLUDED.supplier_part_no, product_suppliers.supplier_part_no),
+          last_purchase_date = COALESCE(EXCLUDED.last_purchase_date, product_suppliers.last_purchase_date),
+          updated_at = NOW();
+      `;
+
+      if (shouldBePrimary && !targetProduct.supplier_id) {
+        await sql`UPDATE products SET supplier_id = ${supId} WHERE id = ${targetProdId}`;
+        targetProduct.supplier_id = supId;
+      }
+    }
+  } catch (errPs) {
+    console.error("upsertProduct product_suppliers sync error:", errPs.message);
+  }
+
+  return { product: targetProduct, isCreated: !existingProd, isUpdated: !!existingProd, warning: null };
 }
 
 module.exports = async function handler(req, res) {
@@ -586,6 +753,7 @@ module.exports = async function handler(req, res) {
           created_at TIMESTAMP DEFAULT NOW()
         )
       `;
+      await ensureProductSuppliersTable(sql);
     } catch (e) { }
 
     const isSuperAdmin = (user && user.role === "superadmin");
@@ -638,6 +806,7 @@ module.exports = async function handler(req, res) {
                 s.company_id IS NULL
                 AND (
                   EXISTS (SELECT 1 FROM products p WHERE p.supplier_id = s.id AND p.company_id = ANY(${targetCompIds}))
+                  OR EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.supplier_id = s.id AND ps.company_id = ANY(${targetCompIds}))
                   OR EXISTS (SELECT 1 FROM purchases pu WHERE pu.supplier_id = s.id AND pu.company_id = ANY(${targetCompIds}))
                 )
               )
@@ -1302,28 +1471,150 @@ module.exports = async function handler(req, res) {
       }
 
             let rows;
+      const filterSupId = safeInt(req.query.supplier_id);
+
       if (targetCompId) {
-        rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, c.name as company_name
-          FROM products p
-          LEFT JOIN suppliers v ON p.supplier_id = v.id
-          LEFT JOIN companies c ON p.company_id = c.id
-          WHERE p.company_id = ${targetCompId} AND p.is_active = true
-          ORDER BY p.id ASC
-        `;
+        if (filterSupId) {
+          rows = await sql`
+            SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
+              COALESCE(ps_agg.suppliers, '[]'::json) AS suppliers
+            FROM products p
+            LEFT JOIN suppliers v ON p.supplier_id = v.id
+            LEFT JOIN companies c ON p.company_id = c.id
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                json_build_object(
+                  'id', ps.id,
+                  'supplier_id', ps.supplier_id,
+                  'supplier_name', COALESCE(s.legal_name, s.trade_name, 'Unknown'),
+                  'trade_name', s.trade_name,
+                  'is_primary', ps.is_primary,
+                  'supplier_part_no', ps.supplier_part_no,
+                  'purchase_rate', ps.purchase_rate,
+                  'purchase_rate_incl_tax', ps.purchase_rate_incl_tax,
+                  'min_order_qty', ps.min_order_qty,
+                  'lead_time_days', ps.lead_time_days,
+                  'last_purchase_date', ps.last_purchase_date,
+                  'notes', ps.notes
+                ) ORDER BY ps.is_primary DESC, ps.id ASC
+              ) AS suppliers
+              FROM product_suppliers ps
+              JOIN suppliers s ON ps.supplier_id = s.id
+              WHERE ps.product_id = p.id
+            ) ps_agg ON true
+            WHERE p.company_id = ${targetCompId} AND p.is_active = true
+              AND (p.supplier_id = ${filterSupId} OR EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = p.id AND ps.supplier_id = ${filterSupId}))
+            ORDER BY p.id ASC
+          `;
+        } else {
+          rows = await sql`
+            SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
+              COALESCE(ps_agg.suppliers, '[]'::json) AS suppliers
+            FROM products p
+            LEFT JOIN suppliers v ON p.supplier_id = v.id
+            LEFT JOIN companies c ON p.company_id = c.id
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                json_build_object(
+                  'id', ps.id,
+                  'supplier_id', ps.supplier_id,
+                  'supplier_name', COALESCE(s.legal_name, s.trade_name, 'Unknown'),
+                  'trade_name', s.trade_name,
+                  'is_primary', ps.is_primary,
+                  'supplier_part_no', ps.supplier_part_no,
+                  'purchase_rate', ps.purchase_rate,
+                  'purchase_rate_incl_tax', ps.purchase_rate_incl_tax,
+                  'min_order_qty', ps.min_order_qty,
+                  'lead_time_days', ps.lead_time_days,
+                  'last_purchase_date', ps.last_purchase_date,
+                  'notes', ps.notes
+                ) ORDER BY ps.is_primary DESC, ps.id ASC
+              ) AS suppliers
+              FROM product_suppliers ps
+              JOIN suppliers s ON ps.supplier_id = s.id
+              WHERE ps.product_id = p.id
+            ) ps_agg ON true
+            WHERE p.company_id = ${targetCompId} AND p.is_active = true
+            ORDER BY p.id ASC
+          `;
+        }
       } else {
-        rows = await sql`
-          SELECT p.*, v.legal_name as supplier_name, c.name as company_name
-          FROM products p
-          LEFT JOIN suppliers v ON p.supplier_id = v.id
-          LEFT JOIN companies c ON p.company_id = c.id
-          WHERE p.is_active = true
-          ORDER BY c.name ASC, p.id ASC
-        `;
+        if (filterSupId) {
+          rows = await sql`
+            SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
+              COALESCE(ps_agg.suppliers, '[]'::json) AS suppliers
+            FROM products p
+            LEFT JOIN suppliers v ON p.supplier_id = v.id
+            LEFT JOIN companies c ON p.company_id = c.id
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                json_build_object(
+                  'id', ps.id,
+                  'supplier_id', ps.supplier_id,
+                  'supplier_name', COALESCE(s.legal_name, s.trade_name, 'Unknown'),
+                  'trade_name', s.trade_name,
+                  'is_primary', ps.is_primary,
+                  'supplier_part_no', ps.supplier_part_no,
+                  'purchase_rate', ps.purchase_rate,
+                  'purchase_rate_incl_tax', ps.purchase_rate_incl_tax,
+                  'min_order_qty', ps.min_order_qty,
+                  'lead_time_days', ps.lead_time_days,
+                  'last_purchase_date', ps.last_purchase_date,
+                  'notes', ps.notes
+                ) ORDER BY ps.is_primary DESC, ps.id ASC
+              ) AS suppliers
+              FROM product_suppliers ps
+              JOIN suppliers s ON ps.supplier_id = s.id
+              WHERE ps.product_id = p.id
+            ) ps_agg ON true
+            WHERE p.is_active = true
+              AND (p.supplier_id = ${filterSupId} OR EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = p.id AND ps.supplier_id = ${filterSupId}))
+            ORDER BY c.name ASC, p.id ASC
+          `;
+        } else {
+          rows = await sql`
+            SELECT p.*, v.legal_name as supplier_name, c.name as company_name,
+              COALESCE(ps_agg.suppliers, '[]'::json) AS suppliers
+            FROM products p
+            LEFT JOIN suppliers v ON p.supplier_id = v.id
+            LEFT JOIN companies c ON p.company_id = c.id
+            LEFT JOIN LATERAL (
+              SELECT json_agg(
+                json_build_object(
+                  'id', ps.id,
+                  'supplier_id', ps.supplier_id,
+                  'supplier_name', COALESCE(s.legal_name, s.trade_name, 'Unknown'),
+                  'trade_name', s.trade_name,
+                  'is_primary', ps.is_primary,
+                  'supplier_part_no', ps.supplier_part_no,
+                  'purchase_rate', ps.purchase_rate,
+                  'purchase_rate_incl_tax', ps.purchase_rate_incl_tax,
+                  'min_order_qty', ps.min_order_qty,
+                  'lead_time_days', ps.lead_time_days,
+                  'last_purchase_date', ps.last_purchase_date,
+                  'notes', ps.notes
+                ) ORDER BY ps.is_primary DESC, ps.id ASC
+              ) AS suppliers
+              FROM product_suppliers ps
+              JOIN suppliers s ON ps.supplier_id = s.id
+              WHERE ps.product_id = p.id
+            ) ps_agg ON true
+            WHERE p.is_active = true
+            ORDER BY c.name ASC, p.id ASC
+          `;
+        }
         rows.forEach((r, idx) => {
           r.all_companies_sku = `SKU-${String(idx + 1).padStart(3, '0')}`;
         });
       }
+
+      rows.forEach(r => {
+        if (!r.suppliers) r.suppliers = [];
+        if (!r.supplier_name && r.suppliers.length > 0) {
+          r.supplier_name = r.suppliers[0].supplier_name;
+        }
+      });
+
       return res.status(200).json({ success: true, products: rows });
     }
 
@@ -1331,7 +1622,8 @@ module.exports = async function handler(req, res) {
       const {
         id, sku, name, brand, model, hsn_sac, unit_of_measure, gst_rate,
         purchase_rate, purchase_rate_incl_tax, transport_expenses, selling_percentage,
-        selling_rate, mrp, current_stock, min_stock, rack_no, weight, serial_no, supplier_id
+        selling_rate, mrp, current_stock, min_stock, rack_no, weight, serial_no, supplier_id,
+        suppliers
       } = req.body;
 
             const pId = safeInt(id);
@@ -1341,7 +1633,16 @@ module.exports = async function handler(req, res) {
       const oldCompId = curProd[0]?.company_id;
       const targetCompId = safeInt(req.body.company_id) || oldCompId || 1;
 
-      const supId = safeInt(supplier_id);
+      let suppliersArr = suppliers;
+      if (typeof suppliersArr === 'string') {
+        try { suppliersArr = JSON.parse(suppliersArr); } catch(e){}
+      }
+      let supId = safeInt(supplier_id);
+      if (!supId && Array.isArray(suppliersArr) && suppliersArr.length > 0) {
+        const primaryItem = suppliersArr.find(s => Boolean(s.is_primary)) || suppliersArr[0];
+        supId = safeInt(primaryItem?.supplier_id);
+      }
+
       let finalSku = (sku && sku.toString().trim() !== "" && sku.toString().trim().toLowerCase() !== "auto") ? sku.toString().trim() : (curProd[0]?.sku || null);
       if (!finalSku) {
         const maxNum = await getNextSkuNumber(sql, targetCompId);
@@ -1399,6 +1700,13 @@ module.exports = async function handler(req, res) {
         await resequenceCompanySkus(sql, oldCompId);
         await resequenceCompanySkus(sql, targetCompId);
       }
+
+      if (Array.isArray(suppliersArr)) {
+        await syncProductSuppliers(sql, targetCompId, pId, suppliersArr, supId);
+      } else if (supId) {
+        await syncProductSuppliers(sql, targetCompId, pId, [{ supplier_id: supId, is_primary: true, purchase_rate: rates.purchase_rate, purchase_rate_incl_tax: rates.purchase_rate_incl_tax }], supId);
+      }
+
       return res.status(200).json({ success: true, product: updated[0], message: "Product updated successfully" });
     }
 
@@ -1437,7 +1745,7 @@ module.exports = async function handler(req, res) {
         company_id, sku, name, brand, model, hsn_sac, unit_of_measure, gst_rate,
         purchase_rate, purchase_rate_incl_tax, transport_expenses, selling_percentage,
         selling_rate, mrp, current_stock, min_stock, rack_no, weight, serial_no, supplier_id,
-        serial_tracking, warranty_duration
+        serial_tracking, warranty_duration, suppliers
       } = req.body;
 
       const compId = safeInt(company_id) || safeInt(user.company_id) || 1;
@@ -1459,7 +1767,16 @@ module.exports = async function handler(req, res) {
         }
       }
 
-      const supId = safeInt(supplier_id);
+      let suppliersArr = suppliers;
+      if (typeof suppliersArr === 'string') {
+        try { suppliersArr = JSON.parse(suppliersArr); } catch(e){}
+      }
+      let supId = safeInt(supplier_id);
+      if (!supId && Array.isArray(suppliersArr) && suppliersArr.length > 0) {
+        const primaryItem = suppliersArr.find(s => Boolean(s.is_primary)) || suppliersArr[0];
+        supId = safeInt(primaryItem?.supplier_id);
+      }
+
       let finalSku = (sku && sku.toString().trim() !== "") ? sku.toString().trim() : null;
       if (!finalSku) {
         const maxNum = await getNextSkuNumber(sql, compId);
@@ -1487,6 +1804,13 @@ module.exports = async function handler(req, res) {
         )
         RETURNING *
       `;
+
+      const createdProdId = newProd[0].id;
+      if (Array.isArray(suppliersArr) && suppliersArr.length > 0) {
+        await syncProductSuppliers(sql, compId, createdProdId, suppliersArr, supId);
+      } else if (supId) {
+        await syncProductSuppliers(sql, compId, createdProdId, [{ supplier_id: supId, is_primary: true, purchase_rate: rates.purchase_rate, purchase_rate_incl_tax: rates.purchase_rate_incl_tax }], supId);
+      }
 
       return res.status(200).json({ success: true, product: newProd[0], message: "Product created successfully" });
     }
@@ -1559,8 +1883,46 @@ module.exports = async function handler(req, res) {
 
         let supId = safeInt(p.supplier_id);
         const supName = (p.supplier_name || p.supplier || p.dealer || "").toString().trim();
+        let supList = [];
 
-        if (!supId && supName) {
+        if (Array.isArray(p.suppliers) && p.suppliers.length > 0) {
+          supList = p.suppliers;
+        } else if (supName && (supName.includes(";") || supName.includes(","))) {
+          const names = supName.split(/[;,]+/).map(s => s.trim()).filter(Boolean);
+          for (let i = 0; i < names.length; i++) {
+            const n = names[i];
+            let matchedId = null;
+            const matchSup = await sql`
+              SELECT id FROM suppliers
+              WHERE (company_id = ${pCompId} OR company_id IS NULL) AND (LOWER(legal_name) = LOWER(${n}) OR LOWER(trade_name) = LOWER(${n}))
+              LIMIT 1
+            `;
+            if (matchSup.length > 0) {
+              matchedId = matchSup[0].id;
+            } else {
+              const newSup = await sql`
+                INSERT INTO suppliers (company_id, legal_name, is_active)
+                VALUES (${pCompId}, ${n}, true)
+                RETURNING id
+              `;
+              if (newSup.length > 0) matchedId = newSup[0].id;
+            }
+            if (matchedId) {
+              supList.push({
+                supplier_id: matchedId,
+                supplier_name: n,
+                is_primary: (i === 0),
+                purchase_rate: p.purchase_rate || 0,
+                purchase_rate_incl_tax: p.purchase_rate_incl_tax || 0
+              });
+            }
+          }
+        }
+
+        if (supList.length > 0) {
+          p.suppliers = supList;
+          supId = supList.find(s => s.is_primary)?.supplier_id || supList[0].supplier_id;
+        } else if (!supId && supName) {
           const matchSup = await sql`
             SELECT id FROM suppliers
             WHERE (company_id = ${pCompId} OR company_id IS NULL) AND (LOWER(legal_name) = LOWER(${supName}) OR LOWER(trade_name) = LOWER(${supName}))
@@ -2719,6 +3081,8 @@ module.exports = async function handler(req, res) {
           if (!pName) continue;
 
           item.supplier_id = supId;
+          item.bill_date = invoice_date || null;
+          item.supplier_part_no = item.supplier_part_no || item.part_no || null;
           const resObj = await upsertProduct(sql, groupCompId, item, { mode: 'purchase_upload', allowNewRate: Boolean(allow_new_hsn_rates) });
           if (!resObj || !resObj.product) continue;
 

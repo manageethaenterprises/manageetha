@@ -856,13 +856,35 @@ async function loadProductsSubTab() {
               </div>
 
               <div class="form-group" style="grid-column: span 2;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                  <label class="form-label" style="margin:0;">Assigned Supplier / Dealer</label>
-                  <button type="button" class="btn btn-sm btn-outline" id="quickAddSupInProdBtn">+ Add New Supplier</button>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px;">
+                  <div>
+                    <label class="form-label" style="margin:0;font-weight:700;color:var(--text1);font-size:13px;">🏢 Suppliers & Sourcing (Multi-Supplier Support)</label>
+                    <div style="font-size:11.5px;color:var(--text3);margin-top:1px;">Designate Primary vendor (⭐) and add alternate suppliers with specific part numbers & rates.</div>
+                  </div>
+                  <div style="display:flex;gap:6px;">
+                    <button type="button" class="btn btn-xs btn-outline" id="quickAddSupInProdBtn">+ Quick New Supplier</button>
+                    <button type="button" class="btn btn-xs btn-primary" id="pAddSupplierRowBtn" style="font-weight:600;">+ Add Supplier Row</button>
+                  </div>
                 </div>
-                <select id="pSupplierId" class="form-select">
-                  <option value="">-- Select Supplier (Optional) --</option>
-                </select>
+
+                <select id="pSupplierId" style="display:none;"></select>
+
+                <div style="border:1px solid var(--border);border-radius:8px;overflow-x:auto;background:var(--bg2, #fafafa);box-shadow:inset 0 1px 3px rgba(0,0,0,0.02);">
+                  <table style="width:100%;border-collapse:collapse;font-size:12.5px;" id="pSuppliersTable">
+                    <thead style="background:var(--bg1);border-bottom:1px solid var(--border);font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;">
+                      <tr>
+                        <th style="padding:6px 8px;text-align:center;width:65px;" title="Designate as primary/preferred supplier">Primary ⭐</th>
+                        <th style="padding:6px 10px;text-align:left;">Supplier / Vendor *</th>
+                        <th style="padding:6px 8px;text-align:left;width:145px;">Vendor Part No.</th>
+                        <th style="padding:6px 8px;text-align:left;width:130px;">Pur Rate (₹)</th>
+                        <th style="padding:6px 8px;text-align:center;width:45px;">Del</th>
+                      </tr>
+                    </thead>
+                    <tbody id="pSuppliersTableBody">
+                      <!-- Dynamic rows -->
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               <div class="form-group">
@@ -995,21 +1017,266 @@ async function loadProductsSubTab() {
     if (el) el.addEventListener("input", autoCalcFormRates);
   });
 
+  let cachedModalSuppliers = [];
+
+  function getSupplierOptionsHtml(selectedId = null) {
+    return `<option value="">-- Select Approved Supplier --</option>` +
+      cachedModalSuppliers.map(s =>
+        `<option value="${s.id}" ${selectedId == s.id ? 'selected' : ''}>${esc(s.legal_name)}${s.trade_name ? ` (${esc(s.trade_name)})` : ''}</option>`
+      ).join('');
+  }
+
+  function appendSupplierRow(item = {}, isChecked = false) {
+    const tbody = document.getElementById("pSuppliersTableBody");
+    if (!tbody) return;
+
+    const tr = document.createElement("tr");
+    tr.className = "p-sup-row";
+    tr.style.borderBottom = "1px solid var(--border)";
+
+    const isPrimary = isChecked || Boolean(item.is_primary);
+    const supId = item.supplier_id || '';
+    const partNo = esc(item.supplier_part_no || item.part_no || '');
+    const purRate = (item.purchase_rate !== undefined && item.purchase_rate !== null && item.purchase_rate !== '') ? item.purchase_rate : '';
+
+    tr.innerHTML = `
+      <td style="padding:6px 8px;text-align:center;vertical-align:middle;">
+        <input type="radio" name="pPrimarySupplierRadio" class="p-sup-primary-radio" ${isPrimary ? 'checked' : ''} title="Mark as Primary Supplier" style="transform:scale(1.2);cursor:pointer;">
+      </td>
+      <td style="padding:5px 8px;vertical-align:middle;">
+        <select class="form-select p-sup-select" style="font-size:12.5px;padding:5px 8px;" required>
+          ${getSupplierOptionsHtml(supId)}
+        </select>
+      </td>
+      <td style="padding:5px 8px;vertical-align:middle;">
+        <input type="text" class="form-input p-sup-partno" value="${partNo}" placeholder="Part / Code" style="font-size:12px;padding:5px 8px;">
+      </td>
+      <td style="padding:5px 8px;vertical-align:middle;">
+        <input type="number" step="0.01" class="form-input p-sup-rate" value="${purRate}" placeholder="0.00" style="font-size:12px;padding:5px 8px;">
+      </td>
+      <td style="padding:5px 8px;text-align:center;vertical-align:middle;">
+        <button type="button" class="btn btn-xs btn-outline p-sup-del-btn" title="Remove" style="color:var(--danger);border-color:var(--danger);padding:2px 6px;font-size:11px;">🗑️</button>
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+
+    const radio = tr.querySelector(".p-sup-primary-radio");
+    const sel = tr.querySelector(".p-sup-select");
+    const delBtn = tr.querySelector(".p-sup-del-btn");
+    const rateInp = tr.querySelector(".p-sup-rate");
+
+    radio.addEventListener("change", () => {
+      if (radio.checked) {
+        const chosenId = sel.value;
+        const hiddenSel = document.getElementById("pSupplierId");
+        if (hiddenSel) hiddenSel.value = chosenId;
+        const curRate = parseFloat(rateInp.value || 0);
+        const modalPurRate = document.getElementById("pPurRate");
+        if (curRate > 0 && modalPurRate && (!modalPurRate.value || parseFloat(modalPurRate.value) === 0)) {
+          modalPurRate.value = curRate;
+          autoCalcFormRates();
+        }
+      }
+    });
+
+    sel.addEventListener("change", () => {
+      if (radio.checked) {
+        const hiddenSel = document.getElementById("pSupplierId");
+        if (hiddenSel) hiddenSel.value = sel.value;
+      }
+    });
+
+    delBtn.addEventListener("click", () => {
+      const allRows = tbody.querySelectorAll(".p-sup-row");
+      if (allRows.length <= 1) {
+        sel.value = "";
+        tr.querySelector(".p-sup-partno").value = "";
+        rateInp.value = "";
+        radio.checked = true;
+        const hiddenSel = document.getElementById("pSupplierId");
+        if (hiddenSel) hiddenSel.value = "";
+        return;
+      }
+      const wasChecked = radio.checked;
+      tr.remove();
+      if (wasChecked) {
+        const firstRemainingRadio = tbody.querySelector(".p-sup-primary-radio");
+        if (firstRemainingRadio) {
+          firstRemainingRadio.checked = true;
+          firstRemainingRadio.dispatchEvent(new Event("change"));
+        }
+      }
+    });
+  }
+
+  function renderModalSupplierRows(initialData = null) {
+    const tbody = document.getElementById("pSuppliersTableBody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    let list = [];
+    if (Array.isArray(initialData) && initialData.length > 0) {
+      list = initialData;
+    } else if (initialData && typeof initialData === 'object' && initialData.supplier_id) {
+      list = [initialData];
+    } else if (typeof initialData === 'number' || typeof initialData === 'string') {
+      const supId = safeInt(initialData);
+      if (supId) {
+        list = [{ supplier_id: supId, is_primary: true }];
+      }
+    }
+
+    if (list.length === 0) {
+      appendSupplierRow({}, true);
+    } else {
+      let hasPrimary = list.some(s => Boolean(s.is_primary));
+      list.forEach((item, idx) => {
+        const isCheck = hasPrimary ? Boolean(item.is_primary) : (idx === 0);
+        appendSupplierRow(item, isCheck);
+      });
+    }
+
+    const checkedRadio = tbody.querySelector(".p-sup-primary-radio:checked");
+    if (checkedRadio) {
+      const row = checkedRadio.closest("tr");
+      const chosenSupId = row?.querySelector(".p-sup-select")?.value;
+      const hiddenSel = document.getElementById("pSupplierId");
+      if (hiddenSel) hiddenSel.value = chosenSupId || "";
+    }
+  }
+
   // Populate supplier select in modal
-  async function populateSuppliersDropdown(selectedSupId = null) {
+  async function populateSuppliersDropdown(initialData = null) {
     try {
       const curCompId = getActiveCompId();
       const compParam = (curCompId && curCompId !== 'all') ? `&company_id=${curCompId}` : (curCompId === 'all' ? `&company_id=all` : '');
       const res = await fetch(`${API_BASE}/inventory?action=suppliers-list${compParam}`, { headers: authHeaders() });
       const data = await res.json();
       if (data.success && data.suppliers) {
+        cachedModalSuppliers = data.suppliers;
         const sel = document.getElementById("pSupplierId");
         if (sel) {
           sel.innerHTML = `<option value="">-- Select Supplier (Optional) --</option>` +
-            data.suppliers.map(s => `<option value="${s.id}" ${selectedSupId == s.id ? 'selected' : ''}>${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("");
+            data.suppliers.map(s => `<option value="${s.id}">${esc(s.legal_name)} ${s.trade_name ? `(${esc(s.trade_name)})` : ''}</option>`).join("");
         }
       }
-    } catch (e) {}
+      renderModalSupplierRows(initialData);
+    } catch (e) {
+      console.error("populateSuppliersDropdown error:", e);
+    }
+  }
+
+  function openProductSuppliersPopover(p) {
+    const existing = document.getElementById("prodSuppliersModalOverlay");
+    if (existing) existing.remove();
+
+    const sups = Array.isArray(p.suppliers) ? p.suppliers : [];
+    const overlay = document.createElement("div");
+    overlay.id = "prodSuppliersModalOverlay";
+    overlay.style.position = "fixed";
+    overlay.style.top = "0";
+    overlay.style.left = "0";
+    overlay.style.width = "100%";
+    overlay.style.height = "100%";
+    overlay.style.background = "rgba(15,23,42,0.6)";
+    overlay.style.backdropFilter = "blur(4px)";
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
+    overlay.style.zIndex = "99999";
+
+    overlay.innerHTML = `
+      <div style="background:var(--bg1, #ffffff);border:1px solid var(--border);border-radius:12px;width:95%;max-width:700px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.25);overflow:hidden;">
+        <div style="padding:14px 18px;background:var(--bg2, #f8fafc);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--text1);display:flex;align-items:center;gap:8px;">
+              <span>🏢 Sourcing & Suppliers Directory</span>
+              <span class="badge badge-purple" style="font-size:11px;">${esc(p.display_sku || p.sku || 'SKU-' + p.id)}</span>
+            </h3>
+            <div style="font-size:12.5px;color:var(--text2);margin-top:2px;">
+              <strong>${esc(p.name)}</strong> ${p.model ? `(Model: ${esc(p.model)})` : ''}
+            </div>
+          </div>
+          <button type="button" class="closeSupModalBtn" style="background:none;border:none;font-size:22px;color:var(--text3);cursor:pointer;line-height:1;">&times;</button>
+        </div>
+
+        <div style="padding:16px;max-height:65vh;overflow-y:auto;">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span>Procured from <strong>${sups.length} supplier(s)</strong>. Primary supplier is marked with ⭐.</span>
+            <span style="font-weight:600;color:var(--text2);">Current Stock: ${p.current_stock || 0} ${esc(p.unit_of_measure || 'NOS')}</span>
+          </div>
+
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+              <thead style="background:var(--bg2, #f1f5f9);border-bottom:1px solid var(--border);font-size:11px;color:var(--text2);text-transform:uppercase;">
+                <tr>
+                  <th style="padding:8px 10px;text-align:center;width:75px;">Role</th>
+                  <th style="padding:8px 10px;text-align:left;">Supplier Name</th>
+                  <th style="padding:8px 10px;text-align:left;">Vendor Part No.</th>
+                  <th style="padding:8px 10px;text-align:right;">Pur Rate (Excl)</th>
+                  <th style="padding:8px 10px;text-align:right;">Pur Rate (Incl)</th>
+                  <th style="padding:8px 10px;text-align:center;">Last Purchased</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sups.length === 0 ? `
+                  <tr><td colspan="6" style="text-align:center;padding:16px;color:var(--text3);">No suppliers linked yet.</td></tr>
+                ` : sups.map(s => `
+                  <tr style="border-bottom:1px solid var(--border);background:${s.is_primary ? 'rgba(99,102,241,0.05)' : 'transparent'};">
+                    <td style="padding:8px 10px;text-align:center;vertical-align:middle;">
+                      ${s.is_primary 
+                        ? `<span class="badge badge-success" style="font-size:10.5px;font-weight:700;">⭐ Primary</span>` 
+                        : `<span class="badge badge-neutral" style="font-size:10.5px;color:var(--text3);">Alternate</span>`
+                      }
+                    </td>
+                    <td style="padding:8px 10px;vertical-align:middle;">
+                      <div style="font-weight:600;color:var(--text1);">${esc(s.supplier_name)}</div>
+                      ${s.trade_name ? `<div style="font-size:11px;color:var(--text3);">${esc(s.trade_name)}</div>` : ''}
+                    </td>
+                    <td style="padding:8px 10px;vertical-align:middle;font-family:monospace;font-weight:600;color:var(--text2);">
+                      ${esc(s.supplier_part_no || '—')}
+                    </td>
+                    <td style="padding:8px 10px;text-align:right;vertical-align:middle;font-weight:700;color:var(--text1);">
+                      ${s.purchase_rate > 0 ? formatCurrency(s.purchase_rate) : '—'}
+                    </td>
+                    <td style="padding:8px 10px;text-align:right;vertical-align:middle;color:var(--text3);font-size:11.5px;">
+                      ${s.purchase_rate_incl_tax > 0 ? formatCurrency(s.purchase_rate_incl_tax) : '—'}
+                    </td>
+                    <td style="padding:8px 10px;text-align:center;vertical-align:middle;font-size:11.5px;color:var(--text2);">
+                      ${s.last_purchase_date ? formatDate(s.last_purchase_date) : '<span style="color:var(--text3);">Never</span>'}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="padding:12px 18px;background:var(--bg2, #f8fafc);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn btn-sm btn-outline closeSupModalBtn">Close</button>
+          <button type="button" class="btn btn-sm btn-primary editFromSupModalBtn" style="font-weight:600;">✏️ Edit Product Sourcing</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll(".closeSupModalBtn").forEach(b => b.addEventListener("click", () => overlay.remove()));
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    const editBtn = overlay.querySelector(".editFromSupModalBtn");
+    if (editBtn) {
+      editBtn.addEventListener("click", () => {
+        overlay.remove();
+        const editTriggerBtn = document.querySelector(`.editProdBtn[data-id="${p.id}"]`);
+        if (editTriggerBtn) {
+          editTriggerBtn.click();
+        }
+      });
+    }
   }
 
   let allProductsList = [];
@@ -1033,9 +1300,10 @@ async function loadProductsSubTab() {
       }
       if (!searchTerm) return true;
 
+      const allSupNames = Array.isArray(p.suppliers) ? p.suppliers.map(s => s.supplier_name).join(" ") : "";
       const compStr = [
         p.display_sku, p.all_companies_sku, p.sku, p.name, p.brand, p.model, p.serial_no, p.supplier_name,
-        p.hsn_sac, p.company_name, p.rack_no, p.barcode
+        allSupNames, p.hsn_sac, p.company_name, p.rack_no, p.barcode
       ].map(v => (v || "").toLowerCase()).join(" ");
 
       return compStr.includes(searchTerm);
@@ -1063,7 +1331,28 @@ async function loadProductsSubTab() {
           <td style="font-weight:600;color:var(--text1);">${esc(p.name)}</td>
           <td>${esc(p.brand || '—')} / ${esc(p.model || '—')}</td>
           <td><span class="badge badge-neutral" style="font-family:monospace;font-weight:600;">${esc(p.serial_no || '—')}</span></td>
-          <td><span class="badge badge-outline" style="font-weight:600;">${esc(p.supplier_name || 'Unassigned')}</span></td>
+          <td>
+            ${(() => {
+              const sups = Array.isArray(p.suppliers) ? p.suppliers : [];
+              const primarySup = sups.find(s => s.is_primary) || sups[0];
+              const primaryName = primarySup ? (primarySup.supplier_name || primarySup.trade_name) : p.supplier_name;
+
+              if (sups.length > 1) {
+                return `
+                  <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                    <span class="badge badge-outline" style="font-weight:700;color:var(--text1);" title="Primary Supplier">⭐ ${esc(primaryName || 'Primary')}</span>
+                    <button type="button" class="viewProdSuppliersBtn" data-id="${p.id}" style="font-size:10.5px;padding:2px 6px;border-radius:12px;font-weight:700;border:none;cursor:pointer;background:#6366f1;color:#fff;line-height:1.3;box-shadow:0 1px 2px rgba(99,102,241,0.3);" title="View all ${sups.length} approved suppliers">
+                      +${sups.length - 1} more
+                    </button>
+                  </div>
+                `;
+              } else if (primaryName) {
+                return `<span class="badge badge-outline" style="font-weight:600;">${esc(primaryName)}</span>`;
+              } else {
+                return `<span class="badge badge-neutral" style="color:var(--text3);">Unassigned</span>`;
+              }
+            })()}
+          </td>
           <td>${esc(p.hsn_sac || '—')}</td>
           <td>${p.gst_rate}%</td>
           <td>
@@ -1103,6 +1392,14 @@ async function loadProductsSubTab() {
           });
         });
 
+        tb.querySelectorAll(".viewProdSuppliersBtn").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const p = allProductsList.find(x => x.id == btn.dataset.id);
+            if (p) openProductSuppliersPopover(p);
+          });
+        });
+
         tb.querySelectorAll(".editProdBtn").forEach(btn => {
           btn.addEventListener("click", async () => {
             const p = allProductsList.find(x => x.id == btn.dataset.id);
@@ -1137,7 +1434,7 @@ async function loadProductsSubTab() {
               document.getElementById("prodModalTitle").textContent = "✏️ Edit Product Details";
               document.getElementById("prodModalSubmitBtn").textContent = "💾 Update Product";
 
-              await populateSuppliersDropdown(p.supplier_id);
+              await populateSuppliersDropdown(p.suppliers && p.suppliers.length > 0 ? p.suppliers : p.supplier_id);
               autoCalcFormRates();
               document.getElementById("prodModal").style.display = "flex";
             } finally {
@@ -1400,11 +1697,16 @@ async function loadProductsSubTab() {
     }, 40);
   });
 
+  on("pAddSupplierRowBtn", "click", () => {
+    appendSupplierRow({}, false);
+  });
+
   on("quickAddSupInProdBtn", "click", () => {
     openSupplierModal(null, (newSup) => {
       populateSuppliersDropdown().then(() => {
-        const sel = document.getElementById("pSupplierId");
-        if (sel && newSup) sel.value = newSup.id;
+        if (newSup) {
+          appendSupplierRow({ supplier_id: newSup.id, is_primary: false });
+        }
       });
     }, compId !== 'all' ? compId : null);
   });
@@ -1425,11 +1727,45 @@ async function loadProductsSubTab() {
     const editingId = document.getElementById("pEditingId").value;
     const chosenCompId = document.getElementById("pCompanyId")?.value;
     const targetCompId = safeInt(chosenCompId) || (!selectedCompanyId || selectedCompanyId === "all" ? (typeof currentCompanies !== 'undefined' && currentCompanies[0]?.id ? currentCompanies[0].id : 1) : selectedCompanyId);
+
+    const suppliersPayload = [];
+    const seenSupIds = new Set();
+    const supRows = document.querySelectorAll("#pSuppliersTableBody .p-sup-row");
+    let primarySupId = null;
+
+    supRows.forEach(r => {
+      const sSel = r.querySelector(".p-sup-select");
+      const sid = sSel ? safeInt(sSel.value) : null;
+      if (!sid || seenSupIds.has(sid)) return;
+      seenSupIds.add(sid);
+
+      const isPrimary = Boolean(r.querySelector(".p-sup-primary-radio")?.checked);
+      const partNo = r.querySelector(".p-sup-partno")?.value.trim() || null;
+      const purRate = parseFloat(r.querySelector(".p-sup-rate")?.value || 0) || 0;
+
+      if (isPrimary) primarySupId = sid;
+
+      const gst = parseFloat(document.getElementById("pGst").value || 18) || 18;
+      suppliersPayload.push({
+        supplier_id: sid,
+        is_primary: isPrimary,
+        supplier_part_no: partNo,
+        purchase_rate: purRate,
+        purchase_rate_incl_tax: purRate > 0 ? Math.round(purRate * (1 + gst / 100) * 100) / 100 : 0
+      });
+    });
+
+    if (suppliersPayload.length > 0 && !primarySupId) {
+      suppliersPayload[0].is_primary = true;
+      primarySupId = suppliersPayload[0].supplier_id;
+    }
+
     const payload = {
       id: editingId || undefined,
       company_id: targetCompId,
       name: document.getElementById("pName").value.trim(),
-      supplier_id: document.getElementById("pSupplierId").value || null,
+      supplier_id: primarySupId || document.getElementById("pSupplierId")?.value || null,
+      suppliers: suppliersPayload,
       sku: document.getElementById("pSku").value.trim(),
       brand: document.getElementById("pBrand").value.trim(),
       model: document.getElementById("pModel").value.trim(),
@@ -1702,6 +2038,9 @@ function openProductImportModal(onSuccessCallback) {
 
       <div style="background:var(--bg-card, #f8fafc);padding:12px 16px;border-radius:8px;border:1px solid var(--border);margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.4;">
         Upload a product catalog spreadsheet file (<strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong>). Products are mapped by <strong>Product Name</strong> and <strong>Model</strong> to update existing stock or create new items automatically.<br>
+        <span style="font-size:11.5px;color:var(--text2);display:inline-block;margin-top:3px;">
+          💡 <strong>Multi-Supplier Sourcing:</strong> You can link multiple vendors by separating supplier names with semicolons (e.g. <code>Redland Spares; Sonalika OEM</code>) or by including multiple rows with the same product name & model.
+        </span>
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-xs btn-outline" id="dlModalTemplateBtn">📄 Download Sample CSV Template</button>
           <button type="button" class="btn btn-xs btn-primary" id="dlModalXlsxTemplateBtn" style="background:#16a34a;border-color:#16a34a;color:#fff;">📊 Download Sample Excel (.xlsx) Template</button>
@@ -1989,7 +2328,7 @@ window.downloadProductImportTemplate = function(asExcel = false) {
   
   const compNames = getCompanyNamesForTemplate();
   const baseSamples = [
-    ["Power Tiller 13HP", "Shrachi", "Virat 13hp", "SN-10928374", "Sonalika Motors", "84328020", "5", "145.5", "100000", "118000", "2000", "100", "", "", "10", "5", "Shed A-1"],
+    ["Power Tiller 13HP", "Shrachi", "Virat 13hp", "SN-10928374", "Sonalika Motors; Redland Spares", "84328020", "5", "145.5", "100000", "118000", "2000", "100", "", "", "10", "5", "Shed A-1"],
     ["Rotavator Blade 42T", "Shaktiman", "SRV-42", "SN-44918239", "Universal Spares", "84328020", "5", "1.2", "4500", "5310", "190", "50", "", "", "50", "15", "Rack B-3"]
   ];
 

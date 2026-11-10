@@ -7690,11 +7690,46 @@ function printPaymentReceipt(r, returns = []) {
 async function loadReturnsSubTab() {
   const subContent = document.getElementById("salesSubContent");
   const compId = selectedCompanyId || "all";
+  const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
+  const isSuper = (typeof isSuper !== "undefined" && isSuper) || (userObj && (userObj.role === "superadmin" || userObj.username === "superadmin"));
+
+  const getDaysSinceSale = (saleDateStr) => {
+    if (!saleDateStr) return 0;
+    const parts = String(saleDateStr).split('T')[0].split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      const sDate = new Date(y, m, d);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.max(0, Math.floor((today.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+    const sDate = new Date(saleDateStr);
+    if (isNaN(sDate.getTime())) return 0;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const d1 = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate());
+    return Math.max(0, Math.floor((today.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+  };
 
   subContent.innerHTML = `
-    <div style="margin-bottom:20px;">
+    <div style="margin-bottom:14px;">
       <h3 style="font-size:16px;font-weight:700;color:var(--text1);margin-bottom:4px;">↩️ Sales Returns & Refund Management</h3>
       <p style="font-size:12px;color:var(--text3);margin:0;">View all sold items to initiate returns. Returned products automatically increment inventory stock.</p>
+    </div>
+
+    <!-- RETURN POLICY NOTICE BANNER -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-secondary);border:1px solid var(--border);border-left:4px solid ${isSuper ? 'var(--warning, #f59e0b)' : 'var(--primary, #3b82f6)'};padding:10px 14px;border-radius:6px;margin-bottom:18px;font-size:12px;flex-wrap:wrap;gap:8px;">
+      <div>
+        <strong style="color:var(--text1);">📋 10-Day Return Eligibility Policy:</strong>
+        <span style="color:var(--text2);"> Products are eligible for customer return within <strong>10 days</strong> from the date of purchase. For purchases older than 10 days, return is disabled and can only be authorized by <strong>Superadmin</strong>.</span>
+      </div>
+      <div>
+        <span class="badge ${isSuper ? 'badge-warning' : 'badge-info'}" style="font-weight:700;font-size:11.5px;">
+          ${isSuper ? '👑 Superadmin (Full Return Authority & Override)' : '👤 Staff Role (10-Day Policy Active)'}
+        </span>
+      </div>
     </div>
 
     <!-- SEARCH & ALL SOLD ITEMS CARD -->
@@ -7784,11 +7819,48 @@ async function loadReturnsSubTab() {
         tbody: "soldItemsTableBody",
         paginationContainer: "soldItemsPagination",
         infoContainer: "soldItemsInfo",
-        renderRow: (item) => `
+        renderRow: (item) => {
+          const daysSinceSale = getDaysSinceSale(item.sale_date);
+          const isEligible = daysSinceSale <= 10;
+          const isAlreadyReturned = (item.is_returned || (item.returned_qty && item.returned_qty >= item.quantity));
+
+          let actionHtml = '';
+          if (isAlreadyReturned) {
+            actionHtml = `
+              <button class="btn btn-sm btn-secondary opacity-75" disabled title="This product item has already been returned" style="cursor:not-allowed;">
+                ↩️ Returned ${item.return_number ? `(#${esc(item.return_number)})` : ''}
+              </button>
+            `;
+          } else if (isEligible) {
+            actionHtml = `
+              <button class="btn btn-sm btn-danger initReturnBtn" data-item='${JSON.stringify(item).replace(/'/g, "&apos;")}' title="Purchased ${daysSinceSale} days ago (${10 - daysSinceSale} days remaining in return window)">
+                ↩️ Initiate Return
+              </button>
+            `;
+          } else if (isSuper) {
+            actionHtml = `
+              <button class="btn btn-sm btn-warning initReturnBtn" data-item='${JSON.stringify(item).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-weight:700;" title="Purchased ${daysSinceSale} days ago (>10 days limit). Superadmin authorized override.">
+                👑 Override Return (${daysSinceSale}d)
+              </button>
+            `;
+          } else {
+            actionHtml = `
+              <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:5px 8px;font-size:11px;font-weight:700;display:inline-block;" title="Return period expired (${daysSinceSale} days since purchase. Eligible only within 10 days). Only Superadmin can authorize returns after 10 days.">
+                🚫 Return Expired (${daysSinceSale}d ago)
+              </span>
+            `;
+          }
+
+          return `
           <tr>
             <td><span class="badge badge-purple">#${esc(item.invoice_number || item.challan_number || item.sale_id)}</span></td>
             <td><span class="badge badge-outline">${esc(item.company_name || 'Main')}</span></td>
-            <td>${formatDate(item.sale_date)}</td>
+            <td>
+              <div style="font-weight:600;">${formatDate(item.sale_date)}</div>
+              <div style="font-size:10.5px;color:${isEligible ? 'var(--success)' : 'var(--danger)'};font-weight:700;margin-top:2px;">
+                ${daysSinceSale === 0 ? 'Today (Eligible)' : (isEligible ? `${daysSinceSale}d ago (Eligible)` : `${daysSinceSale}d ago (Expired)`)}
+              </div>
+            </td>
             <td>
               <div style="font-weight:600;">${esc(item.customer_name || 'Counter Customer')}</div>
               <div style="font-size:11px;color:var(--text3);">${esc(item.cell_phone || '')}</div>
@@ -7799,25 +7871,20 @@ async function loadReturnsSubTab() {
             </td>
             <td style="font-weight:700;">${item.quantity}</td>
             <td>${formatCurrency(item.rate)}</td>
-            <td>
-              ${(item.is_returned || (item.returned_qty && item.returned_qty >= item.quantity)) ? `
-                <button class="btn btn-sm btn-secondary opacity-75" disabled title="This product item has already been returned" style="cursor:not-allowed;">
-                  ↩️ Returned ${item.return_number ? `(#${esc(item.return_number)})` : ''}
-                </button>
-              ` : `
-                <button class="btn btn-sm btn-danger initReturnBtn" data-item='${JSON.stringify(item).replace(/'/g, "&apos;")}'>
-                  ↩️ Initiate Return
-                </button>
-              `}
-            </td>
+            <td>${actionHtml}</td>
           </tr>
-        `,
+        `;
+        },
         onRender: () => {
           const tb = document.getElementById("soldItemsTableBody");
           if (!tb) return;
           tb.querySelectorAll(".initReturnBtn").forEach(btn => {
             btn.addEventListener("click", () => {
               const itemData = JSON.parse(btn.dataset.item);
+              const daysSince = getDaysSinceSale(itemData.sale_date);
+              if (daysSince > 10 && !isSuper) {
+                return showToast(`🚫 Cannot process return: Product was purchased ${daysSince} days ago (Policy: 10 days). Only Superadmin can authorize returns beyond 10 days.`, "error");
+              }
               openReturnProductModal(itemData, () => {
                 loadReturnsSubTab();
               });
@@ -7926,6 +7993,29 @@ async function loadReturnsSubTab() {
 
 // ── Modal: Process Product Return ──
 function openReturnProductModal(item, refreshCallback) {
+  const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
+  const isSuper = (typeof isSuper !== "undefined" && isSuper) || (userObj && (userObj.role === "superadmin" || userObj.username === "superadmin"));
+
+  // Check 10-day return policy
+  let daysSinceSale = 0;
+  if (item.sale_date) {
+    const parts = String(item.sale_date).split('T')[0].split('-');
+    if (parts.length === 3) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      const sDate = new Date(y, m, d);
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      daysSinceSale = Math.max(0, Math.floor((today.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+  }
+
+  if (daysSinceSale > 10 && !isSuper) {
+    showToast(`🚫 Return Window Expired: This product was purchased ${daysSinceSale} days ago (Policy: 10 days). Only Superadmin can authorize returns past 10 days.`, "error");
+    return;
+  }
+
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
@@ -7940,6 +8030,18 @@ function openReturnProductModal(item, refreshCallback) {
         <h3 style="font-size:18px;font-weight:700;color:var(--danger);margin:0;">↩️ Process Sales Return & Restock</h3>
         <button class="btn btn-sm btn-outline closeReturnModal">&times;</button>
       </div>
+
+      ${daysSinceSale > 10 ? `
+        <div style="background:#fffbe6;border:1px solid #fef3c7;padding:12px;border-radius:8px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:24px;">👑</span>
+          <div>
+            <div style="font-weight:700;color:#b45309;font-size:13px;">Superadmin Authorization Override</div>
+            <div style="font-size:12px;color:#92400e;margin-top:2px;">
+              This item was purchased on <strong>${formatDate(item.sale_date)}</strong> (<strong>${daysSinceSale} days ago</strong>, exceeding the 10-day customer return policy). As Superadmin, you have full authorization to override and process this return.
+            </div>
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Item Snapshot Banner -->
       <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;font-size:13px;">
@@ -8011,8 +8113,8 @@ function openReturnProductModal(item, refreshCallback) {
 
         <div style="display:flex;justify-content:flex-end;gap:10px;">
           <button type="button" class="btn btn-outline closeReturnModal">Cancel</button>
-          <button type="submit" class="btn btn-danger" id="btnSubmitReturn">
-            ↩️ Confirm Return & Restock Product
+          <button type="submit" class="btn ${daysSinceSale > 10 ? 'btn-warning' : 'btn-danger'}" id="btnSubmitReturn" ${daysSinceSale > 10 ? 'style="background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-weight:700;"' : ''}>
+            ${daysSinceSale > 10 ? '👑 Confirm Return & Restock (Superadmin Override)' : '↩️ Confirm Return & Restock Product'}
           </button>
         </div>
       </form>

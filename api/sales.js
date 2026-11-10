@@ -2137,6 +2137,26 @@ module.exports = async function handler(req, res) {
       if (sRows.length === 0) return res.status(404).json({ error: "Sale record not found" });
       const saleObj = sRows[0];
 
+      // 10-day return eligibility policy enforcement: only Superadmin can authorize returns past 10 days
+      if (saleObj.sale_date) {
+        const dateStr = String(saleObj.sale_date).split('T')[0];
+        const parts = dateStr.split('-');
+        let daysPassed = 0;
+        if (parts.length === 3) {
+          const sDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          daysPassed = Math.max(0, Math.floor((today.getTime() - sDate.getTime()) / (1000 * 60 * 60 * 24)));
+        }
+        const isSuper = user && (user.role === 'superadmin' || user.username === 'superadmin');
+
+        if (daysPassed > 10 && !isSuper) {
+          return res.status(403).json({
+            error: `Return window expired! This product was purchased on ${dateStr} (${daysPassed} days ago). Returns are only eligible within 10 days of purchase. Only a Superadmin can authorize returns beyond 10 days.`
+          });
+        }
+      }
+
       // Duplicate return check to prevent returning an already returned product or serial number
       if (serial_number && serial_number.trim()) {
         const existingRet = await sql`

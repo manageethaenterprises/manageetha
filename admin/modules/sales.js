@@ -5467,7 +5467,7 @@ async function loadSalesPOSSubTab() {
     const isLoss = finalGrand > 0 && (finalGrand < (totalMinCost - 0.01));
 
     const currentUserObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
-    const isSuperAdminUser = (typeof isSuper !== "undefined" && isSuper) || (currentUserObj && (currentUserObj.role === "superadmin" || currentUserObj.username === "superadmin"));
+    const isSuperAdminUser = Boolean(currentUserObj && (currentUserObj.role === "superadmin" || currentUserObj.username === "superadmin"));
 
     const partyTypeVal = document.getElementById("posPartyType")?.value;
     const isCounterParty = partyTypeVal === "counter";
@@ -6691,7 +6691,7 @@ async function loadSalesPOSSubTab() {
 
     // Minimum Cost Protection Validation: Allow Superadmin override for damaged/slow-running stock loss sales
     const currentUserObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
-    const isSuperAdminUser = (typeof isSuper !== "undefined" && isSuper) || (currentUserObj && (currentUserObj.role === "superadmin" || currentUserObj.username === "superadmin"));
+    const isSuperAdminUser = Boolean(currentUserObj && (currentUserObj.role === "superadmin" || currentUserObj.username === "superadmin"));
 
     if (enteredGrand < totalMinCost - 0.01) {
       if (!isSuperAdminUser) {
@@ -7691,7 +7691,7 @@ async function loadReturnsSubTab() {
   const subContent = document.getElementById("salesSubContent");
   const compId = selectedCompanyId || "all";
   const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
-  const isSuper = (typeof isSuper !== "undefined" && isSuper) || (userObj && (userObj.role === "superadmin" || userObj.username === "superadmin"));
+  const isSuper = Boolean(userObj && (userObj.role === "superadmin" || userObj.username === "superadmin"));
 
   const getDaysSinceSale = (saleDateStr) => {
     if (!saleDateStr) return 0;
@@ -7994,7 +7994,7 @@ async function loadReturnsSubTab() {
 // ── Modal: Process Product Return ──
 function openReturnProductModal(item, refreshCallback) {
   const userObj = (typeof getUser === "function" ? getUser() : null) || (typeof currentUser !== "undefined" && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem("erp_user") || "{}");
-  const isSuper = (typeof isSuper !== "undefined" && isSuper) || (userObj && (userObj.role === "superadmin" || userObj.username === "superadmin"));
+  const isSuper = Boolean(userObj && (userObj.role === "superadmin" || userObj.username === "superadmin"));
 
   // Check 10-day return policy
   let daysSinceSale = 0;

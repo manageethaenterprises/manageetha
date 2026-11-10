@@ -7,10 +7,11 @@ async function recordSalePaymentSafely(sql, payRow) {
   } = payRow;
 
   const dJson = (denomObj && typeof denomObj === 'object') ? JSON.stringify(denomObj) : '{}';
+  const bAcctId = (bankAccountId && !isNaN(parseInt(bankAccountId))) ? parseInt(bankAccountId) : null;
 
   try {
     // 1. Try insert with ::jsonb
-    await sql`
+    const res = await sql`
       INSERT INTO sale_payments (
         company_id, sale_id, payment_date, payment_mode, bank_sub_type,
         transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
@@ -18,17 +19,19 @@ async function recordSalePaymentSafely(sql, payRow) {
       ) VALUES (
         ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
         ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
-        ${chequeDdDate || null}, ${receivingBank || null}, ${bankAccountId || null},
+        ${chequeDdDate || null}, ${receivingBank || null}, ${bAcctId},
         ${amount}, ${cashierId},
         ${notes},
         ${rcptNo},
         ${dJson}::jsonb
       )
+      RETURNING *
     `;
+    return res[0] || null;
   } catch (errJsonb) {
     try {
       // 2. Try insert with plain text (if column is TEXT)
-      await sql`
+      const res = await sql`
         INSERT INTO sale_payments (
           company_id, sale_id, payment_date, payment_mode, bank_sub_type,
           transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
@@ -36,33 +39,57 @@ async function recordSalePaymentSafely(sql, payRow) {
         ) VALUES (
           ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
           ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
-          ${chequeDdDate || null}, ${receivingBank || null}, ${bankAccountId || null},
+          ${chequeDdDate || null}, ${receivingBank || null}, ${bAcctId},
           ${amount}, ${cashierId},
           ${notes},
           ${rcptNo},
           ${dJson}
         )
+        RETURNING *
       `;
+      return res[0] || null;
     } catch (errCol) {
-      // 3. Fallback: Column does not exist on sale_payments, insert WITHOUT denominations so payment is NEVER lost!
-      await sql`
-        INSERT INTO sale_payments (
-          company_id, sale_id, payment_date, payment_mode, bank_sub_type,
-          transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
-          amount, cashier_id, notes, receipt_number
-        ) VALUES (
-          ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
-          ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
-          ${chequeDdDate || null}, ${receivingBank || null}, ${bankAccountId || null},
-          ${amount}, ${cashierId},
-          ${notes},
-          ${rcptNo}
-        )
-      `;
       try {
-        await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
-        await sql`UPDATE sale_payments SET denominations = ${dJson}::jsonb WHERE receipt_number = ${rcptNo}`;
-      } catch (_) {}
+        // 3. Fallback: Column does not exist on sale_payments, insert WITHOUT denominations so payment is NEVER lost!
+        const res = await sql`
+          INSERT INTO sale_payments (
+            company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+            transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id,
+            amount, cashier_id, notes, receipt_number
+          ) VALUES (
+            ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
+            ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
+            ${chequeDdDate || null}, ${receivingBank || null}, ${bAcctId},
+            ${amount}, ${cashierId},
+            ${notes},
+            ${rcptNo}
+          )
+          RETURNING *
+        `;
+        try {
+          await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
+          await sql`UPDATE sale_payments SET denominations = ${dJson}::jsonb WHERE receipt_number = ${rcptNo}`;
+        } catch (_) {}
+        return res[0] || null;
+      } catch (errCol2) {
+        // 4. Absolute fallback: Insert without bank_account_id if column missing
+        const res = await sql`
+          INSERT INTO sale_payments (
+            company_id, sale_id, payment_date, payment_mode, bank_sub_type,
+            transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank,
+            amount, cashier_id, notes, receipt_number
+          ) VALUES (
+            ${compId}, ${saleId}, ${invDateVal}, ${paymentMode || 'cash'},
+            ${bankSubType || null}, ${transRef || null}, ${chequeDdNo || null},
+            ${chequeDdDate || null}, ${receivingBank || null},
+            ${amount}, ${cashierId},
+            ${notes},
+            ${rcptNo}
+          )
+          RETURNING *
+        `;
+        return res[0] || null;
+      }
     }
   }
 }
@@ -1340,13 +1367,27 @@ module.exports = async function handler(req, res) {
 
       const sale = saleArr[0];
 
+      // Auto-migrate sale_payments columns if missing
+      try {
+        await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
+        await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(50)`;
+        await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb`;
+      } catch (_) {
+        try {
+          await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT`;
+          await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations TEXT DEFAULT '{}'`;
+        } catch (__) {}
+      }
+
+      let newPay = null;
+
       // Record payment in sale_payments safely (supports single or multi-mode split payments)
       if (splitList.length > 0) {
         for (let idx = 0; idx < splitList.length; idx++) {
           const sp = splitList[idx];
           const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
           const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-          await recordSalePaymentSafely(sql, {
+          const inserted = await recordSalePaymentSafely(sql, {
             compId: sale.company_id,
             saleId: sale.id,
             invDateVal: payment_date || 'NOW()',
@@ -1363,11 +1404,12 @@ module.exports = async function handler(req, res) {
             rcptNo: newRcptNo,
             denomObj: spDenom
           });
+          if (!newPay) newPay = inserted;
         }
       } else {
         const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
         const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-        await recordSalePaymentSafely(sql, {
+        newPay = await recordSalePaymentSafely(sql, {
           compId: sale.company_id,
           saleId: sale.id,
           invDateVal: payment_date || 'NOW()',
@@ -1417,7 +1459,8 @@ module.exports = async function handler(req, res) {
       const custPhone = sale.cell_phone || sale.phone;
       if (custPhone) {
         try {
-          const smsText = `Dear ${sale.customer_name || 'Customer'}, received payment of Rs.${payAmount.toFixed(2)} via ${payment_mode.toUpperCase()} for Invoice #${sale.challan_number || sale.id}. Remaining pending balance: Rs.${newPending.toFixed(2)}. Thank you!`;
+          const modeStr = String(payment_mode || (splitList[0] ? splitList[0].payment_mode : 'payment')).toUpperCase();
+          const smsText = `Dear ${sale.customer_name || 'Customer'}, received payment of Rs.${payAmount.toFixed(2)} via ${modeStr} for Invoice #${sale.challan_number || sale.id}. Remaining pending balance: Rs.${newPending.toFixed(2)}. Thank you!`;
           await sql`
             INSERT INTO sms_logs (company_id, phone, message_text, status, provider_response)
             VALUES (${sale.company_id}, ${custPhone}, ${smsText}, 'delivered', 'DLT_STATUS_SUCCESS_200')
@@ -1427,7 +1470,7 @@ module.exports = async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        payment: newPay[0],
+        payment: newPay || null,
         total_paid: totalPaid,
         pending_amount: newPending,
         status: newStatus,

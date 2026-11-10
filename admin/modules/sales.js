@@ -639,9 +639,6 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
     const discPct = parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0));
 
     let pricingBadge = "";
-    if (it.price_mode === 'mrp') {
-      pricingBadge += ` <span style="font-size:10px;background:#fef3c7;color:#b45309;padding:1px 5px;border-radius:3px;font-weight:700;">MRP</span>`;
-    }
     if (discPct > 0) {
       pricingBadge += ` <span style="font-size:10px;background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-weight:700;">${discPct}% OFF</span>`;
     }
@@ -1377,8 +1374,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
     const modelStr = (it.model || it.model_name) ? ` / ${esc(it.model || it.model_name)}` : '';
     const unitStr = esc(it.unit || 'NOS');
     const discVal = parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0));
-    const isMrp = it.price_mode === 'mrp';
-    const mrpBadge = isMrp ? ` <span style="font-size:10px;background:#fef3c7;color:#b45309;padding:1px 4px;border-radius:2px;font-weight:700;">[MRP]</span>` : '';
+    const mrpBadge = '';
 
     const subRowColspan = hasDiscount ? 7 : 6;
 
@@ -3140,18 +3136,20 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
   const rawDcNo = sale.challan_number || sale.id;
   const dcRefStr = String(rawDcNo).toUpperCase().startsWith('DC') ? String(rawDcNo) : `DC-${rawDcNo}`;
 
+  const targetDcTotal = parseFloat(sale.dc_grand_total || sale.grand_total || 0);
   const itemsDcSum = items.reduce((acc, i) => acc + parseFloat(i.dc_total || i.total || (parseFloat(i.rate || 0) * (parseInt(i.quantity || 1)))), 0);
-  const dcGrandTotal = parseFloat(sale.dc_grand_total || (itemsDcSum > 0 ? itemsDcSum : sale.grand_total));
+  const dcGrandTotal = targetDcTotal > 0 ? targetDcTotal : itemsDcSum;
+  const dcRatio = (itemsDcSum > 0 && targetDcTotal > 0 && Math.abs(targetDcTotal - itemsDcSum) > 0.5) ? (targetDcTotal / itemsDcSum) : 1;
 
   const itemRowsHtml = items.map((it, idx) => {
     const sn = (it.serial_number && it.serial_number !== '—') ? String(it.serial_number).trim() : null;
     const prodName = it.description || it.product_name || 'Item';
     const modelName = it.model || it.model_name || it.product_model || '';
     const fullProdTitle = modelName ? `${prodName} / ${modelName}` : prodName;
-    const lineDcVal = parseFloat(it.dc_total || it.total || (parseFloat(it.rate || 0) * (parseInt(it.quantity || 1))));
+    const rawLineVal = parseFloat(it.dc_total || it.total || (parseFloat(it.rate || 0) * (parseInt(it.quantity || 1))));
+    const lineDcVal = Math.round((rawLineVal * dcRatio) * 100) / 100;
     const discPct = parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0));
     let pricingTag = "";
-    if (it.price_mode === 'mrp') pricingTag += ` <span style="font-size:10px;color:#b45309;font-weight:700;">[MRP]</span>`;
     if (discPct > 0) pricingTag += ` <span style="font-size:10px;color:#15803d;font-weight:700;">[${discPct}% OFF]</span>`;
 
     return `
@@ -4222,7 +4220,6 @@ async function loadSalesPOSSubTab() {
               <tr style="background:var(--bg-secondary);">
                 <th style="min-width:160px;padding:10px 12px;">Product & Serial No</th>
                 <th style="width:80px;text-align:center;padding:10px 8px;">Qty</th>
-                <th style="min-width:145px;padding:10px 8px;">Price Option</th>
                 <th style="width:85px;text-align:center;padding:10px 8px;">Discount</th>
                 <th style="width:90px;text-align:right;padding:10px 8px;">Rate (Excl)</th>
                 <th style="width:60px;text-align:center;padding:10px 8px;">GST %</th>
@@ -4231,7 +4228,7 @@ async function loadSalesPOSSubTab() {
               </tr>
             </thead>
             <tbody id="cartTableBody">
-              <tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text3);">Cart is empty. Add products above.</td></tr>
+              <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text3);">Cart is empty. Add products above.</td></tr>
             </tbody>
           </table>
         </div>
@@ -5127,7 +5124,7 @@ async function loadSalesPOSSubTab() {
 
     if (!tbody) return;
     if (cart.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text3);">Cart is empty. Add products above.</td></tr>`;
       const btnSubmit = document.getElementById("posSubmitBtn");
       if (btnSubmit) {
         btnSubmit.disabled = true;
@@ -5194,31 +5191,21 @@ async function loadSalesPOSSubTab() {
       return;
     }
 
-    let taxable = 0;
-    let gst = 0;
+    let totalBaseTaxable = 0;
+    let totalBaseTax = 0;
     let totalMinCost = 0;
 
-    tbody.innerHTML = cart.map((item, idx) => {
+    cart.forEach(item => {
       const gRate = Math.round(parseFloat(item.gst_rate || 18));
       const q = parseInt(item.quantity, 10) || 1;
 
-      // Selling Price (Excl Tax)
+      // Base Selling Price (Excl Tax)
       let sRate = parseFloat(item.selling_rate !== undefined ? item.selling_rate : (item.rate || 0));
       if (isNaN(sRate)) sRate = 0;
       item.selling_rate = sRate;
+      item.price_mode = 'selling_price';
 
-      // MRP (Incl Tax)
-      let mrpVal = parseFloat(item.mrp || 0);
-      if (isNaN(mrpVal) || mrpVal <= 0) {
-        mrpVal = Math.round(sRate * (1 + gRate / 100) * 100) / 100;
-      }
-      item.mrp = mrpVal;
-
-      // Price Mode: 'selling_price' (Excl Tax) | 'mrp' (Incl Tax)
-      const priceMode = item.price_mode || 'selling_price';
-      item.price_mode = priceMode;
-
-      // Cost Floor per unit (Purchase Rate Incl Tax + Transport Expenses) to prevent loss
+      // Cost floor per unit (Purchase Rate Incl Tax + Transport Expenses) to prevent loss
       const purRateExcl = parseFloat(item.purchase_rate || 0);
       const purRateIncl = (item.purchase_rate_incl_tax && parseFloat(item.purchase_rate_incl_tax) > 0)
         ? parseFloat(item.purchase_rate_incl_tax)
@@ -5227,12 +5214,9 @@ async function loadSalesPOSSubTab() {
       const unitCostFloor = Math.round((purRateIncl + transportExp) * 100) / 100;
       item.unit_cost_floor = unitCostFloor;
 
-      // Base Undiscounted Price per unit (Incl Tax) based on selected price mode
-      const unitFullInclTax = priceMode === 'mrp'
-        ? mrpVal
-        : (sRate * (1 + gRate / 100));
+      const unitFullInclTax = sRate * (1 + gRate / 100);
 
-      // Calculate safe max discount percentage (0% to 20%) to avoid falling below unitCostFloor
+      // Safe max discount % (0% to 20%)
       let maxDiscount = 20;
       if (unitCostFloor > 0 && unitFullInclTax > 0) {
         if (unitFullInclTax <= unitCostFloor) {
@@ -5244,53 +5228,113 @@ async function loadSalesPOSSubTab() {
       }
       item.max_discount = maxDiscount;
 
-      // Current discount percentage: clamped to maxDiscount
       let discPct = parseInt(item.discount_percent || 0, 10);
       if (isNaN(discPct) || discPct < 0) discPct = 0;
-      if (discPct > maxDiscount) {
-        discPct = maxDiscount;
-      }
+      if (discPct > maxDiscount) discPct = maxDiscount;
       item.discount_percent = discPct;
       item.discount = discPct;
 
-      // Calculations based on selected price mode and discount
-      let unitRateExcl = 0;
-      let lineTaxable = 0;
-      let lineTax = 0;
-      let lineTotal = 0;
-      let baseTaxableUnit = 0;
+      const baseUnitRate = Math.round((sRate * (1 - discPct / 100)) * 100) / 100;
+      const baseLineTaxable = Math.round((baseUnitRate * q) * 100) / 100;
+      const baseLineTax = Math.round((baseLineTaxable * (gRate / 100)) * 100) / 100;
+      const baseLineTotal = Math.round((baseLineTaxable + baseLineTax) * 100) / 100;
 
-      if (priceMode === 'mrp') {
-        // MRP Incl Tax: Total is derived from MRP with discount applied
-        const unitTotalIncl = Math.round((mrpVal * (1 - discPct / 100)) * 100) / 100;
-        lineTotal = Math.round((unitTotalIncl * q) * 100) / 100;
+      item.base_unit_rate = baseUnitRate;
+      item.base_line_taxable = baseLineTaxable;
+      item.base_line_tax = baseLineTax;
+      item.base_line_total = baseLineTotal;
+
+      totalBaseTaxable += baseLineTaxable;
+      totalBaseTax += baseLineTax;
+      totalMinCost += (unitCostFloor * q);
+    });
+
+    totalMinCost = Math.round(totalMinCost * 100) / 100;
+
+    // Overall Cart Discount
+    const discType = document.getElementById("posDiscountType")?.value || "flat";
+    const discInpVal = parseFloat(document.getElementById("posDiscountAmtInput")?.value || 0);
+    let vipDiscPercent = parseFloat(document.getElementById("posVipExtraDiscInp")?.value || 0);
+    if (isNaN(vipDiscPercent)) vipDiscPercent = 0;
+
+    let baseDiscVal = discType === "percent" ? (totalBaseTaxable * discInpVal / 100) : discInpVal;
+    let vipDiscVal = (totalBaseTaxable * vipDiscPercent / 100);
+    let totalDiscount = Math.min(totalBaseTaxable, baseDiscVal + vipDiscVal);
+
+    const discountedTaxable = Math.max(0, totalBaseTaxable - totalDiscount);
+    const discountedTax = (totalBaseTax * discountedTaxable) / (totalBaseTaxable || 1);
+    const standardGrand = Math.round((discountedTaxable + discountedTax) * 100) / 100;
+
+    const grandInp = document.getElementById("posGrandTotalInput");
+    if (grandInp && !grandInp.dataset.listenerAttached) {
+      grandInp.dataset.listenerAttached = "true";
+      grandInp.addEventListener("input", () => {
+        grandInp.dataset.userOverridden = (grandInp.value.trim() !== "" && parseFloat(grandInp.value) > 0) ? "true" : "false";
+        updateCartUI();
+      });
+    }
+
+    let targetGrand = standardGrand;
+    const isGrandOverridden = grandInp && grandInp.dataset.userOverridden === "true" && grandInp.value.trim() !== "" && parseFloat(grandInp.value) > 0;
+    if (isGrandOverridden) {
+      targetGrand = parseFloat(grandInp.value);
+    } else if (grandInp) {
+      grandInp.value = standardGrand > 0 ? standardGrand.toFixed(2) : "";
+      grandInp.dataset.userOverridden = "false";
+    }
+
+    // Scale cart items proportionally if targetGrand was adjusted
+    let runningTotal = 0;
+    let calculatedTaxable = 0;
+    let calculatedGst = 0;
+
+    cart.forEach((item, idx) => {
+      const gRate = Math.round(parseFloat(item.gst_rate || 18));
+      const q = parseInt(item.quantity, 10) || 1;
+      let lineTotal, lineTaxable, lineTax, unitRateExcl;
+
+      if (Math.abs(targetGrand - standardGrand) > 0.01 && standardGrand > 0) {
+        if (idx === cart.length - 1) {
+          lineTotal = Math.round((targetGrand - runningTotal) * 100) / 100;
+        } else {
+          lineTotal = Math.round((item.base_line_total * (targetGrand / standardGrand)) * 100) / 100;
+          runningTotal += lineTotal;
+        }
         lineTaxable = Math.round((lineTotal / (1 + gRate / 100)) * 100) / 100;
         lineTax = Math.round((lineTotal - lineTaxable) * 100) / 100;
         unitRateExcl = Math.round((lineTaxable / q) * 100) / 100;
-        baseTaxableUnit = Math.round((mrpVal / (1 + gRate / 100)) * 100) / 100;
       } else {
-        // Selling Price Excl Tax: Taxable unit rate is sRate with discount applied, then GST added on top
-        unitRateExcl = Math.round((sRate * (1 - discPct / 100)) * 100) / 100;
-        lineTaxable = Math.round((unitRateExcl * q) * 100) / 100;
-        lineTax = Math.round((lineTaxable * (gRate / 100)) * 100) / 100;
-        lineTotal = Math.round((lineTaxable + lineTax) * 100) / 100;
-        baseTaxableUnit = sRate;
+        unitRateExcl = item.base_unit_rate;
+        lineTaxable = item.base_line_taxable;
+        lineTax = item.base_line_tax;
+        lineTotal = item.base_line_total;
       }
+
+      calculatedTaxable += lineTaxable;
+      calculatedGst += lineTax;
 
       item.rate = unitRateExcl;
       item.taxable_value = lineTaxable;
       item.gst_amount = lineTax;
       item.total = lineTotal;
+      item.dc_rate = unitRateExcl;
+      item.dc_taxable_value = lineTaxable;
+      item.dc_total = lineTotal;
+    });
 
-      taxable += lineTaxable;
-      gst += lineTax;
-      totalMinCost += (unitCostFloor * q);
+    const finalGrand = targetGrand;
+    const finalTaxable = Math.round(calculatedTaxable * 100) / 100;
+    const finalGst = Math.round((finalGrand - finalTaxable) * 100) / 100;
 
-      const isHighValue = (unitRateExcl > 10000 || sRate > 10000);
+    tbody.innerHTML = cart.map((item, idx) => {
+      const gRate = Math.round(parseFloat(item.gst_rate || 18));
+      const q = parseInt(item.quantity, 10) || 1;
+      const sRate = item.selling_rate;
+      const discPct = item.discount_percent || 0;
+      const isHighValue = (item.rate > 10000 || sRate > 10000);
 
-      // Build safe options for Discount dropdown: 0% up to maxDiscount%
       let discOptionsHtml = `<option value="0" ${discPct === 0 ? 'selected' : ''}>0%</option>`;
-      for (let d = 1; d <= maxDiscount; d++) {
+      for (let d = 1; d <= item.max_discount; d++) {
         discOptionsHtml += `<option value="${d}" ${discPct === d ? 'selected' : ''}>${d}%</option>`;
       }
 
@@ -5321,70 +5365,22 @@ async function loadSalesPOSSubTab() {
               <button type="button" class="btn btn-sm btn-outline-success increaseCartQty" data-idx="${idx}" style="padding:2px 8px;font-size:13px;font-weight:800;line-height:1;border-radius:4px;" title="Increase quantity">+</button>
             </div>
           </td>
-          <td>
-            <select class="form-select cart-price-mode-sel" data-idx="${idx}" style="font-size:11px;font-weight:600;padding:4px 6px;width:100%;border-radius:5px;border:1px solid var(--border);background:var(--bg-secondary);">
-              <option value="selling_price" ${priceMode === 'selling_price' ? 'selected' : ''}>Selling Excl: ${formatCurrency(sRate)}</option>
-              <option value="mrp" ${priceMode === 'mrp' ? 'selected' : ''}>MRP Incl: ${formatCurrency(mrpVal)}</option>
-            </select>
-          </td>
           <td style="text-align:center;">
             <select class="form-select cart-item-discount-sel" data-idx="${idx}" style="font-size:12px;font-weight:700;padding:4px 6px;width:100%;min-width:68px;border-radius:5px;border:1px solid ${discPct > 0 ? '#10b981' : 'var(--border)'};color:${discPct > 0 ? '#047857' : 'inherit'};">
               ${discOptionsHtml}
             </select>
-            ${maxDiscount < 20 ? `<span style="font-size:9.5px;color:#d97706;font-weight:700;display:block;margin-top:2px;" title="Discounts higher than ${maxDiscount}% are blocked to protect purchase cost">Max ${maxDiscount}% safe</span>` : ''}
+            ${item.max_discount < 20 ? `<span style="font-size:9.5px;color:#d97706;font-weight:700;display:block;margin-top:2px;" title="Discounts higher than ${item.max_discount}% are blocked to protect purchase cost">Max ${item.max_discount}% safe</span>` : ''}
           </td>
           <td style="text-align:right;">
-            <div style="font-weight:700;font-size:12.5px;">${formatCurrency(unitRateExcl)}</div>
-            ${discPct > 0 ? `<div style="font-size:10px;color:var(--text3);text-decoration:line-through;">${formatCurrency(baseTaxableUnit)}</div>` : ''}
+            <div style="font-weight:700;font-size:12.5px;">${formatCurrency(item.rate)}</div>
+            ${(discPct > 0 || Math.abs(item.rate - sRate) > 0.01) ? `<div style="font-size:10px;color:var(--text3);text-decoration:line-through;">${formatCurrency(sRate)}</div>` : ''}
           </td>
           <td style="text-align:center;font-weight:600;font-size:12px;">${gRate}%</td>
-          <td style="text-align:right;font-weight:700;color:var(--success);font-size:13px;">${formatCurrency(lineTotal)}</td>
+          <td style="text-align:right;font-weight:700;color:var(--success);font-size:13px;">${formatCurrency(item.total)}</td>
           <td style="text-align:center;"><button class="btn btn-sm btn-danger removeCartItem" data-idx="${idx}" style="padding:2px 7px;font-size:14px;line-height:1;border-radius:4px;" title="Remove item">&times;</button></td>
         </tr>
       `;
     }).join("");
-
-    totalMinCost = Math.round(totalMinCost * 100) / 100;
-
-    // Calculate discount
-    const discType = document.getElementById("posDiscountType")?.value || "flat";
-    const discInpVal = parseFloat(document.getElementById("posDiscountAmtInput")?.value || 0);
-    let vipDiscPercent = parseFloat(document.getElementById("posVipExtraDiscInp")?.value || 0);
-    if (isNaN(vipDiscPercent)) vipDiscPercent = 0;
-
-    let baseDiscVal = discType === "percent" ? (taxable * discInpVal / 100) : discInpVal;
-    let vipDiscVal = (taxable * vipDiscPercent / 100);
-    let totalDiscount = baseDiscVal + vipDiscVal;
-    totalDiscount = Math.min(taxable, totalDiscount);
-
-    const netTaxable = Math.max(0, taxable - totalDiscount);
-    const netGst = (gst * netTaxable) / (taxable || 1);
-    const standardGrand = Math.round((netTaxable + netGst) * 100) / 100;
-
-    const grandInp = document.getElementById("posGrandTotalInput");
-    if (grandInp && !grandInp.dataset.listenerAttached) {
-      grandInp.dataset.listenerAttached = "true";
-      grandInp.addEventListener("input", () => {
-        grandInp.dataset.userOverridden = (grandInp.value.trim() !== "" && parseFloat(grandInp.value) > 0) ? "true" : "false";
-        updateCartUI();
-      });
-    }
-
-    let finalGrand = standardGrand;
-    let finalTaxable = Math.round(netTaxable * 100) / 100;
-    let finalGst = Math.round(netGst * 100) / 100;
-
-    if (grandInp) {
-      if (grandInp.dataset.userOverridden === "true" && grandInp.value.trim() !== "" && parseFloat(grandInp.value) > 0) {
-        finalGrand = parseFloat(grandInp.value);
-        const effectiveGstRate = netTaxable > 0 ? ((netGst / netTaxable) * 100) : (cart[0] ? Math.round(parseFloat(cart[0].gst_rate || 18)) : 18);
-        finalTaxable = Math.round((finalGrand / (1 + effectiveGstRate / 100)) * 100) / 100;
-        finalGst = Math.round((finalGrand - finalTaxable) * 100) / 100;
-      } else {
-        grandInp.value = standardGrand > 0 ? standardGrand.toFixed(2) : "";
-        grandInp.dataset.userOverridden = "false";
-      }
-    }
 
     document.getElementById("posTaxableText").textContent = formatCurrency(finalTaxable);
     if (document.getElementById("posDiscountAppliedText")) {
@@ -5649,16 +5645,6 @@ async function loadSalesPOSSubTab() {
           }
         }
         item.quantity = newQty;
-        updateCartUI();
-      });
-    });
-
-    document.querySelectorAll(".cart-price-mode-sel").forEach(sel => {
-      sel.addEventListener("change", (e) => {
-        const itemIdx = parseInt(e.target.dataset.idx, 10);
-        const item = cart[itemIdx];
-        if (!item) return;
-        item.price_mode = e.target.value;
         updateCartUI();
       });
     });
@@ -6584,24 +6570,11 @@ async function loadSalesPOSSubTab() {
       const taxableVal = parseFloat(taxableText.replace(/[^0-9.]/g, "") || 0);
       const gstVal = Math.round((finalGrand - taxableVal) * 100) / 100;
 
-      let standardTaxable = cart.reduce((a, b) => a + (parseFloat(b.taxable_value !== undefined ? b.taxable_value : (b.rate * b.quantity))), 0);
-      let standardGst = cart.reduce((a, b) => a + (parseFloat(b.gst_amount !== undefined ? b.gst_amount : ((b.rate * b.quantity * (b.gst_rate || 18)) / 100))), 0);
-      let standardGrand = standardTaxable + standardGst;
-      let ratio = standardGrand > 0 ? (finalGrand / standardGrand) : 1;
-
-      const adjustedCart = cart.map(it => ({
-        ...it,
-        rate: Math.round((parseFloat(it.rate) * ratio) * 100) / 100,
-        taxable_value: Math.round(((parseFloat(it.taxable_value !== undefined ? it.taxable_value : (it.rate * it.quantity))) * ratio) * 100) / 100,
-        gst_amount: Math.round(((parseFloat(it.gst_amount !== undefined ? it.gst_amount : 0)) * ratio) * 100) / 100,
-        total: Math.round(((parseFloat(it.total !== undefined ? it.total : 0)) * ratio) * 100) / 100
-      }));
-
       customTotals = {
         grandTotal: finalGrand,
         taxableTotal: taxableVal,
         gstTotal: gstVal,
-        adjustedCart: adjustedCart
+        adjustedCart: cart
       };
     }
 
@@ -6728,20 +6701,11 @@ async function loadSalesPOSSubTab() {
       }
     }
 
-    let finalCartItems = cart;
-    let finalDiscount = calcDiscount;
-    if (Math.abs(enteredGrand - calculatedGrand) > 0.01) {
-      const effectiveGstRate = netTaxableVal > 0 ? ((netGstVal / netTaxableVal) * 100) : (cart[0] ? Math.round(parseFloat(cart[0].gst_rate || 18)) : 18);
-      const customNetTaxable = Math.round((enteredGrand / (1 + effectiveGstRate / 100)) * 100) / 100;
-      if (cartTaxableSum > 0) {
-        const ratio = customNetTaxable / cartTaxableSum;
-        finalCartItems = cart.map(item => ({
-          ...item,
-          rate: Math.round((parseFloat(item.rate) * ratio) * 100) / 100
-        }));
-      }
-      finalDiscount = Math.max(0, cartTaxableSum - customNetTaxable);
-    }
+    const finalGrand = enteredGrand;
+    const finalCartItems = cart;
+    const finalTaxable = Math.round(cart.reduce((s, it) => s + (parseFloat(it.taxable_value) || 0), 0) * 100) / 100;
+    const finalGst = Math.round((finalGrand - finalTaxable) * 100) / 100;
+    const finalDiscount = calcDiscount;
 
     if (split_payments && split_payments.length > 0) {
       const splitSum = Math.round(split_payments.reduce((s, p) => s + p.amount, 0) * 100) / 100;
@@ -6828,6 +6792,10 @@ async function loadSalesPOSSubTab() {
       transporter_name: document.getElementById("posTransName").value.trim() || null,
       transporter_vehicle_no: document.getElementById("posVehicleNo").value.trim() || null,
       denominations: validPosDenoms,
+      grand_total: finalGrand,
+      custom_grand_total: finalGrand,
+      taxable_amount: finalTaxable,
+      tax_amount: finalGst,
       items: finalCartItems
     };
 

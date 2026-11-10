@@ -722,10 +722,14 @@ module.exports = async function handler(req, res) {
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100)`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice_date DATE`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS dc_grand_total NUMERIC(12,2)`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_term VARCHAR(50) DEFAULT '1_year'`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS warranty_months INT DEFAULT NULL`;
         await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS price_mode VARCHAR(50) DEFAULT 'selling_price'`;
         await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS discount NUMERIC(15,2) DEFAULT 0`;
+        await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS dc_rate NUMERIC(12,2)`;
+        await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS dc_taxable_value NUMERIC(12,2)`;
+        await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS dc_total NUMERIC(12,2)`;
         await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS is_finalized BOOLEAN DEFAULT true;`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'generated';`;
@@ -761,19 +765,44 @@ module.exports = async function handler(req, res) {
       const isInterstate = !isSameState;
       let taxableSum = 0;
       let taxSum = 0;
+      let itemsTotalSum = 0;
 
       items.forEach(i => {
-        const lineTotal = parseFloat(i.taxable_value !== undefined ? i.taxable_value : (parseFloat(i.rate) * parseInt(i.quantity)));
+        const lineTaxable = parseFloat(i.taxable_value !== undefined ? i.taxable_value : (parseFloat(i.rate) * parseInt(i.quantity)));
         const gstRate = parseFloat(i.gst_rate || 18);
-        const lineTax = parseFloat(i.gst_amount !== undefined ? i.gst_amount : ((lineTotal * gstRate) / 100));
-        taxableSum += lineTotal;
+        const lineTax = parseFloat(i.gst_amount !== undefined ? i.gst_amount : ((lineTaxable * gstRate) / 100));
+        const lineTotal = parseFloat(i.total !== undefined ? i.total : (lineTaxable + lineTax));
+        taxableSum += lineTaxable;
         taxSum += lineTax;
+        itemsTotalSum += lineTotal;
       });
 
+      taxableSum = Math.round(taxableSum * 100) / 100;
+      taxSum = Math.round(taxSum * 100) / 100;
+      itemsTotalSum = Math.round(itemsTotalSum * 100) / 100;
+
+      // Check if custom / overridden grand total was sent from client
+      const passedGrand = (req.body.custom_grand_total !== undefined && req.body.custom_grand_total !== null && req.body.custom_grand_total !== "" && !isNaN(parseFloat(req.body.custom_grand_total)))
+        ? parseFloat(req.body.custom_grand_total)
+        : ((req.body.grand_total !== undefined && req.body.grand_total !== null && req.body.grand_total !== "" && !isNaN(parseFloat(req.body.grand_total)))
+            ? parseFloat(req.body.grand_total)
+            : null);
+
+      let grandTotal;
+      if (passedGrand !== null && passedGrand > 0) {
+        grandTotal = Math.round(passedGrand * 100) / 100;
+      } else {
+        grandTotal = itemsTotalSum > 0 ? itemsTotalSum : Math.round((taxableSum + taxSum) * 100) / 100;
+      }
+
+      // Ensure exact mathematical harmony: taxableSum + taxSum = grandTotal
+      if (Math.abs((taxableSum + taxSum) - grandTotal) > 0.01 && grandTotal > 0 && taxableSum > 0) {
+        taxableSum = Math.round((grandTotal - taxSum) * 100) / 100;
+      }
+
       const discVal = parseFloat(discount_amount || 0);
-      const grandTotal = Math.max(0, (taxableSum - discVal) + taxSum);
-      const cgst = isInterstate ? 0 : taxSum / 2;
-      const sgst = isInterstate ? 0 : taxSum / 2;
+      const cgst = isInterstate ? 0 : Math.round((taxSum / 2) * 100) / 100;
+      const sgst = isInterstate ? 0 : Math.round((taxSum - cgst) * 100) / 100;
       const igst = isInterstate ? taxSum : 0;
 
       const splitList = (Array.isArray(split_payments) ? split_payments : [])
@@ -977,10 +1006,18 @@ module.exports = async function handler(req, res) {
 
           try {
             await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb;`;
-            await sql`UPDATE sales SET denominations = ${denomJson}::jsonb WHERE id = ${newSale[0].id}`;
-          } catch (_) {}
+            await sql`UPDATE sales SET denominations = ${denomJson}::jsonb, dc_grand_total = ${grandTotal} WHERE id = ${newSale[0].id}`;
+          } catch (_) {
+            try {
+              await sql`UPDATE sales SET dc_grand_total = ${grandTotal} WHERE id = ${newSale[0].id}`;
+            } catch (_) {}
+          }
         }
       }
+
+      try {
+        await sql`UPDATE sales SET dc_grand_total = ${grandTotal} WHERE id = ${newSale[0].id}`;
+      } catch (_) {}
 
       // If counter customer, auto insert Tax Invoice record into invoices table
       if (isCounter) {
@@ -1063,13 +1100,15 @@ module.exports = async function handler(req, res) {
         await sql`
           INSERT INTO sale_items (
             sale_id, product_id, description, hsn_code, quantity, rate, discount, taxable_value,
-            gst_rate, cgst, sgst, igst, total, serial_number, price_mode
+            gst_rate, cgst, sgst, igst, total, serial_number, price_mode,
+            dc_rate, dc_taxable_value, dc_total
           ) VALUES (
             ${newSale[0].id}, ${validProdId}, ${itemDesc},
             ${item.hsn_code || item.hsn_sac || null}, ${parseInt(item.quantity)}, ${parseFloat(item.rate)},
             ${parseFloat(item.discount !== undefined ? item.discount : (item.discount_percent || 0))},
             ${lineTotal}, ${gstRate}, ${isInterstate ? 0 : lineTax / 2}, ${isInterstate ? 0 : lineTax / 2}, ${isInterstate ? lineTax : 0}, ${itemTotal},
-            ${item.serial_number || null}, ${item.price_mode || 'selling_price'}
+            ${item.serial_number || null}, ${item.price_mode || 'selling_price'},
+            ${parseFloat(item.dc_rate || item.rate)}, ${parseFloat(item.dc_taxable_value || lineTotal)}, ${parseFloat(item.dc_total || itemTotal)}
           )
         `;
 

@@ -4201,13 +4201,54 @@ async function loadSalesPOSSubTab() {
             <button type="button" class="btn btn-primary" id="posBarcodeScanBtn" style="white-space:nowrap;font-weight:700;padding:8px 14px;background:linear-gradient(135deg,var(--primary),#3b82f6);color:#fff;border:none;">⚡ Scan / Add</button>
             <span id="posScannerStatusBadge" class="badge badge-success" style="font-size:11.5px;padding:7px 11px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,0.05);background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;" title="Hardware scanner is active anywhere on this screen without needing to click with mouse"><span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;box-shadow:0 0 8px #10b981;"></span> Auto-Scan Active</span>
           </div>
-          <div class="pos-select-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;">
-            <input type="text" id="posProdSearchInp" class="form-input" placeholder="🔍 Live Search Product (Name, Brand, Model, HSN, SKU)..." style="font-weight:600;font-size:13px;flex:1;min-width:160px;box-sizing:border-box;" autocomplete="off">
-            <select id="posProdSelect" class="form-select" style="flex:1.2;font-weight:600;min-width:160px;box-sizing:border-box;">
+          <div class="pos-select-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;width:100%;position:relative;">
+            <!-- CUSTOM SEARCHABLE MULTI-SELECT DROPDOWN CONTAINER -->
+            <div id="posProdDropdownWrapper" style="position:relative;flex:2;min-width:260px;box-sizing:border-box;">
+              <div style="position:relative;display:flex;align-items:center;">
+                <input type="text" id="posProdSearchInp" class="form-input" placeholder="🔍 Search SKU (sku-001, sku1, 1), Name, Brand, Model..." style="font-weight:600;font-size:13px;width:100%;padding-right:80px;box-sizing:border-box;border-radius:6px;" autocomplete="off">
+                <div style="position:absolute;right:8px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:4px;">
+                  <span id="posMultiSelectedBadge" class="badge badge-primary" style="display:none;font-size:11px;padding:2px 7px;cursor:pointer;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,0.1);" title="Click to view selected products">0 selected</span>
+                  <button type="button" id="posProdDropdownToggleBtn" style="background:transparent;border:none;cursor:pointer;font-size:12px;color:var(--text3);padding:4px 6px;line-height:1;" title="Toggle product catalog list">▼</button>
+                </div>
+              </div>
+
+              <!-- FLOATING MULTI-SELECT DROPDOWN MENU -->
+              <div id="posProdDropdownMenu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1050;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,0.18);max-height:360px;overflow:hidden;flex-direction:column;">
+                <!-- TOP ACTION BAR -->
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;gap:6px;">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:700;color:var(--text1);margin:0;font-size:12px;">
+                      <input type="checkbox" id="posSelectAllFilteredChk" style="cursor:pointer;accent-color:var(--primary);width:15px;height:15px;">
+                      <span>Select All Filtered</span>
+                    </label>
+                    <button type="button" class="btn btn-sm btn-outline" id="posDeselectAllBtn" style="font-size:11px;padding:1px 6px;display:none;">Clear Selection</button>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <span id="posDropdownItemCountText" style="color:var(--text3);font-size:11.5px;font-weight:600;">0 products</span>
+                    <button type="button" id="posCloseDropdownBtn" style="background:transparent;border:none;cursor:pointer;font-size:16px;line-height:1;color:var(--text3);padding:0 4px;" title="Close list">&times;</button>
+                  </div>
+                </div>
+
+                <!-- PRODUCT ITEMS LIST -->
+                <div id="posProdListContainer" style="overflow-y:auto;max-height:260px;padding:4px 0;">
+                </div>
+
+                <!-- FOOTER FOR MULTI-SELECT CONFIRMATION -->
+                <div id="posDropdownFooter" style="display:none;padding:8px 12px;background:var(--bg-secondary);border-top:1px solid var(--border);justify-content:space-between;align-items:center;">
+                  <span id="posFooterSelectedSummary" style="font-weight:700;font-size:12px;color:var(--primary);">0 products selected</span>
+                  <button type="button" class="btn btn-primary btn-sm" id="posAddSelectedDropdownBtn" style="font-weight:700;padding:5px 14px;background:linear-gradient(135deg,var(--primary),#3b82f6);color:#fff;border:none;">
+                    + Add Selected to Cart
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <select id="posProdSelect" class="form-select" style="display:none;">
               <option value="">-- Select Product to Add --</option>
             </select>
+
             <div class="pos-btn-group" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:0 0 auto;">
-              <input type="number" id="posQty" class="form-input" value="1" min="1" placeholder="Qty" style="width:65px;text-align:center;font-weight:700;box-sizing:border-box;">
+              <input type="number" id="posQty" class="form-input" value="1" min="1" placeholder="Qty" style="width:65px;text-align:center;font-weight:700;box-sizing:border-box;" title="Quantity per item">
               <button class="btn btn-primary" id="posAddBtn" style="white-space:nowrap;font-weight:700;padding:8px 14px;">+ Add Item</button>
               <button type="button" class="btn btn-outline" id="posAddCustomBtn" style="white-space:nowrap;font-weight:700;padding:8px 12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;">+ Custom Item</button>
             </div>
@@ -4215,15 +4256,15 @@ async function loadSalesPOSSubTab() {
         </div>
 
         <div class="pos-cart-table-wrapper" style="width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px;border:1px solid var(--border);background:var(--bg-primary);box-sizing:border-box;margin-bottom:6px;">
-          <table class="data-table pos-cart-table" style="width:100%;min-width:760px;border-collapse:collapse;margin:0;">
+          <table class="data-table pos-cart-table" style="width:100%;min-width:780px;border-collapse:collapse;margin:0;">
             <thead>
               <tr style="background:var(--bg-secondary);">
                 <th style="min-width:160px;padding:10px 12px;">Product & Serial No</th>
                 <th style="width:80px;text-align:center;padding:10px 8px;">Qty</th>
                 <th style="width:85px;text-align:center;padding:10px 8px;">Discount</th>
-                <th style="width:90px;text-align:right;padding:10px 8px;">Rate (Excl)</th>
+                <th style="min-width:105px;text-align:right;padding:10px 8px;" title="Click/type to edit individual Rate Excl. Tax">Rate (Excl) ✏️</th>
                 <th style="width:60px;text-align:center;padding:10px 8px;">GST %</th>
-                <th style="width:95px;text-align:right;padding:10px 8px;">Total</th>
+                <th style="min-width:110px;text-align:right;padding:10px 8px;" title="Click/type to edit individual Line Total (similar to Grand Total)">Total ✏️</th>
                 <th style="width:40px;text-align:center;padding:10px 6px;">Act</th>
               </tr>
             </thead>
@@ -5041,45 +5082,306 @@ async function loadSalesPOSSubTab() {
     }
   }
 
-  function populateProductSelect(filterQuery = "") {
-    const prodSel = document.getElementById("posProdSelect");
-    if (!prodSel) return;
+  const selectedProductIds = new Set();
 
-    const q = filterQuery.toLowerCase().trim();
-    const filtered = q ? productsList.filter(p => {
-      const name = String(p.name || '').toLowerCase();
-      const brand = String(p.brand || '').toLowerCase();
-      const model = String(p.model || '').toLowerCase();
-      const hsn = String(p.hsn_sac || p.hsn_code || '').toLowerCase();
-      const serialNo = String(p.serial_no || p.serial_number || '').toLowerCase();
-      const barcode = String(p.barcode || '').toLowerCase();
-      return name.includes(q) || brand.includes(q) || model.includes(q) || hsn.includes(q) || serialNo.includes(q) || barcode.includes(q);
-    }) : productsList;
+  function matchProductSearch(p, rawQuery) {
+    if (!rawQuery) return true;
+    const q = String(rawQuery).toLowerCase().trim();
+    if (!q) return true;
+
+    const name = String(p.name || '').toLowerCase();
+    const brand = String(p.brand || '').toLowerCase();
+    const model = String(p.model || '').toLowerCase();
+    const hsn = String(p.hsn_sac || p.hsn_code || '').toLowerCase();
+    const serialNo = String(p.serial_no || p.serial_number || '').toLowerCase();
+    const barcode = String(p.barcode || '').toLowerCase();
+    const sku = String(p.sku || p.display_sku || '').toLowerCase();
+
+    // 1. Direct substring match
+    if (name.includes(q) || brand.includes(q) || model.includes(q) || hsn.includes(q) || serialNo.includes(q) || barcode.includes(q) || sku.includes(q)) {
+      return true;
+    }
+
+    // 2. Smart SKU variation matching: sku-001, sku1, sku-1, sku 1, sku01, 1, 001
+    if (sku) {
+      const cleanQ = q.replace(/[^a-z0-9]/g, '');
+      const cleanSku = sku.replace(/[^a-z0-9]/g, '');
+      if (cleanQ && cleanSku && (cleanSku.includes(cleanQ) || cleanQ.includes(cleanSku))) {
+        return true;
+      }
+
+      const skuNumMatch = sku.match(/(?:sku)?[-_\s]*(\d+)/i);
+      const qNumMatch = q.match(/(?:sku)?[-_\s]*(\d+)/i);
+      if (skuNumMatch && qNumMatch) {
+        const sNum = parseInt(skuNumMatch[1], 10);
+        const qNum = parseInt(qNumMatch[1], 10);
+        if (!isNaN(sNum) && !isNaN(qNum) && sNum === qNum) return true;
+      }
+
+      if (/^\d+$/.test(cleanQ) && skuNumMatch) {
+        const sNum = parseInt(skuNumMatch[1], 10);
+        const qNum = parseInt(cleanQ, 10);
+        if (!isNaN(sNum) && !isNaN(qNum) && sNum === qNum) return true;
+      }
+    }
+
+    // 3. Multi-word search
+    const words = q.split(/\s+/).filter(w => w.length > 0);
+    if (words.length > 1) {
+      const combined = `${name} ${brand} ${model} ${sku} ${hsn}`;
+      if (words.every(w => combined.includes(w))) return true;
+    }
+
+    return false;
+  }
+
+  window.populateProductSelect = function(q = "") {
+    renderProductDropdown(q);
+  };
+
+  function renderProductDropdown(filterQuery = "") {
+    const listContainer = document.getElementById("posProdListContainer");
+    const countText = document.getElementById("posDropdownItemCountText");
+    const footer = document.getElementById("posDropdownFooter");
+    const footerSummary = document.getElementById("posFooterSelectedSummary");
+    const multiBadge = document.getElementById("posMultiSelectedBadge");
+    const selectAllChk = document.getElementById("posSelectAllFilteredChk");
+    const deselectBtn = document.getElementById("posDeselectAllBtn");
+    const prodSel = document.getElementById("posProdSelect");
+
+    if (!listContainer) return;
+
+    const filtered = (productsList || []).filter(p => matchProductSearch(p, filterQuery));
+
+    // Update count text
+    if (countText) {
+      countText.textContent = `${filtered.length} product${filtered.length === 1 ? '' : 's'}`;
+    }
+
+    // Update select all checkbox state
+    const selectableFiltered = filtered.filter(p => parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
+    const allFilteredSelected = selectableFiltered.length > 0 && selectableFiltered.every(p => selectedProductIds.has(p.id));
+    if (selectAllChk) {
+      selectAllChk.checked = allFilteredSelected;
+    }
+
+    // Update selection badges and footers
+    const selCount = selectedProductIds.size;
+    if (multiBadge) {
+      if (selCount > 0) {
+        multiBadge.style.display = "inline-block";
+        multiBadge.textContent = `${selCount} selected`;
+      } else {
+        multiBadge.style.display = "none";
+      }
+    }
+    if (deselectBtn) {
+      deselectBtn.style.display = selCount > 0 ? "inline-block" : "none";
+    }
+    if (footer && footerSummary) {
+      if (selCount > 0) {
+        footer.style.display = "flex";
+        footerSummary.textContent = `✓ ${selCount} product${selCount === 1 ? '' : 's'} selected`;
+      } else {
+        footer.style.display = "none";
+      }
+    }
+
+    // Update hidden legacy prodSel for fallback compatibility
+    if (prodSel) {
+      prodSel.innerHTML = `<option value="">-- Select Product --</option>` +
+        filtered.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("");
+      if (selectedProductIds.size === 1) {
+        prodSel.value = Array.from(selectedProductIds)[0];
+      }
+    }
 
     if (filtered.length === 0) {
-      prodSel.innerHTML = `<option value="">❌ No matching products found</option>`;
+      listContainer.innerHTML = `
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:12.5px;">
+          ❌ No matching products found for "${esc(filterQuery)}".<br>
+          <span style="font-size:11px;color:var(--text2);margin-top:4px;display:inline-block;">Tip: Try searching by SKU (e.g. SKU-001, sku1), Model, Brand, or Barcode.</span>
+        </div>`;
       return;
     }
 
-    const availableCount = filtered.filter(p => parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0).length;
+    listContainer.innerHTML = filtered.map(p => {
+      const isChecked = selectedProductIds.has(p.id);
+      const rate = parseFloat(p.selling_rate || 0);
+      const stock = parseInt(p.current_stock, 10) || 0;
+      const isOutOfStock = stock <= 0;
+      const isZeroPrice = rate <= 0;
+      const isDisabled = isOutOfStock || isZeroPrice;
+      const modelStr = p.model ? ` [${p.model}]` : '';
 
-    prodSel.innerHTML = `<option value="">-- Select Product (${availableCount} available to sell / ${filtered.length} total) --</option>` +
-      filtered.map(p => {
-        const rate = parseFloat(p.selling_rate || 0);
-        const stock = parseInt(p.current_stock, 10) || 0;
-        const isZeroPrice = rate <= 0;
-        const isOutOfStock = stock <= 0;
+      return `
+        <div class="pos-prod-dropdown-item ${isDisabled ? 'disabled' : ''}" data-id="${p.id}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border-light, #f1f5f9);cursor:${isDisabled ? 'not-allowed' : 'pointer'};background:${isChecked ? 'rgba(59,130,246,0.08)' : (isDisabled ? 'var(--bg-secondary)' : 'transparent')};transition:background 0.15s ease;">
+          <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+            <input type="checkbox" class="pos-prod-chk" data-id="${p.id}" ${isChecked ? 'checked' : ''} ${isDisabled ? 'disabled' : ''} style="cursor:${isDisabled ? 'not-allowed' : 'pointer'};accent-color:var(--primary);width:16px;height:16px;flex-shrink:0;">
+            <div style="min-width:0;flex:1;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                ${p.sku ? `<span style="font-family:monospace;font-size:11px;font-weight:800;background:#ede9fe;color:#6b21a8;padding:1px 6px;border-radius:4px;border:1px solid #c4b5fd;">${esc(p.sku)}</span>` : ''}
+                <span style="font-weight:700;font-size:13px;color:var(--text1);">${esc(p.name)}</span>
+                ${modelStr ? `<span style="font-size:11.5px;color:var(--primary);font-weight:700;">${esc(modelStr)}</span>` : ''}
+              </div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px;display:flex;gap:12px;flex-wrap:wrap;">
+                ${p.brand ? `<span>Brand: <strong>${esc(p.brand)}</strong></span>` : ''}
+                ${p.hsn_sac || p.hsn_code ? `<span>HSN: ${esc(p.hsn_sac || p.hsn_code)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:8px;">
+            <div style="text-align:right;">
+              <div style="font-weight:700;font-size:13px;color:var(--text1);">${formatCurrency(rate)}</div>
+              <div style="font-size:10.5px;font-weight:700;color:${stock > 0 ? 'var(--success)' : 'var(--danger)'};">
+                ${stock > 0 ? `Stock: ${stock}` : (isZeroPrice ? 'No Price' : 'Out of Stock')}
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary pos-quick-add-btn" data-id="${p.id}" ${isDisabled ? 'disabled' : ''} style="padding:3px 9px;font-size:11.5px;font-weight:700;white-space:nowrap;" title="Add 1 unit to cart immediately">
+              + Add
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
 
-        const modelStr = p.model ? ` [${p.model}]` : '';
+    // Attach row click / checkbox toggle listeners
+    listContainer.querySelectorAll(".pos-prod-dropdown-item").forEach(row => {
+      const pId = parseInt(row.dataset.id, 10);
+      const chk = row.querySelector(".pos-prod-chk");
 
-        if (isZeroPrice) {
-          return `<option value="${p.id}" disabled style="color:#dc2626;background:#fef2f2;font-weight:600;padding:6px 10px;">⚠️ ${esc(p.name)}${esc(modelStr)} - ₹0.00 (NOT READY TO SELL - Set Price in Inventory)</option>`;
+      row.addEventListener("click", (e) => {
+        if (e.target.closest(".pos-quick-add-btn")) return;
+        if (row.classList.contains("disabled")) return;
+
+        if (e.target !== chk) {
+          chk.checked = !chk.checked;
         }
-        if (isOutOfStock) {
-          return `<option value="${p.id}" disabled style="color:#64748b;background:#f1f5f9;font-weight:600;padding:6px 10px;">🚫 ${esc(p.name)}${esc(modelStr)} - ${formatCurrency(rate)} (OUT OF STOCK - Stock: 0)</option>`;
+
+        if (chk.checked) {
+          selectedProductIds.add(pId);
+        } else {
+          selectedProductIds.delete(pId);
         }
-        return `<option value="${p.id}" style="color:#0f172a;font-weight:600;padding:6px 10px;">📦 ${esc(p.name)}${esc(modelStr)} - ${formatCurrency(rate)} (In Stock: ${stock})</option>`;
-      }).join("");
+
+        renderProductDropdown(document.getElementById("posProdSearchInp")?.value || "");
+      });
+    });
+
+    // Attach quick + Add listeners
+    listContainer.querySelectorAll(".pos-quick-add-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const pId = parseInt(btn.dataset.id, 10);
+        addProductsToCart([pId], parseInt(document.getElementById("posQty")?.value, 10) || 1);
+      });
+    });
+  }
+
+  function addProductsToCart(prodIdsList, qty = 1) {
+    if (!prodIdsList || prodIdsList.length === 0) {
+      showToast("Select at least one product to add to cart", "warning");
+      return;
+    }
+
+    let addedCount = 0;
+    const addedNames = [];
+
+    prodIdsList.forEach(pId => {
+      const prod = (productsList || []).find(p => p.id == pId);
+      if (!prod) return;
+
+      const rate = parseFloat(prod.selling_rate || 0);
+      if (rate <= 0) {
+        showToast(`Skipped "${prod.name}": Selling price is not set (₹0.00).`, "warning");
+        return;
+      }
+
+      const stock = parseInt(prod.current_stock, 10) || 0;
+      const currentInCart = cart.filter(c => c.product_id == prod.id).reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+      if (currentInCart + qty > stock) {
+        showToast(`Stock limit reached for "${prod.name}". Available: ${stock} (${currentInCart} in cart).`, "error");
+        return;
+      }
+
+      const purRateExcl = parseFloat(prod.purchase_rate || 0);
+      const gstR = Math.round(parseFloat(prod.gst_rate || 18));
+      const purRateIncl = (prod.purchase_rate_incl_tax && parseFloat(prod.purchase_rate_incl_tax) > 0)
+        ? parseFloat(prod.purchase_rate_incl_tax)
+        : (purRateExcl * (1 + gstR / 100));
+      const transportExp = parseFloat(prod.transport_expenses || 0);
+      const mrp = parseFloat(prod.mrp || 0) > 0 ? parseFloat(prod.mrp) : Math.round((rate * (1 + gstR / 100)) * 100) / 100;
+
+      const isHighValue = rate > 10000;
+      if (isHighValue) {
+        for (let i = 0; i < qty; i++) {
+          cart.push({
+            product_id: prod.id,
+            name: prod.name,
+            model: prod.model || '',
+            brand: prod.brand || '',
+            sku: prod.sku || '',
+            hsn_code: prod.hsn_sac || prod.hsn_code,
+            selling_rate: rate,
+            mrp: mrp,
+            price_mode: 'selling_price',
+            discount_percent: 0,
+            rate: rate,
+            purchase_rate: purRateExcl,
+            purchase_rate_incl_tax: purRateIncl,
+            transport_expenses: transportExp,
+            gst_rate: gstR,
+            quantity: 1,
+            serial_number: ""
+          });
+        }
+      } else {
+        const existing = cart.find(c => c.product_id == prod.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && parseFloat(c.rate) <= 10000 && !c.custom_rate && !c.custom_total);
+        if (existing) {
+          existing.quantity += qty;
+        } else {
+          cart.push({
+            product_id: prod.id,
+            name: prod.name,
+            model: prod.model || '',
+            brand: prod.brand || '',
+            sku: prod.sku || '',
+            hsn_code: prod.hsn_sac || prod.hsn_code,
+            selling_rate: rate,
+            mrp: mrp,
+            price_mode: 'selling_price',
+            discount_percent: 0,
+            rate: rate,
+            purchase_rate: purRateExcl,
+            purchase_rate_incl_tax: purRateIncl,
+            transport_expenses: transportExp,
+            gst_rate: gstR,
+            quantity: qty,
+            serial_number: ""
+          });
+        }
+      }
+
+      addedCount++;
+      addedNames.push(prod.name);
+    });
+
+    if (addedCount > 0) {
+      selectedProductIds.clear();
+      const searchInp = document.getElementById("posProdSearchInp");
+      if (searchInp) searchInp.value = "";
+      const dropdownMenu = document.getElementById("posProdDropdownMenu");
+      if (dropdownMenu) dropdownMenu.style.display = "none";
+
+      renderProductDropdown("");
+      updateCartUI();
+
+      if (addedCount === 1) {
+        showToast(`Added '${addedNames[0]}' to cart!`, "success");
+      } else {
+        showToast(`Added ${addedCount} products to cart successfully!`, "success");
+      }
+    }
   }
 
   // Fetch products & customers
@@ -5088,12 +5390,104 @@ async function loadSalesPOSSubTab() {
     const pData = await pRes.json();
     if (pData.success) {
       productsList = pData.products || [];
-      populateProductSelect();
+      renderProductDropdown("");
     }
   } catch (e) {}
 
-  document.getElementById("posProdSearchInp")?.addEventListener("input", (e) => {
-    populateProductSelect(e.target.value);
+  const posSearchInp = document.getElementById("posProdSearchInp");
+  const posDropdownMenu = document.getElementById("posProdDropdownMenu");
+  const posToggleBtn = document.getElementById("posProdDropdownToggleBtn");
+  const posCloseBtn = document.getElementById("posCloseDropdownBtn");
+  const posSelectAllChk = document.getElementById("posSelectAllFilteredChk");
+  const posDeselectBtn = document.getElementById("posDeselectAllBtn");
+  const posAddSelectedBtn = document.getElementById("posAddSelectedDropdownBtn");
+  const posMultiBadge = document.getElementById("posMultiSelectedBadge");
+
+  // WHILE SEARCHING: keep open automatically! User doesn't need to click!
+  posSearchInp?.addEventListener("input", (e) => {
+    if (posDropdownMenu) posDropdownMenu.style.display = "flex";
+    renderProductDropdown(e.target.value);
+  });
+
+  // IF NOT SEARCHING: keep collapsed until user clicks on search input or toggle button
+  posSearchInp?.addEventListener("click", () => {
+    if (posDropdownMenu && posDropdownMenu.style.display !== "flex") {
+      posDropdownMenu.style.display = "flex";
+      renderProductDropdown(posSearchInp.value);
+    }
+  });
+
+  posToggleBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!posDropdownMenu) return;
+    if (posDropdownMenu.style.display === "flex") {
+      posDropdownMenu.style.display = "none";
+    } else {
+      posDropdownMenu.style.display = "flex";
+      renderProductDropdown(posSearchInp?.value || "");
+    }
+  });
+
+  posMultiBadge?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (posDropdownMenu) {
+      posDropdownMenu.style.display = "flex";
+      renderProductDropdown(posSearchInp?.value || "");
+    }
+  });
+
+  posCloseBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (posDropdownMenu) posDropdownMenu.style.display = "none";
+  });
+
+  // Clicking outside collapses the dropdown
+  document.addEventListener("click", (e) => {
+    const wrapper = document.getElementById("posProdDropdownWrapper");
+    if (wrapper && !wrapper.contains(e.target) && posDropdownMenu) {
+      posDropdownMenu.style.display = "none";
+    }
+  });
+
+  // Escape key collapses dropdown; Enter adds matching product
+  posSearchInp?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && posDropdownMenu) {
+      posDropdownMenu.style.display = "none";
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const qVal = posSearchInp.value.trim();
+      const qtyVal = parseInt(document.getElementById("posQty")?.value, 10) || 1;
+      if (selectedProductIds.size > 0) {
+        addProductsToCart(Array.from(selectedProductIds), qtyVal);
+      } else if (qVal) {
+        const filtered = (productsList || []).filter(p => matchProductSearch(p, qVal) && parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
+        if (filtered.length > 0) {
+          addProductsToCart([filtered[0].id], qtyVal);
+        }
+      }
+    }
+  });
+
+  posSelectAllChk?.addEventListener("change", () => {
+    const qVal = posSearchInp?.value || "";
+    const filtered = (productsList || []).filter(p => matchProductSearch(p, qVal) && parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
+    if (posSelectAllChk.checked) {
+      filtered.forEach(p => selectedProductIds.add(p.id));
+    } else {
+      filtered.forEach(p => selectedProductIds.delete(p.id));
+    }
+    renderProductDropdown(qVal);
+  });
+
+  posDeselectBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    selectedProductIds.clear();
+    renderProductDropdown(posSearchInp?.value || "");
+  });
+
+  posAddSelectedBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    addProductsToCart(Array.from(selectedProductIds), parseInt(document.getElementById("posQty")?.value, 10) || 1);
   });
 
   function updateCartUI() {
@@ -5234,10 +5628,24 @@ async function loadSalesPOSSubTab() {
       item.discount_percent = discPct;
       item.discount = discPct;
 
-      const baseUnitRate = Math.round((sRate * (1 - discPct / 100)) * 100) / 100;
-      const baseLineTaxable = Math.round((baseUnitRate * q) * 100) / 100;
-      const baseLineTax = Math.round((baseLineTaxable * (gRate / 100)) * 100) / 100;
-      const baseLineTotal = Math.round((baseLineTaxable + baseLineTax) * 100) / 100;
+      let baseUnitRate, baseLineTaxable, baseLineTax, baseLineTotal;
+
+      if (item.custom_total !== undefined && item.custom_total !== null && !isNaN(item.custom_total)) {
+        baseLineTotal = Math.round(parseFloat(item.custom_total) * 100) / 100;
+        baseLineTaxable = Math.round((baseLineTotal / (1 + gRate / 100)) * 100) / 100;
+        baseLineTax = Math.round((baseLineTotal - baseLineTaxable) * 100) / 100;
+        baseUnitRate = Math.round((baseLineTaxable / q) * 100) / 100;
+      } else if (item.custom_rate !== undefined && item.custom_rate !== null && !isNaN(item.custom_rate)) {
+        baseUnitRate = Math.round(parseFloat(item.custom_rate) * 100) / 100;
+        baseLineTaxable = Math.round((baseUnitRate * q) * 100) / 100;
+        baseLineTax = Math.round((baseLineTaxable * (gRate / 100)) * 100) / 100;
+        baseLineTotal = Math.round((baseLineTaxable + baseLineTax) * 100) / 100;
+      } else {
+        baseUnitRate = Math.round((sRate * (1 - discPct / 100)) * 100) / 100;
+        baseLineTaxable = Math.round((baseUnitRate * q) * 100) / 100;
+        baseLineTax = Math.round((baseLineTaxable * (gRate / 100)) * 100) / 100;
+        baseLineTotal = Math.round((baseLineTaxable + baseLineTax) * 100) / 100;
+      }
 
       item.base_unit_rate = baseUnitRate;
       item.base_line_taxable = baseLineTaxable;
@@ -5372,11 +5780,19 @@ async function loadSalesPOSSubTab() {
             ${item.max_discount < 20 ? `<span style="font-size:9.5px;color:#d97706;font-weight:700;display:block;margin-top:2px;" title="Discounts higher than ${item.max_discount}% are blocked to protect purchase cost">Max ${item.max_discount}% safe</span>` : ''}
           </td>
           <td style="text-align:right;">
-            <div style="font-weight:700;font-size:12.5px;">${formatCurrency(item.rate)}</div>
-            ${(discPct > 0 || Math.abs(item.rate - sRate) > 0.01) ? `<div style="font-size:10px;color:var(--text3);text-decoration:line-through;">${formatCurrency(sRate)}</div>` : ''}
+            <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:2px;">
+              <span style="font-size:11px;color:var(--text3);font-weight:700;">₹</span>
+              <input type="number" step="0.01" min="0" class="form-input cart-item-rate-input" data-idx="${idx}" value="${parseFloat(item.rate || 0).toFixed(2)}" title="Edit individual Rate Excl. Tax (Press Enter or Tab to apply)" placeholder="0.00" style="width:84px;text-align:right;font-weight:700;font-size:12px;padding:3px 5px;height:28px;border-radius:4px;border:1px solid ${item.custom_rate !== undefined ? 'var(--primary, #3b82f6)' : 'var(--border)'};background:${item.custom_rate !== undefined ? '#eff6ff' : 'var(--bg-primary)'};">
+            </div>
+            ${(discPct > 0 || Math.abs(item.rate - sRate) > 0.01) ? `<div style="font-size:9.5px;color:var(--text3);text-decoration:line-through;margin-top:2px;">Orig: ${formatCurrency(sRate)}</div>` : ''}
           </td>
           <td style="text-align:center;font-weight:600;font-size:12px;">${gRate}%</td>
-          <td style="text-align:right;font-weight:700;color:var(--success);font-size:13px;">${formatCurrency(item.total)}</td>
+          <td style="text-align:right;">
+            <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:2px;">
+              <span style="font-size:11px;color:var(--success);font-weight:700;">₹</span>
+              <input type="number" step="0.01" min="0" class="form-input cart-item-total-input" data-idx="${idx}" value="${parseFloat(item.total || 0).toFixed(2)}" title="Edit individual Line Total (similar to Grand Total - Press Enter or Tab to apply)" placeholder="0.00" style="width:88px;text-align:right;font-weight:700;font-size:12.5px;padding:3px 5px;height:28px;border-radius:4px;color:var(--success);border:1px solid ${item.custom_total !== undefined ? 'var(--success)' : 'var(--border)'};background:${item.custom_total !== undefined ? '#f0fdf4' : 'var(--bg-primary)'};">
+            </div>
+          </td>
           <td style="text-align:center;"><button class="btn btn-sm btn-danger removeCartItem" data-idx="${idx}" style="padding:2px 7px;font-size:14px;line-height:1;border-radius:4px;" title="Remove item">&times;</button></td>
         </tr>
       `;
@@ -5574,6 +5990,11 @@ async function loadSalesPOSSubTab() {
         const item = cart[itemIdx];
         if (!item) return;
 
+        if (item.custom_total !== undefined) {
+          item.custom_rate = item.base_unit_rate;
+          delete item.custom_total;
+        }
+
         const isHighVal = parseFloat(item.rate || 0) > 10000;
 
         if (isHighVal) {
@@ -5615,6 +6036,11 @@ async function loadSalesPOSSubTab() {
         const item = cart[itemIdx];
         if (!item) return;
 
+        if (item.custom_total !== undefined) {
+          item.custom_rate = item.base_unit_rate;
+          delete item.custom_total;
+        }
+
         if (item.quantity > 1) {
           item.quantity -= 1;
         } else {
@@ -5629,6 +6055,11 @@ async function loadSalesPOSSubTab() {
         const itemIdx = parseInt(e.target.dataset.idx, 10);
         const item = cart[itemIdx];
         if (!item) return;
+
+        if (item.custom_total !== undefined) {
+          item.custom_rate = item.base_unit_rate;
+          delete item.custom_total;
+        }
 
         let newQty = parseInt(e.target.value, 10);
         if (isNaN(newQty) || newQty < 1) newQty = 1;
@@ -5654,8 +6085,64 @@ async function loadSalesPOSSubTab() {
         const itemIdx = parseInt(e.target.dataset.idx, 10);
         const item = cart[itemIdx];
         if (!item) return;
+        delete item.custom_rate;
+        delete item.custom_total;
         item.discount_percent = parseInt(e.target.value, 10) || 0;
         updateCartUI();
+      });
+    });
+
+    // EDITABLE INDIVIDUAL PRODUCT PRICE (RATE EXCL. TAX)
+    document.querySelectorAll(".cart-item-rate-input").forEach(inp => {
+      inp.addEventListener("focus", (e) => e.target.select());
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          inp.blur();
+        }
+      });
+      inp.addEventListener("change", (e) => {
+        const itemIdx = parseInt(e.target.dataset.idx, 10);
+        const item = cart[itemIdx];
+        if (!item) return;
+        const val = parseFloat(e.target.value);
+        if (!isNaN(val) && val >= 0) {
+          item.custom_rate = val;
+          delete item.custom_total;
+          item.discount_percent = 0;
+          const grandInp = document.getElementById("posGrandTotalInput");
+          if (grandInp) grandInp.dataset.userOverridden = "false";
+          updateCartUI();
+        } else {
+          e.target.value = (item.rate || 0).toFixed(2);
+        }
+      });
+    });
+
+    // EDITABLE INDIVIDUAL PRODUCT TOTAL (INCL. TAX - SIMILAR TO GRAND TOTAL)
+    document.querySelectorAll(".cart-item-total-input").forEach(inp => {
+      inp.addEventListener("focus", (e) => e.target.select());
+      inp.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          inp.blur();
+        }
+      });
+      inp.addEventListener("change", (e) => {
+        const itemIdx = parseInt(e.target.dataset.idx, 10);
+        const item = cart[itemIdx];
+        if (!item) return;
+        const val = parseFloat(e.target.value);
+        if (!isNaN(val) && val >= 0) {
+          item.custom_total = val;
+          delete item.custom_rate;
+          item.discount_percent = 0;
+          const grandInp = document.getElementById("posGrandTotalInput");
+          if (grandInp) grandInp.dataset.userOverridden = "false";
+          updateCartUI();
+        } else {
+          e.target.value = (item.total || 0).toFixed(2);
+        }
       });
     });
 
@@ -6114,21 +6601,9 @@ async function loadSalesPOSSubTab() {
       return (sku && sku === q) || (dispSku && dispSku === q) || (barcode && barcode === q) || (serialNo && serialNo === q);
     });
 
-    // 1b. If no exact match on code/sku, match by SKU number (e.g. "SKU-017" vs "017" or "17") or exact name/model
+    // 1b. If no exact match on code/sku, match using smart search helper (all SKU variations: sku-001, sku1, sku-1, 1, 001, brand, model)
     if (!matchedProd) {
-      const numMatch = q.match(/\d+/);
-      const qNum = numMatch ? parseInt(numMatch[0], 10) : null;
-      matchedProd = (productsList || []).find(p => {
-        const sku = String(p.sku || '').toLowerCase().trim();
-        const sMatch = sku.match(/\d+/);
-        const sNum = sMatch ? parseInt(sMatch[0], 10) : null;
-        if (qNum !== null && sNum !== null && qNum === sNum && (q.startsWith('sku') || sku.startsWith('sku'))) {
-          return true;
-        }
-        const name = String(p.name || '').toLowerCase().trim();
-        const model = String(p.model || '').toLowerCase().trim();
-        return (name && name === q) || (model && model === q);
-      });
+      matchedProd = (productsList || []).find(p => matchProductSearch(p, q));
     }
 
     // 2. If not found locally, attempt API lookup searching by sku / serial_no / barcode query
@@ -6141,17 +6616,11 @@ async function loadSalesPOSSubTab() {
         const r = await fetch(`${API_BASE}/inventory?action=products&company_id=${activeCompIdVal}&query=${encodeURIComponent(code)}`, { headers: authHeaders() });
         const d = await r.json();
         if (d.success && Array.isArray(d.products) && d.products.length > 0) {
-          matchedProd = d.products.find(p => {
-            const sku = String(p.sku || '').toLowerCase().trim();
-            const dispSku = String(p.display_sku || '').toLowerCase().trim();
-            const serialNo = String(p.serial_no || p.serial_number || '').toLowerCase().trim();
-            const barcode = String(p.barcode || '').toLowerCase().trim();
-            return sku === q || dispSku === q || serialNo === q || barcode === q;
-          }) || d.products[0];
+          matchedProd = d.products.find(p => matchProductSearch(p, q)) || d.products[0];
 
           if (matchedProd && !productsList.some(p => p.id === matchedProd.id)) {
             productsList.push(matchedProd);
-            populateProductSelect();
+            renderProductDropdown("");
           }
         }
       } catch (e) {
@@ -6430,86 +6899,33 @@ async function loadSalesPOSSubTab() {
   document.addEventListener("click", handleBackgroundClickRefocus);
 
   on("posAddBtn", "click", () => {
-    const pId = document.getElementById("posProdSelect").value;
-    const qty = parseInt(document.getElementById("posQty").value) || 1;
-    if (!pId) return showToast("Select an available product to add", "error");
-
-    const prod = productsList.find(p => p.id == pId);
-    if (!prod) return;
-
-    // Check stock limit for inventory items
-    const stock = parseInt(prod.current_stock, 10) || 0;
-    const currentInCart = cart.filter(c => c.product_id == prod.id).reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
-    if (currentInCart + qty > stock) {
-      return showToast(`Cannot add ${qty} unit(s). Available stock limit is ${stock} (${currentInCart} already in cart).`, "error");
+    const qty = parseInt(document.getElementById("posQty")?.value, 10) || 1;
+    if (selectedProductIds.size > 0) {
+      addProductsToCart(Array.from(selectedProductIds), qty);
+      return;
     }
 
-    const purRateExcl = parseFloat(prod.purchase_rate || 0);
-    const gstR = Math.round(parseFloat(prod.gst_rate || 18));
-    const purRateIncl = (prod.purchase_rate_incl_tax && parseFloat(prod.purchase_rate_incl_tax) > 0)
-      ? parseFloat(prod.purchase_rate_incl_tax)
-      : (purRateExcl * (1 + gstR / 100));
-    const transportExp = parseFloat(prod.transport_expenses || 0);
-    const sellPct = parseFloat(prod.selling_percentage || 0);
-
-    const calculatedSellingExcl = (purRateExcl > 0 && sellPct > 0)
-      ? Math.round(((purRateExcl + transportExp) * (1 + sellPct / 100)) * 100) / 100
-      : parseFloat(prod.selling_rate || 0);
-    const rate = calculatedSellingExcl > 0 ? calculatedSellingExcl : parseFloat(prod.selling_rate || 0);
-    const mrp = parseFloat(prod.mrp || 0) > 0
-      ? parseFloat(prod.mrp)
-      : Math.round((rate * (1 + gstR / 100)) * 100) / 100;
-
-    const isHighValue = rate > 10000;
-    if (isHighValue) {
-      // Products > ₹10,000 require individual serial numbers, so they are added 1-by-1 separately
-      for (let i = 0; i < qty; i++) {
-        cart.push({
-          product_id: prod.id,
-          name: prod.name,
-          model: prod.model || '',
-          brand: prod.brand || '',
-          hsn_code: prod.hsn_sac || prod.hsn_code,
-          selling_rate: rate,
-          mrp: mrp,
-          price_mode: 'selling_price',
-          discount_percent: 0,
-          rate: rate,
-          purchase_rate: purRateExcl,
-          purchase_rate_incl_tax: purRateIncl,
-          transport_expenses: transportExp,
-          gst_rate: gstR,
-          quantity: 1,
-          serial_number: ""
-        });
-      }
-      showToast(`Added ${qty} unit(s) of '${prod.name}' separately (1 by 1) for individual Chassis/Serial No tracking`, "info");
-    } else {
-      const existing = cart.find(c => c.product_id == prod.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && parseFloat(c.rate) <= 10000);
-      if (existing) {
-        existing.quantity += qty;
-      } else {
-        cart.push({
-          product_id: prod.id,
-          name: prod.name,
-          model: prod.model || '',
-          brand: prod.brand || '',
-          hsn_code: prod.hsn_sac || prod.hsn_code,
-          selling_rate: rate,
-          mrp: mrp,
-          price_mode: 'selling_price',
-          discount_percent: 0,
-          rate: rate,
-          purchase_rate: purRateExcl,
-          purchase_rate_incl_tax: purRateIncl,
-          transport_expenses: transportExp,
-          gst_rate: gstR,
-          quantity: qty,
-          serial_number: ""
-        });
+    const searchInpVal = (document.getElementById("posProdSearchInp")?.value || "").trim();
+    if (searchInpVal) {
+      const filtered = (productsList || []).filter(p => matchProductSearch(p, searchInpVal) && parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
+      if (filtered.length > 0) {
+        addProductsToCart([filtered[0].id], qty);
+        return;
       }
     }
-    updateCartUI();
+
+    const pId = document.getElementById("posProdSelect")?.value;
+    if (pId) {
+      addProductsToCart([pId], qty);
+      return;
+    }
+
+    const dropdownMenu = document.getElementById("posProdDropdownMenu");
+    if (dropdownMenu) {
+      dropdownMenu.style.display = "flex";
+      renderProductDropdown(searchInpVal);
+    }
+    showToast("Please search or select product(s) from dropdown to add", "info");
   });
 
   on("posAddCustomBtn", "click", () => {

@@ -1369,7 +1369,8 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
     const qty = parseInt(it.quantity) || 1;
     const rateExclTax = lineTaxable / qty;
     const rateInclTax = (lineTaxable + lineTax) / qty;
-    const sn = (it.serial_number && it.serial_number !== '—') ? String(it.serial_number).trim() : null;
+    const rawSn = it.serial_number ? String(it.serial_number).trim() : '';
+    const hasSn = rawSn && rawSn !== '—' && rawSn.toUpperCase() !== 'NA' && rawSn.toUpperCase() !== 'N/A';
     const prodNameStr = esc(it.description || it.product_name || 'Item');
     const modelStr = (it.model || it.model_name) ? ` / ${esc(it.model || it.model_name)}` : '';
     const unitStr = esc(it.unit || 'NOS');
@@ -1378,14 +1379,37 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
 
     const subRowColspan = hasDiscount ? 7 : 6;
 
+    // Suppress chassis/serial number row if item doesn't have an assigned serial number
+    const snBadge = hasSn ? `
+      <div style="font-size:9.5px;color:#0369a1;margin-top:1px;font-weight:bold;">
+        ⚙️ Chassis / Serial No: <span style="font-family:monospace;background:#f1f5f9;padding:0 3px;border-radius:2px;">${esc(rawSn)}</span>
+      </div>
+    ` : '';
+
+    // For items under 10,000 (standard parts/small items), show unified 'Total Tax Amount' instead of split Sgst/Cgst rows
+    const itemUnitVal = Math.max(parseFloat(it.rate || 0), rateExclTax, rateInclTax);
+    const isLessThan10k = itemUnitVal < 10000;
+
+    const taxSubRowHtml = isLessThan10k ? `
+      <tr>
+        <td></td>
+        <td colspan="${subRowColspan}" style="text-align:right;font-style:italic;font-size:9.5px;padding:1px 5px;color:#334155;">Total Tax Amount</td>
+        <td style="text-align:right;font-size:9.5px;padding:1px 5px;font-weight:600;">${lineTax.toFixed(2)}</td>
+      </tr>
+    ` : `
+      <tr>
+        <td></td>
+        <td colspan="${subRowColspan}" style="text-align:right;font-style:italic;font-size:9.5px;padding:1px 5px;">Sgst<br>Cgst</td>
+        <td style="text-align:right;font-size:9.5px;padding:1px 5px;">${(lineTax / 2).toFixed(2)}<br>${(lineTax / 2).toFixed(2)}</td>
+      </tr>
+    `;
+
     return `
       <tr>
         <td style="text-align:center;">${idx + 1}</td>
         <td>
-          <div style="font-weight:bold;font-size:12px;">${prodNameStr}${modelStr}${mrpBadge}</div>
-          <div style="font-size:10.5px;color:#0369a1;margin-top:2px;font-weight:bold;">
-            ⚙️ Chassis / Serial No: <span style="font-family:monospace;background:#f1f5f9;padding:0 4px;border-radius:2px;">${esc(sn || '—')}</span>
-          </div>
+          <div style="font-weight:bold;font-size:11px;">${prodNameStr}${modelStr}${mrpBadge}</div>
+          ${snBadge}
         </td>
         <td style="text-align:center;">${esc(it.hsn_code || it.hsn_sac || compHsn || '84328020')}</td>
         <td style="text-align:center;"><b>${it.quantity}</b></td>
@@ -1395,11 +1419,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
         ${hasDiscount ? `<td style="text-align:center;">${discVal > 0 ? (discVal + '%') : '—'}</td>` : ''}
         <td style="text-align:right;font-weight:bold;">${lineTaxable.toFixed(2)}</td>
       </tr>
-      <tr>
-        <td></td>
-        <td colspan="${subRowColspan}" style="text-align:right;font-style:italic;font-size:11px;padding-top:0;">Sgst<br>Cgst</td>
-        <td style="text-align:right;font-size:11px;padding-top:0;">${(lineTax / 2).toFixed(2)}<br>${(lineTax / 2).toFixed(2)}</td>
-      </tr>
+      ${taxSubRowHtml}
     `;
   }).join("");
 
@@ -1440,33 +1460,37 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
   const pendingAmt = Math.max(0, parseFloat(sale.grand_total) - totalPaid);
   const invRefStr = sale.invoice_number ? String(sale.invoice_number) : `INV-${sale.id}`;
 
+  const isCompact = items.length > 5;
+  const isDense = items.length > 9;
+  const densityClass = isDense ? 'dense-invoice' : (isCompact ? 'compact-invoice' : '');
+
   function renderSingleInvoice(copyTitle, showIncentive = false) {
     const invDateDisplay = formatDate(sale.invoice_date || sale.sale_date);
 
     return `
-      <div class="inv-box">
+      <div class="inv-box ${densityClass}">
         <div style="display:flex;justify-content:space-between;align-items:center;background:#f8fafc;border-bottom:1px solid #000;padding:2px 8px;">
-          <span style="font-weight:bold;font-size:11px;color:#15803d;">${copyTitle}</span>
-          <span style="font-size:10px;font-style:italic;">GST Invoice Copy</span>
+          <span style="font-weight:bold;font-size:10.5px;color:#15803d;">${copyTitle}</span>
+          <span style="font-size:9.5px;font-style:italic;">GST Invoice Copy</span>
         </div>
 
-        <div style="text-align:center;border-bottom:1px solid #000;padding:4px 0;font-size:16px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;background:#ffffff;">
+        <div style="text-align:center;border-bottom:1px solid #000;padding:3px 0;font-size:15px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;background:#ffffff;">
           TAX INVOICE
         </div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding:6px 12px;background:#ffffff;">
-          <div style="font-weight:bold;font-size:11.5px;color:#15803d;">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1.5px solid #000;padding:3px 10px;background:#ffffff;">
+          <div style="font-weight:bold;font-size:11px;color:#15803d;">
             Dated : <b>${invDateDisplay}</b>
           </div>
 
           <div style="text-align:right;">
-            <div style="font-size:8.5px;font-weight:bold;color:#15803d;margin-bottom:2px;">📷 SCAN FOR SERVICE TICKET</div>
-            ${window.generateBarcodeSVG(invRefStr, 34, true)}
+            <div style="font-size:8px;font-weight:bold;color:#15803d;margin-bottom:1px;">📷 SCAN FOR SERVICE TICKET</div>
+            ${window.generateBarcodeSVG(invRefStr, 28, true)}
           </div>
         </div>
 
         ${returnsList.length > 0 ? `
-          <div style="border: 2px dashed #dc3545; background: #fff5f5; color: #dc3545; font-weight: bold; text-align: center; padding: 6px; margin: 4px 0; border-radius: 6px; font-size: 11px;">
+          <div style="border: 2px dashed #dc3545; background: #fff5f5; color: #dc3545; font-weight: bold; text-align: center; padding: 4px; margin: 3px 0; border-radius: 4px; font-size: 10px;">
             ⚠️ NOTICE: PRODUCT(S) RETURNED AGAINST THIS INVOICE. SEE ATTACHED PAGE 3 FOR SALES RETURN & REFUND VOUCHER DETAILS.
           </div>
         ` : ''}
@@ -1484,7 +1508,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
               </div>
             </td>
             <td style="width:50%;">
-              <table style="width:100%;font-size:10.5px;border-collapse:collapse;" cellPadding="2">
+              <table style="width:100%;font-size:10px;border-collapse:collapse;" cellPadding="1">
                 <tr><td>Invoice No.<br><b>${esc(invRefStr)}</b></td><td>Dated<br><b>${invDateDisplay}</b></td></tr>
                 <tr><td>Delivery Note<br><b>—</b></td><td>Mode/Terms of Payment<br><b>${esc(sale.payment_mode.toUpperCase())}</b></td></tr>
                 <tr><td>Reference No. & Date<br><b>${esc(sale.utr_number || sale.cheque_dd_no || '—')}</b></td><td>Lead Generated By<br><b>${esc(sale.lead_generated_by || '—')}</b></td></tr>
@@ -1497,20 +1521,20 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
         <div class="party-grid">
           <div class="party-box">
             <div class="party-title">Consignee (Ship to)</div>
-            <div style="font-weight:bold;font-size:12px;">${esc(custName)}</div>
-            <div>Father: ${esc(sale.father_name || '—')}</div>
+            <div style="font-weight:bold;font-size:11px;">${esc(custName)}</div>
+            ${sale.father_name && sale.father_name !== '—' ? `<div>Father: ${esc(sale.father_name)}</div>` : ''}
             <div>${esc(village)} ${mandal ? `, ${esc(mandal)}` : ''}</div>
             <div>CELL: <b>${esc(cell)}</b></div>
-            ${custGstin ? `<div style="font-weight:bold;color:#15803d;margin-top:2px;">GSTIN / UIN: ${esc(custGstin)}</div>` : ''}
+            ${custGstin ? `<div style="font-weight:bold;color:#15803d;margin-top:1px;">GSTIN / UIN: ${esc(custGstin)}</div>` : ''}
             <div>State Name: Andhra Pradesh, Code: 37</div>
           </div>
           <div class="party-box">
             <div class="party-title">Buyer (Bill to)</div>
-            <div style="font-weight:bold;font-size:12px;">${esc(custName)}</div>
-            <div>Father: ${esc(sale.father_name || '—')}</div>
+            <div style="font-weight:bold;font-size:11px;">${esc(custName)}</div>
+            ${sale.father_name && sale.father_name !== '—' ? `<div>Father: ${esc(sale.father_name)}</div>` : ''}
             <div>${esc(village)} ${mandal ? `, ${esc(mandal)}` : ''}</div>
             <div>CELL: <b>${esc(cell)}</b></div>
-            ${custGstin ? `<div style="font-weight:bold;color:#15803d;margin-top:2px;">GSTIN / UIN: ${esc(custGstin)}</div>` : ''}
+            ${custGstin ? `<div style="font-weight:bold;color:#15803d;margin-top:1px;">GSTIN / UIN: ${esc(custGstin)}</div>` : ''}
             <div>State Name: Andhra Pradesh, Code: 37</div>
           </div>
         </div>
@@ -1518,15 +1542,15 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
         <table class="items-table">
           <thead>
             <tr>
-              <th style="width:30px;">Sl No.</th>
+              <th style="width:28px;">Sl No.</th>
               <th>Description of Goods</th>
-              <th style="width:70px;">HSN/SAC</th>
-              <th style="width:50px;">Quantity</th>
-              <th style="width:45px;">GST %</th>
-              <th style="width:65px;">Rate (Excl)</th>
-              <th style="width:65px;">Rate (Incl Tax)</th>
-              ${hasDiscount ? `<th style="width:45px;">Disc. %</th>` : ''}
-              <th style="width:80px;">Amount</th>
+              <th style="width:68px;">HSN/SAC</th>
+              <th style="width:48px;">Quantity</th>
+              <th style="width:42px;">GST %</th>
+              <th style="width:62px;">Rate (Excl)</th>
+              <th style="width:62px;">Rate (Incl Tax)</th>
+              ${hasDiscount ? `<th style="width:42px;">Disc. %</th>` : ''}
+              <th style="width:78px;">Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -1535,12 +1559,12 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
               <td colspan="3" style="text-align:right;">Total:</td>
               <td style="text-align:center;">${items.reduce((a, i) => a + (parseInt(i.quantity) || 1), 0)} NOS</td>
               <td colspan="${hasDiscount ? 4 : 3}"></td>
-              <td style="text-align:right;font-size:13px;font-weight:bold;">₹${parseFloat(sale.grand_total).toFixed(2)}</td>
+              <td style="text-align:right;font-size:12px;font-weight:bold;">₹${parseFloat(sale.grand_total).toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
 
-        <div style="padding:6px;border-bottom:1px solid #000;font-size:11px;">
+        <div style="padding:4px 6px;border-bottom:1px solid #000;font-size:10px;">
           Amount Chargeable (in words) : <b>${numberToWordsINR(sale.grand_total)}</b>
         </div>
 
@@ -1571,23 +1595,23 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
           </tbody>
         </table>
 
-        <div style="padding:6px;border-bottom:1.5px solid #000;font-size:10.5px;">
+        <div style="padding:4px 6px;border-bottom:1.5px solid #000;font-size:10px;">
           Tax Amount (in words) : <b>${numberToWordsINR(totalTax)}</b>
         </div>
 
         <!-- CONSOLIDATED PAYMENT HISTORY TABLE -->
-        <div style="padding:4px 6px;font-weight:bold;font-size:11px;background:#f0fdf4;color:#15803d;border-bottom:1px solid #000;">
+        <div style="padding:3px 6px;font-weight:bold;font-size:10.5px;background:#f0fdf4;color:#15803d;border-bottom:1px solid #000;">
           💳 CONSOLIDATED PAYMENT TRANSACTIONS
         </div>
         <table class="pay-table">
           <thead>
             <tr>
-              <th style="width:35px;">S.No</th>
-              <th style="width:110px;">Payment Date</th>
-              <th style="width:110px;">Payment Mode</th>
+              <th style="width:32px;">S.No</th>
+              <th style="width:105px;">Payment Date</th>
+              <th style="width:105px;">Payment Mode</th>
               <th>Ref / UTR / Cheque #</th>
-              <th style="width:100px;">Amount Paid</th>
-              <th style="width:110px;">Received By</th>
+              <th style="width:95px;">Amount Paid</th>
+              <th style="width:105px;">Received By</th>
             </tr>
           </thead>
           <tbody>
@@ -1595,7 +1619,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
           </tbody>
         </table>
 
-        <div style="padding:6px 8px;background:#fffbe6;border-bottom:1.5px solid #000;display:flex;justify-content:space-between;font-size:11.5px;font-weight:bold;">
+        <div style="padding:4px 6px;background:#fffbe6;border-bottom:1.5px solid #000;display:flex;justify-content:space-between;font-size:11px;font-weight:bold;">
           <div>Invoice Grand Total: ₹${parseFloat(sale.grand_total).toFixed(2)}</div>
           <div style="color:#15803d;">Paid Amount: ₹${totalPaid.toFixed(2)}</div>
           <div style="color:${pendingAmt > 0 ? '#b91c1c' : '#15803d'};">
@@ -1604,7 +1628,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
         </div>
 
         ${sale.lead_generated_by ? `
-          <div style="padding:6px 8px;background:#fef2f2;border-bottom:1px solid #000;font-size:11px;color:#991b1b;">
+          <div style="padding:4px 6px;background:#fef2f2;border-bottom:1px solid #000;font-size:10px;color:#991b1b;">
             👤 <b>Lead Generated By:</b> ${esc(sale.lead_generated_by)}${showIncentive && sale.lead_incentive_amount ? ` | 💰 <b>Released Lead Incentive:</b> ₹${parseFloat(sale.lead_incentive_amount || 0).toFixed(2)}` : ''}
           </div>
         ` : ''}
@@ -1612,50 +1636,50 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
         <!-- BANK DETAILS, WEBSITE BARCODE & SIGNATURE -->
         <div class="bottom-grid" style="display:grid;grid-template-columns:1.2fr 1fr;border-bottom:1.5px solid #000;">
           <!-- LEFT BOX: BANK DETAILS & TERMS -->
-          <div class="bottom-box" style="padding:8px;border-right:1px solid #000;">
-            <div style="font-weight:bold;margin-bottom:3px;color:#15803d;font-size:11px;">Company's Bank Details : ${esc(bankName)}</div>
-            <div style="font-size:10px;line-height:1.4;">
+          <div class="bottom-box" style="padding:5px 7px;border-right:1px solid #000;">
+            <div style="font-weight:bold;margin-bottom:2px;color:#15803d;font-size:10px;">Company's Bank Details : ${esc(bankName)}</div>
+            <div style="font-size:9.5px;line-height:1.25;">
               <div>A/c Holder's Name : <b>${esc(bankAcName)}</b></div>
               <div>Bank Name : <b>${esc(bankName)}${bankAcNo ? ` (A/c ${esc(bankAcNo)})` : ''}</b></div>
               <div>A/c No. : <b>${esc(bankAcNo)}</b> | IFS Code : <b>${esc(bankIfsc)}</b></div>
               <div>Branch : <b>${esc(bankBranch)}</b></div>
             </div>
 
-            <div style="margin-top:8px;font-weight:bold;text-decoration:underline;font-size:10.5px;">Terms & Conditions:</div>
-            <div style="white-space:pre-line;font-size:9.5px;color:#333;margin-top:2px;line-height:1.3;">${esc(sale.terms_conditions || '1. All goods supplied in good working condition.\n2. Payment terms as agreed upon under UPI.\n3. Warranty as per manufacturer norms.')}</div>
+            <div style="margin-top:4px;font-weight:bold;text-decoration:underline;font-size:9.5px;">Terms & Conditions:</div>
+            <div style="white-space:pre-line;font-size:8.5px;color:#333;margin-top:1px;line-height:1.2;">${esc(sale.terms_conditions || '1. All goods supplied in good working condition.\n2. Payment terms as agreed upon.\n3. Warranty as per manufacturer norms.')}</div>
           </div>
 
           <!-- RIGHT BOX: QR CODE & SIGNATURES -->
-          <div class="bottom-box" style="padding:8px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div class="bottom-box" style="padding:5px 7px;display:flex;flex-direction:column;justify-content:space-between;">
             <!-- WEBSITE QR CODE -->
-            <div style="padding:6px 10px;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+            <div style="padding:3px 6px;background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;display:flex;align-items:center;gap:6px;margin-bottom:6px;">
               <div>
-                ${window.generateQRCodeSVG(websiteUrl, 55)}
+                ${window.generateQRCodeSVG(websiteUrl, isDense ? 36 : (isCompact ? 40 : 44))}
               </div>
               <div>
-                <div style="font-weight:bold;font-size:10px;color:#15803d;margin-bottom:1px;">🌐 Official Company Website</div>
-                <div style="font-size:9px;color:#475569;">Scan QR code with smartphone:</div>
-                <div style="font-size:10px;font-weight:bold;color:#0284c7;margin-top:1px;">${esc(websiteUrl)}</div>
+                <div style="font-weight:bold;font-size:9.5px;color:#15803d;margin-bottom:1px;">🌐 Official Company Website</div>
+                <div style="font-size:8.5px;color:#475569;">Scan QR code with smartphone:</div>
+                <div style="font-size:9px;font-weight:bold;color:#0284c7;margin-top:1px;">${esc(websiteUrl)}</div>
               </div>
             </div>
 
             <!-- DUAL SIGNATURES BLOCK -->
-            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:6px;">
-              <div style="text-align:center;min-width:110px;">
-                <div style="height:35px;"></div>
-                <div style="border-top:1px solid #000;padding-top:3px;font-weight:bold;font-size:10.5px;">Customer Signature</div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:2px;">
+              <div style="text-align:center;min-width:100px;">
+                <div style="height:22px;"></div>
+                <div style="border-top:1px solid #000;padding-top:2px;font-weight:bold;font-size:9.5px;">Customer Signature</div>
               </div>
 
-              <div style="text-align:right;min-width:130px;">
-                <div style="font-size:10px;margin-bottom:2px;">for <b>${esc(compName)}</b></div>
-                <div style="height:30px;"></div>
-                <div style="border-top:1px solid #000;padding-top:3px;font-weight:bold;font-size:10.5px;">Authorised Signatory</div>
+              <div style="text-align:right;min-width:120px;">
+                <div style="font-size:9.5px;margin-bottom:1px;">for <b>${esc(compName)}</b></div>
+                <div style="height:20px;"></div>
+                <div style="border-top:1px solid #000;padding-top:2px;font-weight:bold;font-size:9.5px;">Authorised Signatory</div>
               </div>
             </div>
           </div>
         </div>
 
-        <div style="text-align:center;font-size:10px;padding:4px;font-style:italic;">
+        <div style="text-align:center;font-size:9px;padding:3px;font-style:italic;">
           This is a Computer Generated Invoice
         </div>
       </div>
@@ -1668,48 +1692,78 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
     <head>
       <title>Tax Invoice #${sale.invoice_number || sale.id}</title>
       <style>
-        @page { size: A4 portrait; margin: 8mm; }
-        body { font-family: 'Times New Roman', Times, serif, sans-serif; font-size: 11px; color: #000; background: #fff; margin: 0; padding: 10px; }
-        .inv-box { border: 1.5px solid #000; padding: 0; max-width: 850px; margin: 0 auto 20px auto; background: #fff; page-break-inside: avoid; }
-        .inv-title { font-size: 16px; font-weight: bold; text-align: center; border-bottom: 1.5px solid #000; padding: 4px; text-transform: uppercase; }
+        @page { size: A4 portrait; margin: 4mm 5mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Times New Roman', Times, serif, sans-serif; font-size: 10.5px; color: #000; background: #fff; margin: 0; padding: 6px; line-height: 1.25; }
+        .inv-box { border: 1.5px solid #000; padding: 0; max-width: 820px; margin: 0 auto 12px auto; background: #fff; page-break-inside: avoid; break-inside: avoid; }
+        .inv-title { font-size: 15px; font-weight: bold; text-align: center; border-bottom: 1.5px solid #000; padding: 3px; text-transform: uppercase; }
         
         .header-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #000; }
-        .header-table td { vertical-align: top; padding: 6px; border-right: 1px solid #000; }
+        .header-table td { vertical-align: top; padding: 3px 5px; border-right: 1px solid #000; font-size: 10px; }
         .header-table td:last-child { border-right: none; }
         
-        .address-box { font-size: 11px; line-height: 1.3; }
-        .comp-title { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+        .address-box { font-size: 10px; line-height: 1.25; }
+        .comp-title { font-size: 13px; font-weight: bold; margin-bottom: 2px; }
         
         .party-grid { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1.5px solid #000; }
-        .party-box { padding: 6px; border-right: 1px solid #000; }
+        .party-box { padding: 3px 6px; border-right: 1px solid #000; font-size: 10px; line-height: 1.25; }
         .party-box:last-child { border-right: none; }
-        .party-title { font-weight: bold; text-decoration: underline; margin-bottom: 3px; }
+        .party-title { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 10px; }
 
         table.items-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #000; }
-        table.items-table th, table.items-table td { border-right: 1px solid #000; border-bottom: 1px solid #ddd; padding: 4px 6px; font-size: 11px; }
-        table.items-table th { border-bottom: 1.5px solid #000; background: #f8f8f8; font-weight: bold; text-align: center; }
+        table.items-table th, table.items-table td { border-right: 1px solid #000; border-bottom: 1px solid #ddd; padding: 2px 4px; font-size: 10px; line-height: 1.15; }
+        table.items-table th { border-bottom: 1.5px solid #000; background: #f8f8f8; font-weight: bold; text-align: center; font-size: 10px; }
         table.items-table td:last-child, table.items-table th:last-child { border-right: none; }
 
         .total-row { border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; font-weight: bold; }
 
-        .hsn-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #000; margin-top: 4px; }
-        .hsn-table th, .hsn-table td { border: 1px solid #000; padding: 3px 6px; font-size: 10px; }
+        .hsn-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #000; }
+        .hsn-table th, .hsn-table td { border: 1px solid #000; padding: 2px 4px; font-size: 9px; line-height: 1.15; }
         .hsn-table th { background: #f8f8f8; text-align: center; }
 
-        .pay-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #000; margin-top: 4px; }
-        .pay-table th, .pay-table td { border: 1px solid #000; padding: 3px 6px; font-size: 10.5px; }
+        .pay-table { width: 100%; border-collapse: collapse; border-bottom: 1.5px solid #000; }
+        .pay-table th, .pay-table td { border: 1px solid #000; padding: 2px 4px; font-size: 9.5px; line-height: 1.15; }
         .pay-table th { background: #f0fdf4; color: #15803d; text-align: center; font-weight: bold; }
 
         .bottom-grid { display: grid; grid-template-columns: 1.3fr 1fr; border-bottom: 1.5px solid #000; }
-        .bottom-box { padding: 6px; border-right: 1px solid #000; font-size: 10.5px; }
+        .bottom-box { padding: 4px 6px; border-right: 1px solid #000; font-size: 9.5px; }
         .bottom-box:last-child { border-right: none; }
 
-        .sign-area { height: 60px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
+        .sign-area { height: 40px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
+
+        /* Density scaling for larger item lists to fit on a single page */
+        .compact-invoice table.items-table th, .compact-invoice table.items-table td { padding: 1.5px 3px; font-size: 9.5px; }
+        .compact-invoice .header-table td, .compact-invoice .party-box { padding: 2px 4px; font-size: 9.5px; line-height: 1.15; }
+        .compact-invoice .hsn-table th, .compact-invoice .hsn-table td, .compact-invoice .pay-table th, .compact-invoice .pay-table td { padding: 1.5px 3px; font-size: 8.5px; }
+        .compact-invoice .bottom-box { padding: 3px 5px; font-size: 9px; }
+
+        .dense-invoice table.items-table th, .dense-invoice table.items-table td { padding: 1px 3px; font-size: 9px; }
+        .dense-invoice .header-table td, .dense-invoice .party-box { padding: 1.5px 3px; font-size: 9px; line-height: 1.1; }
+        .dense-invoice .hsn-table th, .dense-invoice .hsn-table td, .dense-invoice .pay-table th, .dense-invoice .pay-table td { padding: 1px 2px; font-size: 8px; }
+        .dense-invoice .bottom-box { padding: 2px 4px; font-size: 8.5px; }
 
         @media print {
-          body { padding: 0; }
+          @page { size: A4 portrait; margin: 4mm 5mm; }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           .no-print { display: none !important; }
-          .page-break { page-break-after: always; }
+          .page-break { page-break-after: always; break-after: page; }
+          .inv-box {
+            margin: 0 auto !important;
+            border: 1.5px solid #000 !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            max-width: 100% !important;
+          }
+          .items-table, .hsn-table, .pay-table, .bottom-grid {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
         }
       </style>
     </head>
@@ -3142,7 +3196,8 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
   const dcRatio = (itemsDcSum > 0 && targetDcTotal > 0 && Math.abs(targetDcTotal - itemsDcSum) > 0.5) ? (targetDcTotal / itemsDcSum) : 1;
 
   const itemRowsHtml = items.map((it, idx) => {
-    const sn = (it.serial_number && it.serial_number !== '—') ? String(it.serial_number).trim() : null;
+    const rawSn = it.serial_number ? String(it.serial_number).trim() : '';
+    const hasSn = rawSn && rawSn !== '—' && rawSn.toUpperCase() !== 'NA' && rawSn.toUpperCase() !== 'N/A';
     const prodName = it.description || it.product_name || 'Item';
     const modelName = it.model || it.model_name || it.product_model || '';
     const fullProdTitle = modelName ? `${prodName} / ${modelName}` : prodName;
@@ -3152,14 +3207,18 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
     let pricingTag = "";
     if (discPct > 0) pricingTag += ` <span style="font-size:10px;color:#15803d;font-weight:700;">[${discPct}% OFF]</span>`;
 
+    const snBadge = hasSn ? `
+      <div style="font-size:10px;color:#15803d;margin-top:2px;font-weight:bold;">
+        ⚙️ Chassis / Serial No: <span style="background:#e0f2fe;color:#0369a1;padding:1px 5px;border-radius:3px;font-family:monospace;font-size:11px;">${esc(rawSn)}</span>
+      </div>
+    ` : '';
+
     return `
       <tr>
         <td style="text-align:center;">${idx + 1}</td>
         <td>
-          <div style="font-weight:bold;font-size:13px;">${esc(fullProdTitle)}${pricingTag}</div>
-          <div style="font-size:11px;color:#15803d;margin-top:3px;font-weight:bold;">
-            ⚙️ Chassis / Serial No: <span style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:3px;font-family:monospace;font-size:12px;">${esc(sn || '—')}</span>
-          </div>
+          <div style="font-weight:bold;font-size:12px;">${esc(fullProdTitle)}${pricingTag}</div>
+          ${snBadge}
         </td>
         <td style="text-align:center;">${esc(it.hsn_code || it.hsn_sac || compHsn || '—')}</td>
         <td style="text-align:center;font-weight:bold;">${it.quantity}</td>
@@ -3379,10 +3438,11 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
         .sign-box { text-align: right; font-weight: bold; display: flex; flex-direction: column; justify-content: space-between; height: 70px; }
 
         @media print {
-          body { padding: 0; }
-          .dc-container { border: 2px solid #000; }
+          @page { size: A4 portrait; margin: 5mm; }
+          html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          .dc-container { border: 2px solid #000; margin: 0 auto !important; page-break-inside: avoid !important; break-inside: avoid !important; }
           .no-print { display: none !important; }
-          .page-break { page-break-after: always; }
+          .page-break { page-break-after: always; break-after: page; }
         }
       </style>
     </head>

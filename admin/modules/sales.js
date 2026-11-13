@@ -4913,16 +4913,16 @@ async function loadSalesPOSSubTab() {
       if (transBlock) transBlock.style.display = "none";
       if (nameLabel) nameLabel.textContent = "Customer Name *";
       if (posCustNameInp) {
-        if (posCustNameInp.value === "Counter Customer ") {
+        if (posCustNameInp.value.trim() === "Counter Customer") {
           posCustNameInp.value = "";
         }
-        posCustNameInp.placeholder = "Type customer name ...";
+        posCustNameInp.placeholder = "Enter Customer Name *";
         posCustNameInp.required = true;
       }
       if (phoneLabel) phoneLabel.textContent = "Cell / Contact Phone *";
       if (posCellPhoneInp) {
         posCellPhoneInp.required = true;
-        posCellPhoneInp.placeholder = "Phone ";
+        posCellPhoneInp.placeholder = "10-digit Phone *";
       }
     } else {
       if (custBlock) custBlock.style.display = "block";
@@ -7200,6 +7200,18 @@ async function loadSalesPOSSubTab() {
     const customer_gstin = isCounterParty ? "" : (document.getElementById("posCustGstin")?.value || "").trim().toUpperCase();
     const dealer_id = party_type === "dealer" ? (document.getElementById("posdealerId")?.value || null) : null;
 
+    const custNameVal = (document.getElementById("posCustName")?.value || "").trim();
+    if (!custNameVal) {
+      document.getElementById("posCustName")?.focus();
+      return showToast("Please enter Customer Name (Mandatory)", "error");
+    }
+
+    const cellPhoneVal = (document.getElementById("posCellPhone")?.value || "").trim();
+    if (!cellPhoneVal) {
+      document.getElementById("posCellPhone")?.focus();
+      return showToast("Please enter Cell / Contact Phone (Mandatory)", "error");
+    }
+
     const leadNameStr = isCounterParty ? "" : (document.getElementById("posLeadBy")?.value || "").trim();
     const leadPhoneStr = isCounterParty ? "" : (document.getElementById("posLeadPhone")?.value || "").trim();
     let combinedLeadStr = leadNameStr;
@@ -7232,11 +7244,11 @@ async function loadSalesPOSSubTab() {
       customer_gstin: customer_gstin,
       dealer_id: dealer_id,
       customer_id: party_type === "customer" ? (document.getElementById("posCustId").value || null) : null,
-      customer_name: document.getElementById("posCustName").value.trim(),
+      customer_name: custNameVal,
       father_name: document.getElementById("posFatherName").value.trim(),
       village: document.getElementById("posVillage").value.trim(),
       mandal: document.getElementById("posMandal").value.trim(),
-      cell_phone: document.getElementById("posCellPhone").value.trim(),
+      cell_phone: cellPhoneVal,
       lead_generated_by: isCounterParty ? null : (combinedLeadStr || null),
       lead_incentive_amount: isCounterParty ? 0 : parseFloat(document.getElementById("posLeadIncentive")?.value || 0),
       supply_type: document.getElementById("posSupplyType").value,

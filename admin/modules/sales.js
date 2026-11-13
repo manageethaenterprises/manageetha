@@ -12,7 +12,7 @@ window.renderSalesModule = async function (tabKey, container) {
     { key: 'sales_returns', label: 'Returns', icon: '↩️', aliases: ['returns'] }
   ];
 
-  
+
   const subBar = window.renderModuleSubTabsBar(salesTabs, tabKey);
   if (!subBar.activeKey) {
     container.innerHTML = subBar.html;
@@ -66,7 +66,7 @@ if (window.registerModuleRoute) {
 function numberToWordsINR(amount) {
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  
+
   function inWords(num) {
     if ((num = num.toString()).length > 9) return 'Overflow';
     let n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
@@ -772,7 +772,7 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -900,7 +900,7 @@ function printIncentiveVoucher(leadName, salesList, itemsList = []) {
     totalSaleVal += saleAmt;
 
     const saleItems = itemsList.filter(it => it.sale_id == s.id);
-    const prodsStr = saleItems.length > 0 
+    const prodsStr = saleItems.length > 0
       ? saleItems.map(it => `${esc(it.product_name || it.name || 'Product')} (Qty: ${it.quantity})`).join(", ")
       : "Machinery / Goods";
 
@@ -1013,7 +1013,7 @@ function printIncentiveVoucher(leadName, salesList, itemsList = []) {
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(htmlDoc);
   printWin.document.close();
 }
@@ -1105,17 +1105,17 @@ function renderPage3ReturnAttachment(sale, returns = [], companyObj = {}) {
       <div style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; margin-bottom:14px; background:#f8fafc; font-size:11px;">
         <div style="font-weight:bold; color:#0f172a; margin-bottom:4px;">💳 Payment Refund Settlement Breakdown:</div>
         ${returns.map(ret => {
-          const parts = [];
-          if (parseFloat(ret.cash_amount || 0) > 0) parts.push(`💵 Cash: ₹${parseFloat(ret.cash_amount).toFixed(2)}`);
-          if (parseFloat(ret.upi_amount || 0) > 0) parts.push(`📱 UPI: ₹${parseFloat(ret.upi_amount).toFixed(2)} ${ret.upi_ref ? `(Ref: ${esc(ret.upi_ref)})` : ''}`);
-          if (parseFloat(ret.bank_amount || 0) > 0) parts.push(`🏦 Bank: ₹${parseFloat(ret.bank_amount).toFixed(2)} ${ret.receiving_bank ? `[${esc(ret.receiving_bank)}]` : ''} ${ret.bank_ref ? `(Ref: ${esc(ret.bank_ref)})` : ''}`);
-          return `
+    const parts = [];
+    if (parseFloat(ret.cash_amount || 0) > 0) parts.push(`💵 Cash: ₹${parseFloat(ret.cash_amount).toFixed(2)}`);
+    if (parseFloat(ret.upi_amount || 0) > 0) parts.push(`📱 UPI: ₹${parseFloat(ret.upi_amount).toFixed(2)} ${ret.upi_ref ? `(Ref: ${esc(ret.upi_ref)})` : ''}`);
+    if (parseFloat(ret.bank_amount || 0) > 0) parts.push(`🏦 Bank: ₹${parseFloat(ret.bank_amount).toFixed(2)} ${ret.receiving_bank ? `[${esc(ret.receiving_bank)}]` : ''} ${ret.bank_ref ? `(Ref: ${esc(ret.bank_ref)})` : ''}`);
+    return `
             <div style="margin-top:4px; padding:4px 8px; background:#fff; border:1px solid #e2e8f0; border-radius:4px;">
               <strong>Voucher #${esc(ret.return_number)} (${formatDate(ret.return_date || ret.created_at)}):</strong> ${parts.join(' | ') || 'Direct Refund'}
               ${ret.reason ? `<div style="font-size:10.5px; color:#64748b; margin-top:2px;"><em>Reason / Notes: ${esc(ret.reason)}</em></div>` : ''}
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
 
       <!-- Declarations & Signatures -->
@@ -1184,7 +1184,7 @@ window.generateBarcodeSVG = function (text, height = 36, showText = true, textCo
 // ── Helper: Standalone Local QR Code Generator (100% Offline SVG Generator) ──
 window.generateQRCodeSVG = function (text, size = 80) {
   if (!text) text = 'https://manageetha.in';
-  
+
   function createQRMatrix(str) {
     const N = 25;
     const matrix = Array.from({ length: N }, () => Array(N).fill(0));
@@ -1241,7 +1241,7 @@ window.generateQRCodeSVG = function (text, size = 80) {
       hash = ((hash << 5) - hash) + str.charCodeAt(i);
       hash |= 0;
     }
-    
+
     let bitIdx = 0;
     for (let col = N - 1; col >= 0; col--) {
       for (let row = 0; row < N; row++) {
@@ -1261,7 +1261,7 @@ window.generateQRCodeSVG = function (text, size = 80) {
   const n = matrix.length;
   const padding = 2;
   const viewSize = n + padding * 2;
-  
+
   let rects = '';
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
@@ -1731,7 +1731,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -1828,16 +1828,16 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
         <td style="border:1px solid #000;padding:5px;">${esc(it.product_name || it.description || '')}</td>
         <td style="text-align:center;border:1px solid #000;padding:5px;">${esc(it.hsn_code || it.hsn_sac || '')}</td>
         <td style="text-align:center;border:1px solid #000;padding:5px;">${qty > 0 && it.unit ? `${qty} ${esc(it.unit)}` : ''}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;">${rate > 0 ? rate.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;">${taxableVal.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;">${taxableVal.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;">${rate > 0 ? rate.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;">${taxableVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;">${taxableVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td style="text-align:center;border:1px solid #000;padding:5px;">${cgstRate > 0 ? cgstRate + '%' : '-'}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;">${cgstAmt > 0 ? cgstAmt.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-'}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;">${cgstAmt > 0 ? cgstAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
         <td style="text-align:center;border:1px solid #000;padding:5px;">${sgstRate > 0 ? sgstRate + '%' : '-'}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;">${sgstAmt > 0 ? sgstAmt.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-'}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;">${sgstAmt > 0 ? sgstAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
         <td style="text-align:center;border:1px solid #000;padding:5px;">${igstRate > 0 ? igstRate + '%' : '-'}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;">${igstAmt > 0 ? igstAmt.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-'}</td>
-        <td style="text-align:right;border:1px solid #000;padding:5px;font-weight:bold;">${lineTotal.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2})}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;">${igstAmt > 0 ? igstAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}</td>
+        <td style="text-align:right;border:1px solid #000;padding:5px;font-weight:bold;">${lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
       </tr>
     `;
   }).join('');
@@ -1851,7 +1851,7 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
   if (sale.custom_meta_json) {
     try {
       customMeta = typeof sale.custom_meta_json === "string" ? JSON.parse(sale.custom_meta_json) : sale.custom_meta_json;
-    } catch(e) {}
+    } catch (e) { }
   }
   const dealerBreakdown = sale.dealer_breakdown || customMeta.dealer_breakdown || [];
   const isDealerCommission = (sale.custom_type === 'dealers_commission') || (dealerBreakdown && dealerBreakdown.length > 0);
@@ -1894,7 +1894,7 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
             <td style="border:1px solid #000; padding:4px; text-align:center;">${esc(r.inv_date || '')}</td>
             ${rCols}
             <td style="border:1px solid #000; padding:4px; text-align:center; font-weight:bold;">${rQtySum}</td>
-            <td style="border:1px solid #000; padding:4px; text-align:right;">${r.value ? parseFloat(r.value).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : ''}</td>
+            <td style="border:1px solid #000; padding:4px; text-align:right;">${r.value ? parseFloat(r.value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''}</td>
             <td style="border:1px solid #000; padding:4px;">${esc(r.remarks || '')}</td>
           </tr>
         `;
@@ -1961,10 +1961,10 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
         <tr>
           <td style="text-align:center; border:1px solid #000; padding:6px;">${idx + 1}</td>
           <td style="border:1px solid #000; padding:6px; font-weight:bold;">${esc(dItem.model || 'Product Model')}</td>
-          <td style="text-align:center; border:1px solid #000; padding:6px;">₹${r.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td style="text-align:center; border:1px solid #000; padding:6px;">₹${r.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td style="text-align:center; border:1px solid #000; padding:6px; font-weight:bold;">${u}</td>
-          <td style="text-align:center; border:1px solid #000; padding:6px;">₹${b.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td style="text-align:right; border:1px solid #000; padding:6px; font-weight:bold;">₹${t.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td style="text-align:center; border:1px solid #000; padding:6px;">₹${b.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td style="text-align:right; border:1px solid #000; padding:6px; font-weight:bold;">₹${t.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
       `;
     });
@@ -2027,7 +2027,7 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
             ${dealerRowsHtml}
             <tr style="font-weight:bold; background:#eff6ff;">
               <td colspan="5" style="text-align:right; border:1px solid #000; padding:8px; font-size:12px;">Total Commission Taxable Value:</td>
-              <td style="text-align:right; border:1px solid #000; padding:8px; font-size:13px; color:#1d4ed8;">₹${grandDealerTotal.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td style="text-align:right; border:1px solid #000; padding:8px; font-size:13px; color:#1d4ed8;">₹${grandDealerTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
           </tbody>
         </table>
@@ -2161,15 +2161,15 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
             ${items.length < 2 ? `<tr><td style="height:35px;border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td></tr>` : ''}
             <tr style="font-weight:bold;">
               <td colspan="5" style="text-align:right; border:1px solid #000; padding:6px;">Total</td>
-              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalTaxable.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2})}</td>
-              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalTaxable.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2})}</td>
+              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalTaxable.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
+              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalTaxable.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
               <td style="border:1px solid #000;"></td>
-              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalCgst > 0 ? totalCgst.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2}) : '-'}</td>
+              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalCgst > 0 ? totalCgst.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-'}</td>
               <td style="border:1px solid #000;"></td>
-              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalSgst > 0 ? totalSgst.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2}) : '-'}</td>
+              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalSgst > 0 ? totalSgst.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-'}</td>
               <td style="border:1px solid #000;"></td>
-              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalIgst > 0 ? totalIgst.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2}) : '-'}</td>
-              <td style="text-align:right; border:1px solid #000; padding:6px;">${grandTotal.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2})}</td>
+              <td style="text-align:right; border:1px solid #000; padding:6px;">${totalIgst > 0 ? totalIgst.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '-'}</td>
+              <td style="text-align:right; border:1px solid #000; padding:6px;">${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
             </tr>
           </tbody>
         </table>
@@ -2178,7 +2178,7 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
         <table style="border-top: 2px solid #000;">
           <tr>
             <td style="width:45%; font-weight:bold; border-right:2px solid #000;">Total Bill Value (in Figure)</td>
-            <td style="text-align:right; font-weight:bold; font-size:12px;">${grandTotal.toLocaleString('en-IN', {minimumFractionDigits:0, maximumFractionDigits:2})}</td>
+            <td style="text-align:right; font-weight:bold; font-size:12px;">${grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
           </tr>
           <tr>
             <td style="font-weight:bold; border-right:2px solid #000;">Total Bill Value (in Words)</td>
@@ -2204,7 +2204,7 @@ function printCustomInvoice(sale, items = [], existingWin = null) {
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -3404,13 +3404,13 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 }
 
 // ── Printable Voucher Document: 2 Copies (Original with T&C + Receiver Signature proof, and Receiver Copy) ──
-window.printIncentiveVoucher = function(leadName, salesList = [], itemsList = [], companyInfo = {}, monthStr = "") {
+window.printIncentiveVoucher = function (leadName, salesList = [], itemsList = [], companyInfo = {}, monthStr = "") {
   const printWin = window.open("", "_blank", "width=900,height=1000");
   if (!printWin) return alert("Please allow popups to print incentive voucher.");
 
@@ -3474,8 +3474,8 @@ window.printIncentiveVoucher = function(leadName, salesList = [], itemsList = []
             ${s.village ? `<br><small style="color:#555;">${s.village}${s.mandal ? ', ' + s.mandal : ''}</small>` : ''}
           </td>
           <td>${prodDetailsStr}</td>
-          <td style="text-align:right;">₹${parseFloat(s.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-          <td style="text-align:right;font-weight:bold;">₹${parseFloat(s.lead_incentive_amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+          <td style="text-align:right;">₹${parseFloat(s.grand_total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align:right;font-weight:bold;">₹${parseFloat(s.lead_incentive_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
         </tr>
       `;
     });
@@ -3526,15 +3526,15 @@ window.printIncentiveVoucher = function(leadName, salesList = [], itemsList = []
           <tfoot>
             <tr style="background:#f8fafc;font-weight:bold;">
               <td colspan="5" style="text-align:right;">Total (${salesList.length} Sales):</td>
-              <td style="text-align:right;">₹${totalSalesAmt.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
-              <td style="text-align:right;color:#047857;font-size:12px;">₹${totalIncentiveAmt.toLocaleString('en-IN', {minimumFractionDigits: 2})}</td>
+              <td style="text-align:right;">₹${totalSalesAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+              <td style="text-align:right;color:#047857;font-size:12px;">₹${totalIncentiveAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
             </tr>
           </tfoot>
         </table>
 
         <!-- AMOUNT IN WORDS -->
         <div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:8px 12px;border-radius:4px;font-size:12px;margin-bottom:14px;">
-          <strong>Total Incentive Amount Received:</strong> ₹${totalIncentiveAmt.toLocaleString('en-IN', {minimumFractionDigits: 2})} 
+          <strong>Total Incentive Amount Received:</strong> ₹${totalIncentiveAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })} 
           <span style="font-style:italic;color:#15803d;margin-left:6px;">(${amountInWords(totalIncentiveAmt)})</span>
         </div>
 
@@ -3625,7 +3625,7 @@ window.printIncentiveVoucher = function(leadName, salesList = [], itemsList = []
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 };
@@ -3775,8 +3775,8 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
             </thead>
             <tbody>
               ${payments.length === 0
-                ? `<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--text3);">No payments recorded yet.</td></tr>`
-                : payments.map(p => `
+        ? `<tr><td colspan="5" style="text-align:center;padding:12px;color:var(--text3);">No payments recorded yet.</td></tr>`
+        : payments.map(p => `
                   <tr>
                     <td>${formatDate(p.payment_date)}</td>
                     <td><span class="badge badge-purple">${esc(p.payment_mode.toUpperCase())} ${p.bank_sub_type ? `(${p.bank_sub_type})` : ''}</span></td>
@@ -3785,7 +3785,7 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
                     <td>${esc(p.cashier_name || 'System Admin')}</td>
                   </tr>
                 `).join("")
-              }
+      }
             </tbody>
           </table>
         </div>
@@ -3821,12 +3821,12 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
 
     function calcModalDenominationsTotal() {
       const n2000 = (parseInt(overlay.querySelector("#modalNote2000")?.value) || 0) * 2000;
-      const n500  = (parseInt(overlay.querySelector("#modalNote500")?.value) || 0) * 500;
-      const n200  = (parseInt(overlay.querySelector("#modalNote200")?.value) || 0) * 200;
-      const n100  = (parseInt(overlay.querySelector("#modalNote100")?.value) || 0) * 100;
-      const n50   = (parseInt(overlay.querySelector("#modalNote50")?.value) || 0) * 50;
-      const n20   = (parseInt(overlay.querySelector("#modalNote20")?.value) || 0) * 20;
-      const n10   = (parseInt(overlay.querySelector("#modalNote10")?.value) || 0) * 10;
+      const n500 = (parseInt(overlay.querySelector("#modalNote500")?.value) || 0) * 500;
+      const n200 = (parseInt(overlay.querySelector("#modalNote200")?.value) || 0) * 200;
+      const n100 = (parseInt(overlay.querySelector("#modalNote100")?.value) || 0) * 100;
+      const n50 = (parseInt(overlay.querySelector("#modalNote50")?.value) || 0) * 50;
+      const n20 = (parseInt(overlay.querySelector("#modalNote20")?.value) || 0) * 20;
+      const n10 = (parseInt(overlay.querySelector("#modalNote10")?.value) || 0) * 10;
 
       const totalNotesAmt = n2000 + n500 + n200 + n100 + n50 + n20 + n10;
       const sumTxt = overlay.querySelector("#modalNotesCalcSumText");
@@ -3930,7 +3930,7 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
               }
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       } else if (mode === "credit") {
         subContainer.style.display = "block";
         subContainer.innerHTML = `
@@ -4111,12 +4111,12 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
       if (pMode === "cash" || (modalSplitPayments && modalSplitPayments.some(p => p.payment_mode === 'cash'))) {
         const d = {
           2000: parseInt(overlay.querySelector("#modalNote2000")?.value, 10) || 0,
-          500:  parseInt(overlay.querySelector("#modalNote500")?.value, 10) || 0,
-          200:  parseInt(overlay.querySelector("#modalNote200")?.value, 10) || 0,
-          100:  parseInt(overlay.querySelector("#modalNote100")?.value, 10) || 0,
-          50:   parseInt(overlay.querySelector("#modalNote50")?.value, 10) || 0,
-          20:   parseInt(overlay.querySelector("#modalNote20")?.value, 10) || 0,
-          10:   parseInt(overlay.querySelector("#modalNote10")?.value, 10) || 0
+          500: parseInt(overlay.querySelector("#modalNote500")?.value, 10) || 0,
+          200: parseInt(overlay.querySelector("#modalNote200")?.value, 10) || 0,
+          100: parseInt(overlay.querySelector("#modalNote100")?.value, 10) || 0,
+          50: parseInt(overlay.querySelector("#modalNote50")?.value, 10) || 0,
+          20: parseInt(overlay.querySelector("#modalNote20")?.value, 10) || 0,
+          10: parseInt(overlay.querySelector("#modalNote10")?.value, 10) || 0
         };
         if (Object.values(d).some(v => v > 0)) {
           modalDenoms = d;
@@ -4322,7 +4322,7 @@ async function loadSalesPOSSubTab() {
               <div id="posLiveCustDropdown" style="position:absolute;top:100%;left:0;right:0;background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.2);display:none;"></div>
             </div>
             <div class="form-group">
-              <label class="form-label">Cell / Contact Phone *</label>
+              <label class="form-label" id="posPhoneLabel">Cell / Contact Phone *</label>
               <input type="text" id="posCellPhone" class="form-input" placeholder="9848123456" required>
             </div>
           </div>
@@ -4693,7 +4693,7 @@ async function loadSalesPOSSubTab() {
       const finRes = await fetch(`${API_BASE}/sales?action=financers-list&company_id=${compId}`, { headers: authHeaders() });
       const finData = await finRes.json();
       if (finData.success) financersList = finData.financers || [];
-    } catch (e) {}
+    } catch (e) { }
   }
   await refreshFinancersList();
 
@@ -4761,7 +4761,7 @@ async function loadSalesPOSSubTab() {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   let dealersList = [];
   async function refreshdealersList() {
@@ -4776,7 +4776,7 @@ async function loadSalesPOSSubTab() {
             dealersList.map(v => `<option value="${v.id}">${esc(v.trade_name || v.legal_name)} ${v.gstin ? `(GSTIN: ${esc(v.gstin)})` : ''}</option>`).join("");
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   await refreshCustomersList();
   await refreshdealersList();
@@ -4877,6 +4877,8 @@ async function loadSalesPOSSubTab() {
   const extraFields = document.getElementById("posExtraCustFields");
   const nameLabel = document.getElementById("posNameLabel");
   const posCustNameInp = document.getElementById("posCustName");
+  const posCellPhoneInp = document.getElementById("posCellPhone");
+  const phoneLabel = document.getElementById("posPhoneLabel");
   const warrantyGroup = document.getElementById("posWarrantyGroup");
   const stateWarrantyRow = document.getElementById("posStateAndWarrantyRow");
   const leadBlock = document.getElementById("posLeadBlock");
@@ -4892,6 +4894,15 @@ async function loadSalesPOSSubTab() {
       if (leadBlock) leadBlock.style.display = "block";
       if (transBlock) transBlock.style.display = "grid";
       if (nameLabel) nameLabel.textContent = "Dealer Name *";
+      if (posCustNameInp) {
+        posCustNameInp.placeholder = "Dealer Name *";
+        posCustNameInp.required = true;
+      }
+      if (phoneLabel) phoneLabel.textContent = "Cell / Contact Phone *";
+      if (posCellPhoneInp) {
+        posCellPhoneInp.required = true;
+        posCellPhoneInp.placeholder = "9848123456";
+      }
     } else if (pType === "counter") {
       if (custBlock) custBlock.style.display = "none";
       if (dealerBlock) dealerBlock.style.display = "none";
@@ -4901,7 +4912,18 @@ async function loadSalesPOSSubTab() {
       if (leadBlock) leadBlock.style.display = "none";
       if (transBlock) transBlock.style.display = "none";
       if (nameLabel) nameLabel.textContent = "Customer Name *";
-      if (posCustNameInp && !posCustNameInp.value) posCustNameInp.value = "Counter Customer";
+      if (posCustNameInp) {
+        if (posCustNameInp.value === "Counter Customer ") {
+          posCustNameInp.value = "";
+        }
+        posCustNameInp.placeholder = "Type customer name ...";
+        posCustNameInp.required = true;
+      }
+      if (phoneLabel) phoneLabel.textContent = "Cell / Contact Phone *";
+      if (posCellPhoneInp) {
+        posCellPhoneInp.required = true;
+        posCellPhoneInp.placeholder = "Phone ";
+      }
     } else {
       if (custBlock) custBlock.style.display = "block";
       if (dealerBlock) dealerBlock.style.display = "none";
@@ -4911,6 +4933,15 @@ async function loadSalesPOSSubTab() {
       if (leadBlock) leadBlock.style.display = "block";
       if (transBlock) transBlock.style.display = "grid";
       if (nameLabel) nameLabel.textContent = "Customer Name *";
+      if (posCustNameInp) {
+        posCustNameInp.placeholder = "Type customer name...";
+        posCustNameInp.required = true;
+      }
+      if (phoneLabel) phoneLabel.textContent = "Cell / Contact Phone *";
+      if (posCellPhoneInp) {
+        posCellPhoneInp.required = true;
+        posCellPhoneInp.placeholder = "9848123456";
+      }
     }
     updateCartUI();
   }
@@ -5093,7 +5124,7 @@ async function loadSalesPOSSubTab() {
               renderCompOptions(data.companies);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       compSel.addEventListener("change", () => {
@@ -5159,7 +5190,7 @@ async function loadSalesPOSSubTab() {
     return false;
   }
 
-  window.populateProductSelect = function(q = "") {
+  window.populateProductSelect = function (q = "") {
     renderProductDropdown(q);
   };
 
@@ -5416,7 +5447,7 @@ async function loadSalesPOSSubTab() {
       productsList = pData.products || [];
       renderProductDropdown("");
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const posSearchInp = document.getElementById("posProdSearchInp");
   const posDropdownMenu = document.getElementById("posProdDropdownMenu");
@@ -5548,7 +5579,7 @@ async function loadSalesPOSSubTab() {
         btnSubmit.disabled = true;
         const partyTypeVal = document.getElementById("posPartyType")?.value;
         const isCounterParty = partyTypeVal === "counter";
-        btnSubmit.innerHTML = isCounterParty 
+        btnSubmit.innerHTML = isCounterParty
           ? `🧾 Complete Sale & Direct Generate Tax Invoice`
           : `Sell & Print Delivery Challana`;
       }
@@ -5975,7 +6006,7 @@ async function loadSalesPOSSubTab() {
     const settlementSel = document.getElementById("posSettlementType");
     const paidInput = document.getElementById("posPaidAmtInput");
     const helpTxt = document.getElementById("posPaidAmtHelp");
-    
+
     if (isSplitPayActive) {
       updateSplitUI(finalGrand);
     } else if (settlementSel && paidInput) {
@@ -6485,12 +6516,12 @@ async function loadSalesPOSSubTab() {
 
   function calcDenominationsTotal() {
     const n2000 = (parseInt(document.getElementById("note2000")?.value) || 0) * 2000;
-    const n500  = (parseInt(document.getElementById("note500")?.value) || 0) * 500;
-    const n200  = (parseInt(document.getElementById("note200")?.value) || 0) * 200;
-    const n100  = (parseInt(document.getElementById("note100")?.value) || 0) * 100;
-    const n50   = (parseInt(document.getElementById("note50")?.value) || 0) * 50;
-    const n20   = (parseInt(document.getElementById("note20")?.value) || 0) * 20;
-    const n10   = (parseInt(document.getElementById("note10")?.value) || 0) * 10;
+    const n500 = (parseInt(document.getElementById("note500")?.value) || 0) * 500;
+    const n200 = (parseInt(document.getElementById("note200")?.value) || 0) * 200;
+    const n100 = (parseInt(document.getElementById("note100")?.value) || 0) * 100;
+    const n50 = (parseInt(document.getElementById("note50")?.value) || 0) * 50;
+    const n20 = (parseInt(document.getElementById("note20")?.value) || 0) * 20;
+    const n10 = (parseInt(document.getElementById("note10")?.value) || 0) * 10;
 
     const totalNotesAmt = n2000 + n500 + n200 + n100 + n50 + n20 + n10;
     const sumTxt = document.getElementById("notesCalcSumText");
@@ -6522,9 +6553,9 @@ async function loadSalesPOSSubTab() {
       } else {
         const paidInp = document.getElementById("posPaidAmtInput");
         const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || document.getElementById("posGrandText")?.textContent || "0");
-        
+
         if (paidInp) paidInp.value = totalNotesAmt.toFixed(2);
-        
+
         const posSettlementSel = document.getElementById("posSettlementType");
         if (posSettlementSel) {
           if (totalNotesAmt < grandVal - 0.01) {
@@ -6540,7 +6571,7 @@ async function loadSalesPOSSubTab() {
 
   const posSettlementSel = document.getElementById("posSettlementType");
   const posPaidInp = document.getElementById("posPaidAmtInput");
-  
+
   if (posSettlementSel && posPaidInp) {
     posSettlementSel.addEventListener("change", () => {
       if (posSettlementSel.value === "full") {
@@ -6559,7 +6590,7 @@ async function loadSalesPOSSubTab() {
     posPaidInp.addEventListener("input", () => {
       const grandVal = parseFloat(document.getElementById("posGrandTotalInput")?.value || document.getElementById("posGrandText")?.textContent || "0");
       const curPaid = parseFloat(posPaidInp.value || 0);
-      
+
       if (curPaid < grandVal - 0.01) {
         if (posSettlementSel.value !== "part") posSettlementSel.value = "part";
       } else if (curPaid >= grandVal && grandVal > 0) {
@@ -7180,12 +7211,12 @@ async function loadSalesPOSSubTab() {
 
     const posDenoms = {
       2000: parseInt(document.getElementById("note2000")?.value, 10) || 0,
-      500:  parseInt(document.getElementById("note500")?.value, 10) || 0,
-      200:  parseInt(document.getElementById("note200")?.value, 10) || 0,
-      100:  parseInt(document.getElementById("note100")?.value, 10) || 0,
-      50:   parseInt(document.getElementById("note50")?.value, 10) || 0,
-      20:   parseInt(document.getElementById("note20")?.value, 10) || 0,
-      10:   parseInt(document.getElementById("note10")?.value, 10) || 0
+      500: parseInt(document.getElementById("note500")?.value, 10) || 0,
+      200: parseInt(document.getElementById("note200")?.value, 10) || 0,
+      100: parseInt(document.getElementById("note100")?.value, 10) || 0,
+      50: parseInt(document.getElementById("note50")?.value, 10) || 0,
+      20: parseInt(document.getElementById("note20")?.value, 10) || 0,
+      10: parseInt(document.getElementById("note10")?.value, 10) || 0
     };
     const hasPosDenom = Object.values(posDenoms).some(v => v > 0);
     const validPosDenoms = hasPosDenom ? posDenoms : null;
@@ -7259,7 +7290,7 @@ async function loadSalesPOSSubTab() {
         } else {
           showToast(`Sale #${data.sale.challan_number || data.sale.id} completed & Delivery Challan generated!`, "success");
         }
-        
+
         // Fetch full sale details for accurate dual printing
         const rDetails = await fetch(`${API_BASE}/sales?action=get-details&id=${data.sale.id}`, { headers: authHeaders() });
         const dDetails = await rDetails.json();
@@ -7370,15 +7401,15 @@ async function loadHistorySubTab() {
         paginationContainer: "salesHistoryPagination",
         infoContainer: "salesHistoryInfo",
         renderRow: (s) => {
-        const paid = parseFloat(s.paid_amount || 0);
-        const grand = parseFloat(s.grand_total || 0);
-        const pending = Math.max(0, grand - paid);
-        const isPaid = pending <= 0.01;
-        const maxVal = Math.max(parseFloat(s.max_item_rate || 0), parseFloat(s.grand_total || 0), parseFloat(s.taxable_amount || 0));
-        const hasHighValueItem = maxVal > 10000 || (s.items_summary || []).some(it => Math.max(parseFloat(it.rate || 0), parseFloat(it.total || 0)) > 10000);
-        const showDcBtn = !s.is_custom && hasHighValueItem;
+          const paid = parseFloat(s.paid_amount || 0);
+          const grand = parseFloat(s.grand_total || 0);
+          const pending = Math.max(0, grand - paid);
+          const isPaid = pending <= 0.01;
+          const maxVal = Math.max(parseFloat(s.max_item_rate || 0), parseFloat(s.grand_total || 0), parseFloat(s.taxable_amount || 0));
+          const hasHighValueItem = maxVal > 10000 || (s.items_summary || []).some(it => Math.max(parseFloat(it.rate || 0), parseFloat(it.total || 0)) > 10000);
+          const showDcBtn = !s.is_custom && hasHighValueItem;
 
-        return `
+          return `
           <tr>
             <td><span class="badge badge-purple">#${esc(s.challan_number || s.id)}</span></td>
             <td><span class="badge badge-outline" style="font-weight:600;">${esc(s.company_name || 'Main')}</span></td>
@@ -7416,69 +7447,69 @@ async function loadHistorySubTab() {
             </td>
           </tr>
         `;
-      },
-      onRender: () => {
-        const tbody = document.getElementById("salesHistoryTableBody");
-        if (!tbody) return;
-        tbody.querySelectorAll(".printDcBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const sId = btn.dataset.id;
-            const printWin = window.open('', '_blank', 'width=900,height=1000');
-            if (printWin) {
-              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch(e){}
-            }
-            setButtonLoading(btn, true, "Loading...");
-            try {
-              const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
-              const d = await r.json();
-              if (d.success) {
-                printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
-              } else {
+        },
+        onRender: () => {
+          const tbody = document.getElementById("salesHistoryTableBody");
+          if (!tbody) return;
+          tbody.querySelectorAll(".printDcBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const sId = btn.dataset.id;
+              const printWin = window.open('', '_blank', 'width=900,height=1000');
+              if (printWin) {
+                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch (e) { }
+              }
+              setButtonLoading(btn, true, "Loading...");
+              try {
+                const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
+                const d = await r.json();
+                if (d.success) {
+                  printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
+                } else {
+                  if (printWin) printWin.close();
+                  showToast("Failed to fetch DC details", "error");
+                }
+              } catch (e) {
                 if (printWin) printWin.close();
                 showToast("Failed to fetch DC details", "error");
+              } finally {
+                setButtonLoading(btn, false);
               }
-            } catch (e) {
-              if (printWin) printWin.close();
-              showToast("Failed to fetch DC details", "error");
-            } finally {
-              setButtonLoading(btn, false);
-            }
+            });
           });
-        });
 
-        tbody.querySelectorAll(".printInvBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const sId = btn.dataset.id;
-            const printWin = window.open('', '_blank', 'width=950,height=1050');
-            if (printWin) {
-              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#4f46e5;'><h2>⏳ Loading Tax Invoice...</h2></body></html>"); } catch(e){}
-            }
-            setButtonLoading(btn, true, "Loading...");
-            try {
-              const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
-              const d = await r.json();
-              if (d.success) {
-                printTaxInvoice(d.sale, d.items, d.payments, d.returns, printWin);
-              } else {
+          tbody.querySelectorAll(".printInvBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const sId = btn.dataset.id;
+              const printWin = window.open('', '_blank', 'width=950,height=1050');
+              if (printWin) {
+                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#4f46e5;'><h2>⏳ Loading Tax Invoice...</h2></body></html>"); } catch (e) { }
+              }
+              setButtonLoading(btn, true, "Loading...");
+              try {
+                const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
+                const d = await r.json();
+                if (d.success) {
+                  printTaxInvoice(d.sale, d.items, d.payments, d.returns, printWin);
+                } else {
+                  if (printWin) printWin.close();
+                  showToast("Failed to fetch Invoice details", "error");
+                }
+              } catch (e) {
                 if (printWin) printWin.close();
                 showToast("Failed to fetch Invoice details", "error");
+              } finally {
+                setButtonLoading(btn, false);
               }
-            } catch (e) {
-              if (printWin) printWin.close();
-              showToast("Failed to fetch Invoice details", "error");
-            } finally {
-              setButtonLoading(btn, false);
-            }
+            });
           });
-        });
 
-        tbody.querySelectorAll(".recordPayBtn").forEach(btn => {
-          btn.addEventListener("click", () => {
-            openRecordPaymentModal(btn.dataset.id, () => loadHistorySubTab());
+          tbody.querySelectorAll(".recordPayBtn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              openRecordPaymentModal(btn.dataset.id, () => loadHistorySubTab());
+            });
           });
-        });
-      }
-    });
+        }
+      });
     }
 
     renderSalesTable();
@@ -7612,7 +7643,7 @@ async function loadInvoicesSubTab() {
               if (!sId) return;
               const printWin = window.open('', '_blank', 'width=900,height=1000');
               if (printWin) {
-                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch(e){}
+                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch (e) { }
               }
               setButtonLoading(btn, true, "Loading...");
               try {
@@ -7675,7 +7706,7 @@ async function loadInvoicesSubTab() {
       renderPendingDcs();
       document.getElementById("pendingDcSearchInp")?.addEventListener("input", (e) => renderPendingDcs(e.target.value));
     }
-  } catch (e) {}
+  } catch (e) { }
 
   try {
     const res = await fetch(`${API_BASE}/sales?action=invoices-list&company_id=${compId}`, { headers: authHeaders() });
@@ -7701,18 +7732,18 @@ async function loadInvoicesSubTab() {
         paginationContainer: "invoicesPagination",
         infoContainer: "invoicesInfo",
         renderRow: (i) => {
-        const paid = parseFloat(i.paid_amount || 0);
-        const grand = parseFloat(i.grand_total || 0);
-        const pending = Math.max(0, grand - paid);
-        const isPaid = pending <= 0.01;
-        const maxVal = Math.max(parseFloat(i.max_item_rate || 0), parseFloat(i.grand_total || 0), parseFloat(i.taxable_total || 0));
-        const isCounterSale = i.party_type === 'counter' || (i.customer_name && String(i.customer_name).trim().toLowerCase() === 'counter customer');
-        const showDcBtn = !i.is_custom && !isCounterSale;
-        const hasInvoiceNo = i.invoice_number && String(i.invoice_number).trim() !== '';
+          const paid = parseFloat(i.paid_amount || 0);
+          const grand = parseFloat(i.grand_total || 0);
+          const pending = Math.max(0, grand - paid);
+          const isPaid = pending <= 0.01;
+          const maxVal = Math.max(parseFloat(i.max_item_rate || 0), parseFloat(i.grand_total || 0), parseFloat(i.taxable_total || 0));
+          const isCounterSale = i.party_type === 'counter' || (i.customer_name && String(i.customer_name).trim().toLowerCase() === 'counter customer');
+          const showDcBtn = !i.is_custom && !isCounterSale;
+          const hasInvoiceNo = i.invoice_number && String(i.invoice_number).trim() !== '';
 
-        const custPhone = i.customer_phone || i.cell_phone || '';
+          const custPhone = i.customer_phone || i.cell_phone || '';
 
-        return `
+          return `
           <tr>
             <td>
               <span class="badge badge-purple">${esc(i.invoice_number || 'N/A')}</span>
@@ -7745,103 +7776,103 @@ async function loadInvoicesSubTab() {
             </td>
           </tr>
         `;
-      },
-      onRender: () => {
-        const tbody = document.getElementById("invTableBody");
-        if (!tbody) return;
-        tbody.querySelectorAll(".printInvFromInvBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const sId = btn.dataset.saleid;
-            if (!sId) return;
-            const printWin = window.open('', '_blank', 'width=950,height=1050');
-            if (printWin) {
-              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#4f46e5;'><h2>⏳ Loading Tax Invoice...</h2></body></html>"); } catch(e){}
-            }
-            setButtonLoading(btn, true, "Loading...");
-            try {
-              const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
-              const d = await r.json();
-              if (d.success) {
-                if (d.sale && d.sale.is_custom) {
-                  printCustomInvoice(d.sale, d.items, printWin);
+        },
+        onRender: () => {
+          const tbody = document.getElementById("invTableBody");
+          if (!tbody) return;
+          tbody.querySelectorAll(".printInvFromInvBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const sId = btn.dataset.saleid;
+              if (!sId) return;
+              const printWin = window.open('', '_blank', 'width=950,height=1050');
+              if (printWin) {
+                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#4f46e5;'><h2>⏳ Loading Tax Invoice...</h2></body></html>"); } catch (e) { }
+              }
+              setButtonLoading(btn, true, "Loading...");
+              try {
+                const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
+                const d = await r.json();
+                if (d.success) {
+                  if (d.sale && d.sale.is_custom) {
+                    printCustomInvoice(d.sale, d.items, printWin);
+                  } else {
+                    printTaxInvoice(d.sale, d.items, d.payments, d.returns, printWin);
+                  }
                 } else {
-                  printTaxInvoice(d.sale, d.items, d.payments, d.returns, printWin);
+                  if (printWin) printWin.close();
+                  showToast("Failed to fetch Invoice details", "error");
                 }
-              } else {
+              } catch (e) {
                 if (printWin) printWin.close();
                 showToast("Failed to fetch Invoice details", "error");
-              }
-            } catch (e) {
-              if (printWin) printWin.close();
-              showToast("Failed to fetch Invoice details", "error");
-            } finally {
-              setButtonLoading(btn, false);
-            }
-          });
-        });
-
-        tbody.querySelectorAll(".printDcFromInvBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const sId = btn.dataset.saleid;
-            if (!sId) return;
-            const printWin = window.open('', '_blank', 'width=900,height=1000');
-            if (printWin) {
-              try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch(e){}
-            }
-            setButtonLoading(btn, true, "Loading...");
-            try {
-              const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
-              const d = await r.json();
-              if (d.success) {
-                printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
-              } else {
-                if (printWin) printWin.close();
-                showToast("Failed to fetch DC details", "error");
-              }
-            } catch (e) {
-              if (printWin) printWin.close();
-              showToast("Failed to fetch DC details", "error");
-            } finally {
-              setButtonLoading(btn, false);
-            }
-          });
-        });
-
-        tbody.querySelectorAll(".recordPayInvBtn").forEach(btn => {
-          btn.addEventListener("click", () => {
-            openRecordPaymentModal(btn.dataset.saleid, () => loadInvoicesSubTab());
-          });
-        });
-
-        tbody.querySelectorAll(".deleteInvBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const invId = btn.dataset.invid;
-            const invNo = btn.dataset.invno;
-            if (!invId) return;
-            if (!confirm(`Are you sure you want to delete Invoice ${invNo}?\nRemaining invoices will be automatically re-sequenced based on previous invoices.`)) return;
-
-            setButtonLoading(btn, true, "Deleting...");
-            try {
-              const res = await fetch(`${API_BASE}/sales?action=delete-invoice&id=${invId}`, {
-                method: "POST",
-                headers: authHeaders()
-              });
-              const data = await res.json();
-              if (data.success) {
-                showToast(data.message || "Invoice deleted and re-sequenced successfully!", "success");
-                loadInvoicesSubTab();
-              } else {
-                showToast(data.error || "Failed to delete invoice", "error");
+              } finally {
                 setButtonLoading(btn, false);
               }
-            } catch (err) {
-              showToast("Delete invoice error: " + err.message, "error");
-              setButtonLoading(btn, false);
-            }
+            });
           });
-        });
-      }
-    });
+
+          tbody.querySelectorAll(".printDcFromInvBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const sId = btn.dataset.saleid;
+              if (!sId) return;
+              const printWin = window.open('', '_blank', 'width=900,height=1000');
+              if (printWin) {
+                try { printWin.document.write("<html><body style='font-family:sans-serif;text-align:center;padding:50px;color:#15803d;'><h2>⏳ Loading Delivery Challan...</h2></body></html>"); } catch (e) { }
+              }
+              setButtonLoading(btn, true, "Loading...");
+              try {
+                const r = await fetch(`${API_BASE}/sales?action=get-details&id=${sId}`, { headers: authHeaders() });
+                const d = await r.json();
+                if (d.success) {
+                  printDeliveryChallan(d.sale, d.items, d.payments, d.returns, printWin);
+                } else {
+                  if (printWin) printWin.close();
+                  showToast("Failed to fetch DC details", "error");
+                }
+              } catch (e) {
+                if (printWin) printWin.close();
+                showToast("Failed to fetch DC details", "error");
+              } finally {
+                setButtonLoading(btn, false);
+              }
+            });
+          });
+
+          tbody.querySelectorAll(".recordPayInvBtn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              openRecordPaymentModal(btn.dataset.saleid, () => loadInvoicesSubTab());
+            });
+          });
+
+          tbody.querySelectorAll(".deleteInvBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const invId = btn.dataset.invid;
+              const invNo = btn.dataset.invno;
+              if (!invId) return;
+              if (!confirm(`Are you sure you want to delete Invoice ${invNo}?\nRemaining invoices will be automatically re-sequenced based on previous invoices.`)) return;
+
+              setButtonLoading(btn, true, "Deleting...");
+              try {
+                const res = await fetch(`${API_BASE}/sales?action=delete-invoice&id=${invId}`, {
+                  method: "POST",
+                  headers: authHeaders()
+                });
+                const data = await res.json();
+                if (data.success) {
+                  showToast(data.message || "Invoice deleted and re-sequenced successfully!", "success");
+                  loadInvoicesSubTab();
+                } else {
+                  showToast(data.error || "Failed to delete invoice", "error");
+                  setButtonLoading(btn, false);
+                }
+              } catch (err) {
+                showToast("Delete invoice error: " + err.message, "error");
+                setButtonLoading(btn, false);
+              }
+            });
+          });
+        }
+      });
     }
 
     renderInvoicesTable();
@@ -7932,9 +7963,9 @@ async function loadPaymentReceiptsSubTab() {
         paginationContainer: "receiptsPagination",
         infoContainer: "receiptsInfo",
         renderRow: (r) => {
-        const amt = parseFloat(r.amount || 0);
+          const amt = parseFloat(r.amount || 0);
 
-        return `
+          return `
           <tr>
             <td><span class="badge badge-purple" style="font-weight:700;">${esc(r.receipt_number || ('RCP-' + String(r.id).padStart(3, '0')))}</span></td>
             <td><span class="badge badge-info">${esc(r.invoice_number || ('DC #' + (r.challan_number || r.sale_id)))}</span></td>
@@ -7955,55 +7986,55 @@ async function loadPaymentReceiptsSubTab() {
             </td>
           </tr>
         `;
-      },
-      onRender: () => {
-        const tbody = document.getElementById("receiptsTableBody");
-        if (!tbody) return;
+        },
+        onRender: () => {
+          const tbody = document.getElementById("receiptsTableBody");
+          if (!tbody) return;
 
-        tbody.querySelectorAll(".printReceiptBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const item = JSON.parse(btn.dataset.item);
-            let returnsArr = [];
-            if (item.sale_id) {
-              try {
-                const detailsRes = await fetch(`${API_BASE}/sales?action=get-details&id=${item.sale_id}`, { headers: authHeaders() });
-                const detailsData = await detailsRes.json();
-                if (detailsData.success && detailsData.returns) {
-                  returnsArr = detailsData.returns;
-                }
-              } catch (e) {}
-            }
-            printPaymentReceipt(item, returnsArr);
-          });
-        });
-
-        tbody.querySelectorAll(".deleteRcptBtn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            const rcptId = btn.dataset.rcptid;
-            const rcptNo = btn.dataset.rcptno;
-            const amt = btn.dataset.amt;
-            if (!rcptId) return;
-            if (!confirm(`Are you sure you want to delete Payment Receipt ${rcptNo} (Amount: ₹${amt})?\nRemaining payment receipts will be automatically re-sequenced and customer pending balance recalculated.`)) return;
-
-            try {
-              const res = await fetch(`${API_BASE}/sales?action=delete-payment&id=${rcptId}`, {
-                method: "POST",
-                headers: authHeaders()
-              });
-              const data = await res.json();
-              if (data.success) {
-                showToast(data.message || "Payment receipt deleted successfully!", "success");
-                loadPaymentReceiptsSubTab();
-              } else {
-                showToast(data.error || "Failed to delete payment receipt", "error");
+          tbody.querySelectorAll(".printReceiptBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const item = JSON.parse(btn.dataset.item);
+              let returnsArr = [];
+              if (item.sale_id) {
+                try {
+                  const detailsRes = await fetch(`${API_BASE}/sales?action=get-details&id=${item.sale_id}`, { headers: authHeaders() });
+                  const detailsData = await detailsRes.json();
+                  if (detailsData.success && detailsData.returns) {
+                    returnsArr = detailsData.returns;
+                  }
+                } catch (e) { }
               }
-            } catch (err) {
-              showToast("Delete receipt error: " + err.message, "error");
-            }
+              printPaymentReceipt(item, returnsArr);
+            });
           });
-        });
-      }
-    });
+
+          tbody.querySelectorAll(".deleteRcptBtn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              const rcptId = btn.dataset.rcptid;
+              const rcptNo = btn.dataset.rcptno;
+              const amt = btn.dataset.amt;
+              if (!rcptId) return;
+              if (!confirm(`Are you sure you want to delete Payment Receipt ${rcptNo} (Amount: ₹${amt})?\nRemaining payment receipts will be automatically re-sequenced and customer pending balance recalculated.`)) return;
+
+              try {
+                const res = await fetch(`${API_BASE}/sales?action=delete-payment&id=${rcptId}`, {
+                  method: "POST",
+                  headers: authHeaders()
+                });
+                const data = await res.json();
+                if (data.success) {
+                  showToast(data.message || "Payment receipt deleted successfully!", "success");
+                  loadPaymentReceiptsSubTab();
+                } else {
+                  showToast(data.error || "Failed to delete payment receipt", "error");
+                }
+              } catch (err) {
+                showToast("Delete receipt error: " + err.message, "error");
+              }
+            });
+          });
+        }
+      });
     }
 
     renderReceiptsTable();
@@ -8108,18 +8139,18 @@ function printPaymentReceipt(r, returns = []) {
       </div>
 
       ${returnsList.length > 0 ? renderPage3ReturnAttachment({
-        invoice_number: r.invoice_number,
-        challan_number: r.challan_number || r.sale_id,
-        sale_date: r.payment_date || r.created_at,
-        customer_name: r.customer_name,
-        cell_phone: r.cell_phone,
-        company_name: r.company_name || matchedComp.name
-      }, returnsList, matchedComp) : ''}
+    invoice_number: r.invoice_number,
+    challan_number: r.challan_number || r.sale_id,
+    sale_date: r.payment_date || r.created_at,
+    customer_name: r.customer_name,
+    cell_phone: r.cell_phone,
+    company_name: r.company_name || matchedComp.name
+  }, returnsList, matchedComp) : ''}
     </body>
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 }
@@ -8778,7 +8809,7 @@ function printSalesReturnReceipt(returnData, saleData, productData, companyData)
     </html>
   `;
 
-  try { printWin.document.open(); } catch(e){}
+  try { printWin.document.open(); } catch (e) { }
   printWin.document.write(html);
   printWin.document.close();
 }

@@ -8710,7 +8710,7 @@ function openReturnProductModal(item, refreshCallback) {
 
         <div class="form-group" style="margin-bottom:20px;">
           <label class="form-label">Reason / Condition Notes for Return</label>
-          <textarea id="modalRetReason" class="form-textarea" rows="2" placeholder="e.g. Customer returned damaged seal / Model exchange / Defective component..."></textarea>
+          <textarea id="modalRetReason" class="form-input" rows="3" placeholder="e.g. Customer returned damaged seal / Model exchange / Defective component..." style="width:100%;min-height:75px;font-family:inherit;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text1);font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
         </div>
 
         <div style="display:flex;justify-content:flex-end;gap:10px;">

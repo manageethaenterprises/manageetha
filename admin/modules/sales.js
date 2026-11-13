@@ -5194,8 +5194,7 @@ async function loadSalesPOSSubTab() {
     renderProductDropdown(q);
   };
 
-  function renderProductDropdown(filterQuery = "") {
-    const listContainer = document.getElementById("posProdListContainer");
+  function updateDropdownCounters(filterQuery = "") {
     const countText = document.getElementById("posDropdownItemCountText");
     const footer = document.getElementById("posDropdownFooter");
     const footerSummary = document.getElementById("posFooterSelectedSummary");
@@ -5203,24 +5202,8 @@ async function loadSalesPOSSubTab() {
     const selectAllChk = document.getElementById("posSelectAllFilteredChk");
     const deselectBtn = document.getElementById("posDeselectAllBtn");
     const prodSel = document.getElementById("posProdSelect");
+    const posDropdownMenu = document.getElementById("posProdDropdownMenu");
 
-    if (!listContainer) return;
-
-    const filtered = (productsList || []).filter(p => matchProductSearch(p, filterQuery));
-
-    // Update count text
-    if (countText) {
-      countText.textContent = `${filtered.length} product${filtered.length === 1 ? '' : 's'}`;
-    }
-
-    // Update select all checkbox state
-    const selectableFiltered = filtered.filter(p => parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
-    const allFilteredSelected = selectableFiltered.length > 0 && selectableFiltered.every(p => selectedProductIds.has(p.id));
-    if (selectAllChk) {
-      selectAllChk.checked = allFilteredSelected;
-    }
-
-    // Update selection badges and footers
     const selCount = selectedProductIds.size;
     if (multiBadge) {
       if (selCount > 0) {
@@ -5242,6 +5225,35 @@ async function loadSalesPOSSubTab() {
       }
     }
 
+    const qVal = filterQuery !== undefined ? filterQuery : (document.getElementById("posProdSearchInp")?.value || "");
+    const filtered = (productsList || []).filter(p => matchProductSearch(p, qVal));
+    if (countText) {
+      countText.textContent = `${filtered.length} product${filtered.length === 1 ? '' : 's'}`;
+    }
+
+    const selectableFiltered = filtered.filter(p => parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
+    if (selectAllChk) {
+      selectAllChk.checked = selectableFiltered.length > 0 && selectableFiltered.every(p => selectedProductIds.has(p.id));
+    }
+    if (prodSel && selectedProductIds.size === 1) {
+      prodSel.value = Array.from(selectedProductIds)[0];
+    }
+
+    // Keep dropdown open while selecting more than one
+    if (posDropdownMenu && (selCount > 0 || posDropdownMenu.style.display === "flex")) {
+      posDropdownMenu.style.display = "flex";
+    }
+  }
+
+  function renderProductDropdown(filterQuery = "") {
+    const listContainer = document.getElementById("posProdListContainer");
+    const prodSel = document.getElementById("posProdSelect");
+    const posDropdownMenu = document.getElementById("posProdDropdownMenu");
+
+    if (!listContainer) return;
+
+    const filtered = (productsList || []).filter(p => matchProductSearch(p, filterQuery));
+
     // Update hidden legacy prodSel for fallback compatibility
     if (prodSel) {
       prodSel.innerHTML = `<option value="">-- Select Product --</option>` +
@@ -5257,6 +5269,7 @@ async function loadSalesPOSSubTab() {
           ❌ No matching products found for "${esc(filterQuery)}".<br>
           <span style="font-size:11px;color:var(--text2);margin-top:4px;display:inline-block;">Tip: Try searching by SKU (e.g. SKU-001, sku1), Model, Brand, or Barcode.</span>
         </div>`;
+      updateDropdownCounters(filterQuery);
       return;
     }
 
@@ -5300,12 +5313,13 @@ async function loadSalesPOSSubTab() {
       `;
     }).join("");
 
-    // Attach row click / checkbox toggle listeners
+    // Attach row click / checkbox toggle listeners (DO NOT WIPE DOM ON CLICK -> PRESERVES SCROLL & KEEPS DROPDOWN OPEN)
     listContainer.querySelectorAll(".pos-prod-dropdown-item").forEach(row => {
       const pId = parseInt(row.dataset.id, 10);
       const chk = row.querySelector(".pos-prod-chk");
 
       row.addEventListener("click", (e) => {
+        e.stopPropagation();
         if (e.target.closest(".pos-quick-add-btn")) return;
         if (row.classList.contains("disabled")) return;
 
@@ -5315,25 +5329,32 @@ async function loadSalesPOSSubTab() {
 
         if (chk.checked) {
           selectedProductIds.add(pId);
+          row.style.background = "rgba(59,130,246,0.08)";
         } else {
           selectedProductIds.delete(pId);
+          row.style.background = "transparent";
         }
 
-        renderProductDropdown(document.getElementById("posProdSearchInp")?.value || "");
+        // Keep dropdown open while selecting multiple items
+        if (posDropdownMenu) posDropdownMenu.style.display = "flex";
+
+        updateDropdownCounters(filterQuery);
       });
     });
 
-    // Attach quick + Add listeners
+    // Attach quick + Add listeners (keep dropdown open so user can keep adding!)
     listContainer.querySelectorAll(".pos-quick-add-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const pId = parseInt(btn.dataset.id, 10);
-        addProductsToCart([pId], parseInt(document.getElementById("posQty")?.value, 10) || 1);
+        addProductsToCart([pId], parseInt(document.getElementById("posQty")?.value, 10) || 1, true);
       });
     });
+
+    updateDropdownCounters(filterQuery);
   }
 
-  function addProductsToCart(prodIdsList, qty = 1) {
+  function addProductsToCart(prodIdsList, qty = 1, keepOpen = false) {
     if (!prodIdsList || prodIdsList.length === 0) {
       showToast("Select at least one product to add to cart", "warning");
       return;
@@ -5422,13 +5443,20 @@ async function loadSalesPOSSubTab() {
     });
 
     if (addedCount > 0) {
-      selectedProductIds.clear();
-      const searchInp = document.getElementById("posProdSearchInp");
-      if (searchInp) searchInp.value = "";
-      const dropdownMenu = document.getElementById("posProdDropdownMenu");
-      if (dropdownMenu) dropdownMenu.style.display = "none";
+      if (!keepOpen) {
+        selectedProductIds.clear();
+        const searchInp = document.getElementById("posProdSearchInp");
+        if (searchInp) searchInp.value = "";
+        const dropdownMenu = document.getElementById("posProdDropdownMenu");
+        if (dropdownMenu) dropdownMenu.style.display = "none";
+        renderProductDropdown("");
+      } else {
+        prodIdsList.forEach(id => selectedProductIds.delete(id));
+        updateDropdownCounters();
+        const dropdownMenu = document.getElementById("posProdDropdownMenu");
+        if (dropdownMenu) dropdownMenu.style.display = "flex";
+      }
 
-      renderProductDropdown("");
       updateCartUI();
 
       if (addedCount === 1) {
@@ -5457,6 +5485,11 @@ async function loadSalesPOSSubTab() {
   const posDeselectBtn = document.getElementById("posDeselectAllBtn");
   const posAddSelectedBtn = document.getElementById("posAddSelectedDropdownBtn");
   const posMultiBadge = document.getElementById("posMultiSelectedBadge");
+
+  // Prevent ANY click inside the floating dropdown menu from bubbling to document and closing the menu!
+  posDropdownMenu?.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
 
   // WHILE SEARCHING: keep open automatically! User doesn't need to click!
   posSearchInp?.addEventListener("input", (e) => {
@@ -5499,7 +5532,10 @@ async function loadSalesPOSSubTab() {
   // Clicking outside collapses the dropdown
   document.addEventListener("click", (e) => {
     const wrapper = document.getElementById("posProdDropdownWrapper");
-    if (wrapper && !wrapper.contains(e.target) && posDropdownMenu) {
+    if (!wrapper) return;
+    const path = (e.composedPath && e.composedPath()) || [];
+    const isInside = path.length > 0 ? path.includes(wrapper) : wrapper.contains(e.target);
+    if (!isInside && posDropdownMenu) {
       posDropdownMenu.style.display = "none";
     }
   });
@@ -5523,7 +5559,8 @@ async function loadSalesPOSSubTab() {
     }
   });
 
-  posSelectAllChk?.addEventListener("change", () => {
+  posSelectAllChk?.addEventListener("change", (e) => {
+    e.stopPropagation();
     const qVal = posSearchInp?.value || "";
     const filtered = (productsList || []).filter(p => matchProductSearch(p, qVal) && parseFloat(p.selling_rate || 0) > 0 && (parseInt(p.current_stock, 10) || 0) > 0);
     if (posSelectAllChk.checked) {
@@ -5531,13 +5568,35 @@ async function loadSalesPOSSubTab() {
     } else {
       filtered.forEach(p => selectedProductIds.delete(p.id));
     }
-    renderProductDropdown(qVal);
+    const listContainer = document.getElementById("posProdListContainer");
+    if (listContainer) {
+      listContainer.querySelectorAll(".pos-prod-dropdown-item").forEach(row => {
+        const pId = parseInt(row.dataset.id, 10);
+        const chk = row.querySelector(".pos-prod-chk");
+        if (chk && !chk.disabled) {
+          const isSel = selectedProductIds.has(pId);
+          chk.checked = isSel;
+          row.style.background = isSel ? "rgba(59,130,246,0.08)" : "transparent";
+        }
+      });
+    }
+    updateDropdownCounters(qVal);
+    if (posDropdownMenu) posDropdownMenu.style.display = "flex";
   });
 
   posDeselectBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
     selectedProductIds.clear();
-    renderProductDropdown(posSearchInp?.value || "");
+    const listContainer = document.getElementById("posProdListContainer");
+    if (listContainer) {
+      listContainer.querySelectorAll(".pos-prod-dropdown-item").forEach(row => {
+        const chk = row.querySelector(".pos-prod-chk");
+        if (chk) chk.checked = false;
+        if (!row.classList.contains("disabled")) row.style.background = "transparent";
+      });
+    }
+    updateDropdownCounters(posSearchInp?.value || "");
+    if (posDropdownMenu) posDropdownMenu.style.display = "flex";
   });
 
   posAddSelectedBtn?.addEventListener("click", (e) => {

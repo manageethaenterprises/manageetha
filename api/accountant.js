@@ -163,7 +163,14 @@ module.exports = async function handler(req, res) {
         RETURNING *
       `;
 
-      return res.status(200).json({ success: true, expense: exp[0], message: "Expense recorded successfully" });
+      const compRows = await sql`SELECT name FROM companies WHERE id = ${compId}`;
+      const savedExp = { 
+        ...exp[0], 
+        company_name: compRows[0]?.name || '', 
+        created_by_user: user.username || user.name || '' 
+      };
+
+      return res.status(200).json({ success: true, expense: savedExp, message: "Expense recorded successfully" });
     }
 
     else if (action === "expense-update") {

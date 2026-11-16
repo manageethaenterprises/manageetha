@@ -189,7 +189,8 @@ async function loadExpensesSubTab() {
           </div>
           <div class="modal-footer" style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;background:var(--bg-secondary);">
             <button type="button" class="btn btn-secondary" id="expModalCancel">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="expModalSaveBtn">Save Expense</button>
+            <button type="button" class="btn btn-outline" id="expModalSaveOnlyBtn" style="font-weight:600;">💾 Save Only</button>
+            <button type="submit" class="btn btn-primary" id="expModalSavePrintBtn" style="font-weight:700;background:linear-gradient(135deg,#2563eb,#1d4ed8);border:none;">🖨️ Save & Print Voucher</button>
           </div>
         </form>
       </div>
@@ -234,17 +235,27 @@ async function loadExpensesSubTab() {
             <td style="font-weight:700;color:var(--danger);">${formatCurrency(e.amount)}</td>
             <td><span class="badge badge-warning">${esc((e.payment_mode || 'cash').toUpperCase())}</span></td>
             <td>${esc(e.description || '—')}</td>
-            <td style="white-space:nowrap;min-width:130px;text-align:center;">
-              ${isSuperAdmin ? `
+            <td style="white-space:nowrap;min-width:140px;text-align:center;">
               <div style="display:inline-flex;gap:4px;justify-content:center;">
+                <button class="btn btn-xs btn-primary printExpVoucherBtn" data-id="${e.id}" title="Print 2-Copy Expense Voucher (Receiver & Company on Same Page)">🖨️ Voucher</button>
+                ${isSuperAdmin ? `
                 <button class="btn btn-xs btn-outline editExpBtn" data-id="${e.id}">✏️ Edit</button>
                 <button class="btn btn-xs btn-danger deleteExpBtn" data-id="${e.id}">🗑️ Delete</button>
+                ` : ''}
               </div>
-              ` : `<span style="color:var(--text3);font-size:12px;">—</span>`}
             </td>
           </tr>
         `,
         onRender: () => {
+          tbody.querySelectorAll(".printExpVoucherBtn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const exp = currentExpensesList.find(x => x.id == btn.dataset.id);
+              if (exp) {
+                printExpenseVoucher(exp);
+              }
+            });
+          });
+
           if (isSuperAdmin) {
             tbody.querySelectorAll(".editExpBtn").forEach(btn => {
               btn.addEventListener("click", () => {
@@ -411,14 +422,264 @@ async function loadExpensesSubTab() {
     printWin.document.close();
   }
 
+  // ── Helper: Number to Words (INR) ──
+  function numberToWordsINR(amount) {
+    if (typeof window.numberToWordsINR === 'function') {
+      return window.numberToWordsINR(amount);
+    }
+    const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    function inWords(num) {
+      if ((num = num.toString()).length > 9) return 'Overflow';
+      let n = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+      if (!n) return '';
+      let str = '';
+      str += (n[1] != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+      str += (n[2] != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+      str += (n[3] != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+      str += (n[4] != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+      str += (n[5] != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+      return str.trim();
+    }
+
+    const parts = parseFloat(amount || 0).toFixed(2).split('.');
+    const rupees = parseInt(parts[0], 10);
+    const paise = parseInt(parts[1], 10);
+
+    let result = 'INR ';
+    if (rupees === 0) result += 'Zero';
+    else result += inWords(rupees);
+
+    if (paise > 0) {
+      result += ' and ' + inWords(paise) + ' Paise';
+    }
+    result += ' Only';
+    return result;
+  }
+
+  // ── Print 2-Copy Expense Payment Voucher (Receiver & Company on Same Page) ──
+  function printExpenseVoucher(exp) {
+    const printWin = window.open("", "_blank", "width=850,height=950");
+    if (!printWin) return alert("Please allow popups to print expense vouchers.");
+
+    const compList = (window.currentCompanies && window.currentCompanies.length > 0) 
+      ? window.currentCompanies 
+      : (typeof currentCompanies !== 'undefined' ? currentCompanies : []);
+    const compIdToMatch = exp.company_id || (typeof selectedCompanyId !== 'undefined' && selectedCompanyId !== 'all' ? selectedCompanyId : 1);
+    const matchedComp = compList.find(c => c.id == compIdToMatch) || compList[0] || {};
+
+    const compName = exp.company_name || matchedComp.name || "GEETHA ENTERPRISES";
+    const compGstin = matchedComp.gstin || "37AHMPN1933G1Z7";
+    const compPhone = matchedComp.phone || matchedComp.contact_no || "97058 77888";
+    const compEmail = matchedComp.email || matchedComp.contact_email || "info@manageetha.in";
+    const compAddr = matchedComp.address || matchedComp.full_address || "OPP RTC COMPLEX KAKINADA ROAD, RAMACHANDRAPURAM, ANDHRA PRADESH";
+
+    const loggedUser = (typeof getUser === 'function' ? getUser() : null) || JSON.parse(localStorage.getItem('erp_user') || '{}');
+    const cashierName = exp.created_by_user || exp.created_by_name || loggedUser.name || loggedUser.full_name || loggedUser.username || "Accounts Cashier";
+
+    const receiptNo = exp.receipt_number || `EXP-${exp.id || Date.now().toString().slice(-6)}`;
+    const barcodeSvg = (typeof window.generateBarcodeSVG === 'function') 
+      ? window.generateBarcodeSVG(receiptNo, 26, true, '#0f172a') 
+      : `<div style="font-family:monospace;font-weight:bold;font-size:11px;">*${esc(receiptNo)}*</div>`;
+
+    let modeDisplay = (exp.payment_mode || 'Cash').toUpperCase();
+    if (modeDisplay === 'UPI') modeDisplay = 'UPI / GPay';
+    else if (modeDisplay === 'BANK') modeDisplay = 'Bank Transfer / NEFT';
+
+    function renderSingleVoucherBox(copyTitle, copyBadgeBg, copySubText) {
+      return `
+        <div class="voucher-box">
+          <!-- HEADER -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1.5px solid #000;padding-bottom:5px;margin-bottom:6px;">
+            <div style="flex:1;">
+              <div style="font-size:14px;font-weight:900;text-transform:uppercase;color:#0f172a;letter-spacing:0.5px;">${esc(compName)}</div>
+              <div style="font-size:9.5px;color:#334155;line-height:1.3;margin-top:2px;">
+                ${compAddr ? `<div>Address: ${esc(compAddr)}</div>` : ''}
+                <div>GSTIN: <b>${esc(compGstin)}</b> | Phone: <b>${esc(compPhone)}</b>${compEmail ? ` | Email: ${esc(compEmail)}` : ''}</div>
+              </div>
+            </div>
+            <div style="text-align:right;min-width:180px;">
+              <div style="display:inline-block;padding:2px 8px;border-radius:3px;background:${copyBadgeBg};color:#fff;font-size:9px;font-weight:800;letter-spacing:0.5px;margin-bottom:2px;">
+                ${copyTitle}
+              </div>
+              <div style="font-size:11.5px;font-weight:900;color:#dc2626;letter-spacing:0.5px;">
+                PAYMENT / DEBIT VOUCHER
+              </div>
+              <div style="margin-top:2px;">
+                ${barcodeSvg}
+              </div>
+            </div>
+          </div>
+
+          <!-- DETAILS GRID TABLE -->
+          <table style="width:100%;border-collapse:collapse;margin-bottom:5px;font-size:10px;">
+            <tr>
+              <td style="padding:3px 6px;border:1px solid #000;width:50%;">
+                <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Paid To (Receiver / Payee):</span>
+                <b style="font-size:11.5px;color:#0f172a;">${esc(exp.dealer_receiver || 'Cash Payee / Supplier')}</b>
+              </td>
+              <td style="padding:3px 6px;border:1px solid #000;width:25%;">
+                <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Voucher No:</span>
+                <b style="font-family:monospace;font-size:10.5px;">${esc(receiptNo)}</b>
+              </td>
+              <td style="padding:3px 6px;border:1px solid #000;width:25%;">
+                <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Voucher Date:</span>
+                <b>${formatDate(exp.expense_date || new Date())}</b>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:3px 6px;border:1px solid #000;">
+                <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Expense Head / Category:</span>
+                <b style="color:#1d4ed8;font-size:11px;">${esc(exp.category || 'Operating Expense')}</b>
+              </td>
+              <td style="padding:3px 6px;border:1px solid #000;">
+                <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Payment Mode:</span>
+                <b style="color:#15803d;">${esc(modeDisplay)}</b>
+              </td>
+              <td style="padding:3px 6px;border:1px solid #000;">
+                <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Cashier / Prepared By:</span>
+                <b>${esc(cashierName)}</b>
+              </td>
+            </tr>
+          </table>
+
+          <!-- PARTICULARS & AMOUNT TABLE -->
+          <table style="width:100%;border-collapse:collapse;border:1px solid #000;margin-bottom:5px;font-size:10px;">
+            <thead>
+              <tr style="background:#f1f5f9;border-bottom:1px solid #000;">
+                <th style="padding:3px 6px;text-align:left;font-size:9px;text-transform:uppercase;">Particulars / Description of Expense</th>
+                <th style="padding:3px 6px;text-align:right;width:130px;font-size:9px;text-transform:uppercase;">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding:5px 6px;vertical-align:top;border-right:1px solid #000;min-height:30px;">
+                  <div style="font-weight:600;color:#0f172a;line-height:1.25;">
+                    ${esc(exp.description || ('Payment made towards ' + (exp.category || 'Expense') + ' to ' + (exp.dealer_receiver || 'Receiver')))}
+                  </div>
+                </td>
+                <td style="padding:5px 6px;text-align:right;vertical-align:top;font-size:12px;font-weight:bold;color:#0f172a;">
+                  ₹${parseFloat(exp.amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})}
+                </td>
+              </tr>
+              <tr style="border-top:1.5px solid #000;background:#f8fafc;font-weight:bold;">
+                <td style="padding:3px 6px;text-align:right;border-right:1px solid #000;font-size:9.5px;text-transform:uppercase;">
+                  Net Amount Paid:
+                </td>
+                <td style="padding:3px 6px;text-align:right;font-size:12px;color:#15803d;">
+                  ₹${parseFloat(exp.amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- AMOUNT IN WORDS -->
+          <div style="padding:3px 6px;border:1px solid #000;background:#fffbeb;font-size:9.5px;margin-bottom:6px;">
+            Amount Paid (in words): <b>${numberToWordsINR(exp.amount)}</b>
+          </div>
+
+          <!-- 3 SIGNATURES ROW -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;padding-top:2px;">
+            <div style="text-align:center;width:150px;">
+              <div style="height:22px;"></div>
+              <div style="border-top:1px solid #000;padding-top:2px;font-size:9px;font-weight:bold;">Receiver's Signature</div>
+              <div style="font-size:8px;color:#64748b;">${copySubText}</div>
+            </div>
+            <div style="text-align:center;width:150px;">
+              <div style="height:22px;"></div>
+              <div style="border-top:1px solid #000;padding-top:2px;font-size:9px;font-weight:bold;">Prepared By</div>
+              <div style="font-size:8px;color:#64748b;">(${esc(cashierName)})</div>
+            </div>
+            <div style="text-align:center;width:160px;">
+              <div style="font-size:8px;margin-bottom:1px;">For <b>${esc(compName)}</b></div>
+              <div style="height:20px;"></div>
+              <div style="border-top:1px solid #000;padding-top:2px;font-size:9px;font-weight:bold;">Authorised Signatory</div>
+              <div style="font-size:8px;color:#64748b;">(Verified & Approved)</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const htmlDoc = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Expense Payment Voucher - ${receiptNo}</title>
+        <style>
+          @page { size: A4 portrait; margin: 4mm 6mm; }
+          * { box-sizing: border-box; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 4px; background: #fff; color: #000; }
+          .sheet-container { max-width: 820px; margin: 0 auto; page-break-inside: avoid; break-inside: avoid; }
+          .voucher-box { border: 1.5px solid #000; padding: 6px 10px; background: #fff; border-radius: 4px; page-break-inside: avoid; break-inside: avoid; }
+          
+          .cut-divider { display: flex; align-items: center; justify-content: center; margin: 8px 0; text-align: center; }
+          .cut-divider .cut-line { flex: 1; border-top: 1.5px dashed #475569; }
+          .cut-divider .cut-label { padding: 0 10px; font-size: 8.5px; font-weight: bold; color: #475569; letter-spacing: 0.8px; text-transform: uppercase; }
+
+          @media print {
+            @page { size: A4 portrait; margin: 4mm 6mm; }
+            html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+            .no-print { display: none !important; }
+            .sheet-container { margin: 0 auto !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="margin-bottom:10px;text-align:right;">
+          <button onclick="window.print()" style="background:#1d4ed8;color:#fff;border:none;padding:8px 20px;border-radius:4px;font-weight:bold;font-size:13px;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.15);">
+            🖨️ Print 2-Copy Voucher (Receiver & Company on Same Page)
+          </button>
+        </div>
+
+        <div class="sheet-container">
+          <!-- TOP COPY: RECEIVER / PAYEE COPY -->
+          ${renderSingleVoucherBox('RECEIVER / CUSTOMER COPY', '#1e3a8a', '(Received sum in full satisfaction)')}
+
+          <!-- CUT / TEAR PERFORATION DIVIDER -->
+          <div class="cut-divider">
+            <span class="cut-line"></span>
+            <span class="cut-label">✂&nbsp;&nbsp;&nbsp;&nbsp;CUT / TEAR HERE (RECEIVER COPY ABOVE &bull; COMPANY COPY BELOW)&nbsp;&nbsp;&nbsp;&nbsp;✂</span>
+            <span class="cut-line"></span>
+          </div>
+
+          <!-- BOTTOM COPY: OFFICE / COMPANY COPY -->
+          ${renderSingleVoucherBox('OFFICE / COMPANY COPY', '#15803d', '(Receiver confirmation)')}
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWin.document.write(htmlDoc);
+    printWin.document.close();
+  }
+
+  let shouldPrintVoucherOnSave = true;
+
   on("addExpBtn", "click", () => {
     if (document.getElementById("eEditingId")) document.getElementById("eEditingId").value = "";
     if (document.getElementById("expModalTitle")) document.getElementById("expModalTitle").textContent = "Record New Expense";
+    shouldPrintVoucherOnSave = true;
     document.getElementById("expForm").reset();
     document.getElementById("expModal").style.display = "flex";
   });
   on("expModalClose", "click", () => { document.getElementById("expModal").style.display = "none"; });
   on("expModalCancel", "click", () => { document.getElementById("expModal").style.display = "none"; });
+
+  on("expModalSaveOnlyBtn", "click", () => {
+    shouldPrintVoucherOnSave = false;
+    const form = document.getElementById("expForm");
+    if (form && typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+    } else if (form) {
+      form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    }
+  });
+
+  on("expModalSavePrintBtn", "click", () => {
+    shouldPrintVoucherOnSave = true;
+  });
 
   const eModeSel = document.getElementById("eMode");
   const eBankGroup = document.getElementById("eBankGroup");
@@ -437,21 +698,28 @@ async function loadExpensesSubTab() {
 
   on("expForm", "submit", async (e) => {
     e.preventDefault();
-    const saveBtn = document.getElementById("expModalSaveBtn") || e.target.querySelector('button[type="submit"]');
+    const activeSubmitBtn = e.submitter;
+    const doPrint = activeSubmitBtn ? (activeSubmitBtn.id === "expModalSavePrintBtn") : shouldPrintVoucherOnSave;
+    const saveBtn = activeSubmitBtn || document.getElementById("expModalSavePrintBtn") || document.getElementById("expModalSaveOnlyBtn");
+    
     if (saveBtn && saveBtn.disabled) return;
-    const origHtml = saveBtn ? saveBtn.innerHTML : "Save Expense";
+    const origHtml = saveBtn ? saveBtn.innerHTML : "Save";
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Saving Expense...`;
+      saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Saving...`;
     }
 
     const editingId = document.getElementById("eEditingId")?.value;
     const actionName = editingId ? "expense-update" : "expense-create";
     const payModeVal = document.getElementById("eMode").value;
 
+    const activeCompId = (selectedCompanyId && selectedCompanyId !== "all") 
+      ? parseInt(selectedCompanyId) 
+      : (currentCompanies && currentCompanies[0]?.id ? currentCompanies[0].id : 1);
+
     const payload = {
       id: editingId || undefined,
-      company_id: currentCompanies[0]?.id || 1,
+      company_id: activeCompId,
       category: document.getElementById("eCategory").value,
       amount: document.getElementById("eAmount").value,
       dealer_receiver: document.getElementById("edealer").value.trim(),
@@ -468,12 +736,23 @@ async function loadExpensesSubTab() {
       });
       const data = await res.json();
       if (data.success) {
+        const savedExp = data.expense || {
+          ...payload,
+          receipt_number: `EXP-${Date.now().toString().slice(-6)}`,
+          expense_date: new Date()
+        };
         showToast(data.message || "Expense saved successfully", "success");
         document.getElementById("expModal").style.display = "none";
         document.getElementById("expForm").reset();
         if (document.getElementById("eEditingId")) document.getElementById("eEditingId").value = "";
         fetchExpenses();
-      } else showToast(data.error, "error");
+
+        if (doPrint) {
+          printExpenseVoucher(savedExp);
+        }
+      } else {
+        showToast(data.error, "error");
+      }
     } catch (err) {
       showToast("Error: " + err.message, "error");
     } finally {

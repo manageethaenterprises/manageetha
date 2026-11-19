@@ -738,7 +738,7 @@ module.exports = async function handler(req, res) {
         transporter_name, transporter_vehicle_no, sale_date, items, payment_mode, bank_sub_type,
         utr_number, transaction_ref, cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, advance_amount,
         paid_amount, financer_id, finance_amount, discount_amount, vip_perk_notes,
-        customer_gstin, party_type, dealer_id, split_payments, denominations
+        customer_gstin, party_type, dealer_id, supplier_id, split_payments, denominations
       } = req.body;
 
       // Auto-migrate columns if missing
@@ -746,6 +746,7 @@ module.exports = async function handler(req, res) {
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS customer_gstin VARCHAR(50)`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS party_type VARCHAR(50) DEFAULT 'customer'`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS dealer_id INT REFERENCES dealers(id) ON DELETE SET NULL`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS supplier_id INT REFERENCES suppliers(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100)`;
         await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS invoice_date DATE`;
@@ -783,7 +784,12 @@ module.exports = async function handler(req, res) {
       // Sequential invoice number across parent and child branches sharing the same company GST number
       const { invNo } = await getNextFamilyInvoiceNumber(sql, compId, sale_date);
 
-      const dcNo = await getNextFamilyDcNumber(sql, compId);
+      const isCounterParty = (party_type === "counter" || req.body.generate_tax_invoice === true);
+      const shouldGenerateDc = (req.body.generate_dc === true);
+      let dcNo = null;
+      if (shouldGenerateDc) {
+        dcNo = await getNextFamilyDcNumber(sql, compId);
+      }
       const initialRcptNo = await getNextFamilyReceiptNumber(sql, compId);
 
       const compStateStr = (company.state || "").trim().toLowerCase();
@@ -949,7 +955,7 @@ module.exports = async function handler(req, res) {
         newSale = await sql`
           INSERT INTO sales (
             company_id, customer_id, customer_name, father_name, village, mandal,
-            cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
+            cell_phone, customer_gstin, party_type, dealer_id, supplier_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
             transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
             cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
             payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
@@ -958,7 +964,7 @@ module.exports = async function handler(req, res) {
           ) VALUES (
             ${compId}, ${finalCustId}, ${customer_name || null},
             ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
-            ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
+            ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null}, ${supplier_id ? parseInt(supplier_id) : null},
             ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
             ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
             ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
@@ -979,7 +985,7 @@ module.exports = async function handler(req, res) {
           newSale = await sql`
             INSERT INTO sales (
               company_id, customer_id, customer_name, father_name, village, mandal,
-              cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
+              cell_phone, customer_gstin, party_type, dealer_id, supplier_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
               transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
               cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
               payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
@@ -988,7 +994,7 @@ module.exports = async function handler(req, res) {
             ) VALUES (
               ${compId}, ${finalCustId}, ${customer_name || null},
               ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
-              ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
+              ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null}, ${supplier_id ? parseInt(supplier_id) : null},
               ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
               ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
               ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
@@ -1008,7 +1014,7 @@ module.exports = async function handler(req, res) {
           newSale = await sql`
             INSERT INTO sales (
               company_id, customer_id, customer_name, father_name, village, mandal,
-              cell_phone, customer_gstin, party_type, dealer_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
+              cell_phone, customer_gstin, party_type, dealer_id, supplier_id, lead_generated_by, lead_incentive_amount, supply_type, scheme_department, scheme_app_no,
               transporter_name, transporter_vehicle_no, challan_number, sale_date, total_amount, taxable_amount,
               cgst, sgst, igst, tax_amount, grand_total, advance_amount, paid_amount, pending_amount,
               payment_status, payment_mode, bank_sub_type, utr_number, cheque_dd_no, cheque_dd_date,
@@ -1017,7 +1023,7 @@ module.exports = async function handler(req, res) {
             ) VALUES (
               ${compId}, ${finalCustId}, ${customer_name || null},
               ${father_name || null}, ${village || null}, ${mandal || null}, ${cell_phone || null},
-              ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null},
+              ${customer_gstin || null}, ${party_type || 'customer'}, ${dealer_id ? parseInt(dealer_id) : null}, ${supplier_id ? parseInt(supplier_id) : null},
               ${lead_generated_by || null}, ${parseFloat(lead_incentive_amount || 0)}, ${supply_type || 'Direct Sale'},
               ${scheme_department || null}, ${scheme_app_no || null}, ${transporter_name || null},
               ${transporter_vehicle_no || null}, ${dcNo}, ${invDateVal},
@@ -1166,14 +1172,26 @@ module.exports = async function handler(req, res) {
         WHERE s.id = ${newSale[0].id}
       `;
 
+      const createdPayments = await sql`
+        SELECT sp.*, u.username as cashier_name
+        FROM sale_payments sp
+        LEFT JOIN users u ON sp.cashier_id = u.id
+        WHERE sp.sale_id = ${newSale[0].id}
+        ORDER BY sp.payment_date ASC, sp.id ASC
+      `;
+
       return res.status(200).json({
         success: true,
         sale: fullSaleDetails[0] || newSale[0],
+        items: items,
+        payments: createdPayments,
+        initial_receipt: createdPayments[0] || null,
         is_direct_invoice: isCounter,
         invoice_number: isCounter ? invNo : null,
+        challan_number: dcNo,
         message: isCounter 
           ? `Tax Invoice #${invNo} generated directly for Counter Customer!`
-          : "Delivery Challan & Sale created successfully! Go to Invoices tab to raise Tax Invoice."
+          : `Order #${newSale[0].id} confirmed successfully! Payment Receipt issued.`
       });
     }
 
@@ -1717,6 +1735,72 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // ═══════════════ RAISE DELIVERY CHALLAN ON DEMAND ═══════════════
+    else if (action === "raise-dc") {
+      const { sale_id, dc_date, transporter_name, transporter_vehicle_no, delivery_notes } = req.body;
+      if (!sale_id) return res.status(400).json({ error: "Sale ID is required to raise Delivery Challan" });
+
+      const sRows = await sql`SELECT * FROM sales WHERE id = ${parseInt(sale_id)}`;
+      if (sRows.length === 0) return res.status(404).json({ error: "Order / Sale not found" });
+
+      const sale = sRows[0];
+      const compId = sale.company_id;
+
+      let dcNo = sale.challan_number;
+      if (!dcNo || dcNo === "" || dcNo === "null") {
+        dcNo = await getNextFamilyDcNumber(sql, compId);
+      }
+
+      const dcDateVal = dc_date || sale.sale_date || new Date().toISOString().split('T')[0];
+
+      await sql`
+        UPDATE sales SET
+          challan_number = ${dcNo},
+          sale_date = COALESCE(sale_date, ${dcDateVal}),
+          transporter_name = COALESCE(${transporter_name || null}, transporter_name),
+          transporter_vehicle_no = COALESCE(${transporter_vehicle_no || null}, transporter_vehicle_no)
+        WHERE id = ${sale.id}
+      `;
+
+      const fullSale = await sql`
+        SELECT s.*, c.name as company_name, c.gstin as company_gstin, c.hsn_code as company_hsn,
+               c.address as company_address, c.city as company_city, c.state as company_state,
+               c.pincode as company_pincode, c.state_code as company_state_code,
+               c.phone as company_phone, c.email as company_email, c.website as company_website,
+               c.bank_name, c.bank_account, c.bank_ifsc, c.bank_branch,
+               COALESCE(s.customer_name, cust.name) as cust_name,
+               COALESCE(s.cell_phone, cust.phone) as cust_phone
+        FROM sales s
+        LEFT JOIN companies c ON s.company_id = c.id
+        LEFT JOIN customers cust ON s.customer_id = cust.id
+        WHERE s.id = ${sale.id}
+      `;
+
+      const items = await sql`
+        SELECT si.*, p.name as product_name, p.brand, p.model, p.hsn_sac
+        FROM sale_items si
+        LEFT JOIN products p ON si.product_id = p.id
+        WHERE si.sale_id = ${sale.id}
+      `;
+
+      const payments = await sql`
+        SELECT sp.*, u.username as cashier_name
+        FROM sale_payments sp
+        LEFT JOIN users u ON sp.cashier_id = u.id
+        WHERE sp.sale_id = ${sale.id}
+        ORDER BY sp.payment_date ASC, sp.id ASC
+      `;
+
+      return res.status(200).json({
+        success: true,
+        message: `Delivery Challan #${dcNo} raised successfully!`,
+        challan_number: dcNo,
+        sale: fullSale[0] || sale,
+        items: items,
+        payments: payments
+      });
+    }
+
     // ═══════════════ INVOICES LIST ═══════════════
     else if (action === "invoices-list") {
       // Auto-heal and maintain continuous sequential numbering across branch families
@@ -1725,7 +1809,7 @@ module.exports = async function handler(req, res) {
       let rows;
       if (isAll) {
         rows = await sql`
-          SELECT i.*, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
+          SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
                  COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
                  COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
                  c.name as company_name,
@@ -1748,7 +1832,7 @@ module.exports = async function handler(req, res) {
         `;
       } else {
         rows = await sql`
-          SELECT i.*, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
+          SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
                  COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
                  COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
                  c.name as company_name,

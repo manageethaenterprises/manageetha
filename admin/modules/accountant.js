@@ -167,8 +167,12 @@ async function loadExpensesSubTab() {
               <input type="number" step="0.01" id="eAmount" class="form-input" required placeholder="1500" style="width:100%;">
             </div>
             <div class="form-group" style="margin-bottom:14px;">
-              <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">RECEIVER / dealer</label>
+              <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">RECEIVER / DEALER</label>
               <input type="text" id="edealer" class="form-input" placeholder="e.g. Universal Supplier / Landlord" style="width:100%;">
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+              <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">RECEIVER GSTIN / TIN (OPTIONAL)</label>
+              <input type="text" id="eGstin" class="form-input" placeholder="e.g. 37ABCDE1234F1Z5" style="width:100%;text-transform:uppercase;">
             </div>
             <div class="form-group" style="margin-bottom:14px;">
               <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">PAYMENT MODE</label>
@@ -231,7 +235,10 @@ async function loadExpensesSubTab() {
             <td style="font-weight:600;">${esc(e.company_name || 'All Companies')}</td>
             <td>${formatDate(e.expense_date)}</td>
             <td><span class="badge badge-outline" style="font-weight:600;">${esc(e.category)}</span></td>
-            <td style="font-weight:700;color:var(--text1);">${esc(e.dealer_receiver || '—')}</td>
+            <td style="font-weight:700;color:var(--text1);">
+              ${esc(e.dealer_receiver || '—')}
+              ${e.gstin ? `<div style="font-size:10.5px;color:var(--primary);font-weight:600;margin-top:2px;">GST: ${esc(e.gstin)}</div>` : ''}
+            </td>
             <td style="font-weight:700;color:var(--danger);">${formatCurrency(e.amount)}</td>
             <td><span class="badge badge-warning">${esc((e.payment_mode || 'cash').toUpperCase())}</span></td>
             <td>${esc(e.description || '—')}</td>
@@ -266,6 +273,7 @@ async function loadExpensesSubTab() {
                   document.getElementById("eCategory").value = exp.category || "Inventory Purchase";
                   document.getElementById("eAmount").value = exp.amount || "";
                   document.getElementById("edealer").value = exp.dealer_receiver || "";
+                  if (document.getElementById("eGstin")) document.getElementById("eGstin").value = exp.gstin || "";
                   document.getElementById("eMode").value = exp.payment_mode || "cash";
                   document.getElementById("eDesc").value = exp.description || "";
                   document.getElementById("expModal").style.display = "flex";
@@ -518,6 +526,7 @@ async function loadExpensesSubTab() {
               <td style="padding:3px 6px;border:1px solid #000;width:50%;">
                 <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Paid To (Receiver / Payee):</span>
                 <b style="font-size:11.5px;color:#0f172a;">${esc(exp.dealer_receiver || 'Cash Payee / Supplier')}</b>
+                ${exp.gstin ? `<div style="font-size:9.5px;color:#334155;margin-top:2px;"><strong>GSTIN / TIN:</strong> ${esc(exp.gstin)}</div>` : ''}
               </td>
               <td style="padding:3px 6px;border:1px solid #000;width:25%;">
                 <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Voucher No:</span>
@@ -723,6 +732,7 @@ async function loadExpensesSubTab() {
       category: document.getElementById("eCategory").value,
       amount: document.getElementById("eAmount").value,
       dealer_receiver: document.getElementById("edealer").value.trim(),
+      gstin: (document.getElementById("eGstin")?.value || "").trim().toUpperCase(),
       payment_mode: payModeVal,
       bank_account_id: (payModeVal === "bank" || payModeVal === "upi") ? (document.getElementById("eBankAccount")?.value || null) : null,
       description: document.getElementById("eDesc").value.trim(),

@@ -1080,8 +1080,10 @@ window.addEventListener("hashchange", () => {
 
 // ═══════════════ LOAD MODULES ═══════════════
 
+const ERP_MODULE_VERSION = "20261119_v2";
+
 function loadModules() {
-  // Load module scripts dynamically
+  // Load module scripts dynamically with cache-busting version query parameter
   const scripts = [
     "/admin/modules/today-tasks.js",
     "/admin/modules/super-panel.js",
@@ -1095,10 +1097,11 @@ function loadModules() {
   ];
 
   scripts.forEach((src) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
+    const versionedSrc = `${src}?v=${ERP_MODULE_VERSION}`;
+    const existing = document.querySelector(`script[src^="${src}"]`);
     if (!existing) {
       const script = document.createElement("script");
-      script.src = src;
+      script.src = versionedSrc;
       script.async = false;
       document.head.appendChild(script);
     }

@@ -881,6 +881,106 @@ async function openRaiseInvoiceModal(sale, onSuccess) {
 }
 window.openRaiseInvoiceModal = openRaiseInvoiceModal;
 
+// ── Helper: Modal to Raise Delivery Challan on Demand ──
+async function openRaiseDcModal(sale, onSuccess) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  overlay.innerHTML = `
+    <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:520px;width:100%;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;">
+        <h3 style="font-size:17px;font-weight:700;color:var(--primary);margin:0;">🚚 Raise Delivery Challan — Order #${sale.id}</h3>
+        <button class="btn btn-sm btn-outline closeRaiseDcModal">&times;</button>
+      </div>
+
+      <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;font-size:12px;">
+        <div><strong>Customer / Party:</strong> ${esc(sale.customer_name || 'Counter Customer')} (${esc(sale.cell_phone || 'No phone')})</div>
+        <div><strong>Order Date:</strong> ${formatDate(sale.sale_date || sale.created_at)}</div>
+        <div><strong>Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(sale.grand_total)}</strong></div>
+        ${sale.invoice_number ? `<div><strong>Tax Invoice #:</strong> <span class="badge badge-purple">${esc(sale.invoice_number)}</span> (Invoice already raised)</div>` : ''}
+      </div>
+
+      <form id="raiseDcForm">
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-weight:700;">Delivery Challan Date *</label>
+          <input type="date" id="rdcDate" class="form-input" required value="${todayStr}">
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Date shown on the official Delivery Challana dispatch document.</div>
+        </div>
+
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label" style="font-weight:700;">Transporter Name</label>
+            <input type="text" id="rdcTransporter" class="form-input" placeholder="Driver / Transport service" value="${esc(sale.transporter_name || '')}">
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-weight:700;">Vehicle Number</label>
+            <input type="text" id="rdcVehicle" class="form-input" placeholder="AP 39 V 1234" value="${esc(sale.transporter_vehicle_no || '')}">
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;border-top:1px solid var(--border);padding-top:14px;">
+          <button type="button" class="btn btn-secondary closeRaiseDcModal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btnConfirmRaiseDc" style="background:linear-gradient(135deg, #059669, #10b981);color:#fff;border:none;font-weight:700;padding:10px 18px;display:flex;align-items:center;gap:6px;">
+            🚚 Generate & Print Delivery Challan
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  const closeModal = () => {
+    overlay.remove();
+  };
+
+  overlay.querySelectorAll(".closeRaiseDcModal").forEach(b => b.addEventListener("click", closeModal));
+
+  overlay.querySelector("#raiseDcForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = overlay.querySelector("#btnConfirmRaiseDc");
+    setButtonLoading(btn, true, "Generating DC...");
+
+    const dcDateVal = overlay.querySelector("#rdcDate").value;
+    const transName = overlay.querySelector("#rdcTransporter").value.trim();
+    const transVeh = overlay.querySelector("#rdcVehicle").value.trim();
+
+    try {
+      const res = await fetch(`${API_BASE}/sales?action=raise-dc`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          sale_id: sale.id,
+          dc_date: dcDateVal,
+          transporter_name: transName,
+          transporter_vehicle_no: transVeh
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || `Delivery Challan #${data.challan_number} raised successfully!`, "success");
+        closeModal();
+
+        // Open print window
+        printDeliveryChallan(data.sale, data.items, data.payments);
+
+        if (typeof onSuccess === "function") onSuccess();
+      } else {
+        showToast(data.error || "Failed to raise Delivery Challan", "error");
+        setButtonLoading(btn, false);
+      }
+    } catch (err) {
+      showToast("Error raising DC: " + err.message, "error");
+      setButtonLoading(btn, false);
+    }
+  });
+}
+window.openRaiseDcModal = openRaiseDcModal;
+
 // ── Helper: Print Lead Incentive Disbursement Voucher (Original Copy & Lead Copy) ──
 function printIncentiveVoucher(leadName, salesList, itemsList = []) {
   const printWin = window.open('', '_blank', 'width=950,height=1050');
@@ -4354,7 +4454,8 @@ async function loadSalesPOSSubTab() {
             <select id="posPartyType" class="form-select" style="font-weight:600;">
               <option value="customer" selected>👤 Registered / Walk-in Customer</option>
               <option value="counter">⚡ Counter Customer (Quick Bill)</option>
-              <option value="dealer">🏢 Registered dealer / Supplier</option>
+              <option value="dealer">🏢 Registered Dealer</option>
+              <option value="supplier">🏭 Registered Supplier</option>
             </select>
           </div>
 
@@ -4370,8 +4471,15 @@ async function loadSalesPOSSubTab() {
 
           <div id="posdealerBlock" style="display:none;margin-bottom:12px;">
             <div class="form-group">
-              <label class="form-label" style="font-weight:700;color:var(--primary);">🏢 Select Registered dealer / Supplier *</label>
+              <label class="form-label" style="font-weight:700;color:var(--primary);">🏢 Select Registered Dealer *</label>
               <select id="posdealerId" class="form-select"></select>
+            </div>
+          </div>
+
+          <div id="posSupplierBlock" style="display:none;margin-bottom:12px;">
+            <div class="form-group">
+              <label class="form-label" style="font-weight:700;color:var(--primary);">🏭 Select Registered Supplier *</label>
+              <select id="posSupplierId" class="form-select"></select>
             </div>
           </div>
 
@@ -4698,8 +4806,8 @@ async function loadSalesPOSSubTab() {
           </div>
 
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">
-            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;" id="posSubmitBtn" disabled>
-              Sell & Print Delivery Challana
+            <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:14px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);border:none;" id="posSubmitBtn" disabled>
+              ✅ Confirm Order & Issue Payment Receipt
             </button>
             <button type="button" class="btn btn-secondary" style="width:100%;padding:10px;font-size:14px;font-weight:700;background:linear-gradient(135deg, #3b82f6, #1d4ed8);color:#fff;border:none;border-radius:6px;box-shadow:0 2px 4px rgba(59,130,246,0.3);" id="posQuotationBtn">
               Generate Quotation / Estimate
@@ -4832,14 +4940,32 @@ async function loadSalesPOSSubTab() {
         dealersList = vData.dealers || [];
         const venSel = document.getElementById("posdealerId");
         if (venSel) {
-          venSel.innerHTML = `<option value="">-- Select Registered dealer --</option>` +
+          venSel.innerHTML = `<option value="">-- Select Registered Dealer --</option>` +
             dealersList.map(v => `<option value="${v.id}">${esc(v.trade_name || v.legal_name)} ${v.gstin ? `(GSTIN: ${esc(v.gstin)})` : ''}</option>`).join("");
         }
       }
     } catch (e) { }
   }
+
+  let suppliersList = [];
+  async function refreshSuppliersList() {
+    try {
+      const sRes = await fetch(`${API_BASE}/inventory?action=suppliers-list&company_id=${compId}`, { headers: authHeaders() });
+      const sData = await sRes.json();
+      if (sData.success) {
+        suppliersList = sData.suppliers || [];
+        const supSel = document.getElementById("posSupplierId");
+        if (supSel) {
+          supSel.innerHTML = `<option value="">-- Select Registered Supplier --</option>` +
+            suppliersList.map(s => `<option value="${s.id}">${esc(s.trade_name || s.legal_name)} ${s.gstin ? `(GSTIN: ${esc(s.gstin)})` : ''}</option>`).join("");
+        }
+      }
+    } catch (e) { }
+  }
+
   await refreshCustomersList();
   await refreshdealersList();
+  await refreshSuppliersList();
 
   // Live Autocomplete on Customer Name field
   const liveNameInp = document.getElementById("posCustName");
@@ -4934,6 +5060,7 @@ async function loadSalesPOSSubTab() {
   const partyTypeSel = document.getElementById("posPartyType");
   const custBlock = document.getElementById("posCustBlock");
   const dealerBlock = document.getElementById("posdealerBlock");
+  const supplierBlock = document.getElementById("posSupplierBlock");
   const extraFields = document.getElementById("posExtraCustFields");
   const nameLabel = document.getElementById("posNameLabel");
   const posCustNameInp = document.getElementById("posCustName");
@@ -4948,6 +5075,7 @@ async function loadSalesPOSSubTab() {
     if (pType === "dealer") {
       if (custBlock) custBlock.style.display = "none";
       if (dealerBlock) dealerBlock.style.display = "block";
+      if (supplierBlock) supplierBlock.style.display = "none";
       if (extraFields) extraFields.style.display = "block";
       if (warrantyGroup) warrantyGroup.style.display = "block";
       if (stateWarrantyRow) stateWarrantyRow.style.gridTemplateColumns = "1fr 1fr";
@@ -4963,9 +5091,29 @@ async function loadSalesPOSSubTab() {
         posCellPhoneInp.required = true;
         posCellPhoneInp.placeholder = "9848123456";
       }
+    } else if (pType === "supplier") {
+      if (custBlock) custBlock.style.display = "none";
+      if (dealerBlock) dealerBlock.style.display = "none";
+      if (supplierBlock) supplierBlock.style.display = "block";
+      if (extraFields) extraFields.style.display = "block";
+      if (warrantyGroup) warrantyGroup.style.display = "block";
+      if (stateWarrantyRow) stateWarrantyRow.style.gridTemplateColumns = "1fr 1fr";
+      if (leadBlock) leadBlock.style.display = "block";
+      if (transBlock) transBlock.style.display = "grid";
+      if (nameLabel) nameLabel.textContent = "Supplier Name *";
+      if (posCustNameInp) {
+        posCustNameInp.placeholder = "Supplier Name *";
+        posCustNameInp.required = true;
+      }
+      if (phoneLabel) phoneLabel.textContent = "Cell / Contact Phone *";
+      if (posCellPhoneInp) {
+        posCellPhoneInp.required = true;
+        posCellPhoneInp.placeholder = "9848123456";
+      }
     } else if (pType === "counter") {
       if (custBlock) custBlock.style.display = "none";
       if (dealerBlock) dealerBlock.style.display = "none";
+      if (supplierBlock) supplierBlock.style.display = "none";
       if (extraFields) extraFields.style.display = "none";
       if (warrantyGroup) warrantyGroup.style.display = "none";
       if (stateWarrantyRow) stateWarrantyRow.style.gridTemplateColumns = "1fr";
@@ -4987,6 +5135,7 @@ async function loadSalesPOSSubTab() {
     } else {
       if (custBlock) custBlock.style.display = "block";
       if (dealerBlock) dealerBlock.style.display = "none";
+      if (supplierBlock) supplierBlock.style.display = "none";
       if (extraFields) extraFields.style.display = "block";
       if (warrantyGroup) warrantyGroup.style.display = "block";
       if (stateWarrantyRow) stateWarrantyRow.style.gridTemplateColumns = "1fr 1fr";
@@ -5032,6 +5181,26 @@ async function loadSalesPOSSubTab() {
         document.getElementById("posMandal").value = selectedVen.state || '';
         if (document.getElementById("posCustGstin")) {
           document.getElementById("posCustGstin").value = selectedVen.gstin || '';
+        }
+      } else {
+        resetPartyFormFields();
+      }
+    });
+  }
+
+  const posSupplierSel = document.getElementById("posSupplierId");
+  if (posSupplierSel) {
+    posSupplierSel.addEventListener("change", () => {
+      const sId = posSupplierSel.value;
+      const selectedSup = suppliersList.find(s => s.id == sId);
+      if (selectedSup) {
+        document.getElementById("posCustName").value = selectedSup.trade_name || selectedSup.legal_name || '';
+        document.getElementById("posFatherName").value = '';
+        document.getElementById("posCellPhone").value = selectedSup.phone || '';
+        document.getElementById("posVillage").value = selectedSup.address || '';
+        document.getElementById("posMandal").value = selectedSup.supply_state || selectedSup.state || '';
+        if (document.getElementById("posCustGstin")) {
+          document.getElementById("posCustGstin").value = selectedSup.gstin || '';
         }
       } else {
         resetPartyFormFields();
@@ -6079,7 +6248,7 @@ async function loadSalesPOSSubTab() {
           submitBtn.style.color = "#ffffff";
           submitBtn.innerHTML = isCounterParty
             ? `⚠️ Generate Tax Invoice at a Loss (Superadmin Authorized Override)`
-            : `⚠️ Complete Sale at a Loss (Superadmin Authorized Override)`;
+            : `⚠️ Confirm Order at a Loss (Superadmin Authorized Override)`;
         }
       } else {
         if (noticeEl) {
@@ -6118,7 +6287,7 @@ async function loadSalesPOSSubTab() {
         submitBtn.style.color = "";
         submitBtn.innerHTML = isCounterParty
           ? `🧾 Complete Sale & Direct Generate Tax Invoice`
-          : `Sell & Print Delivery Challana`;
+          : `✅ Confirm Order & Issue Payment Receipt`;
       }
     }
 
@@ -7318,6 +7487,7 @@ async function loadSalesPOSSubTab() {
     const isCounterParty = (party_type === "counter");
     const customer_gstin = isCounterParty ? "" : (document.getElementById("posCustGstin")?.value || "").trim().toUpperCase();
     const dealer_id = party_type === "dealer" ? (document.getElementById("posdealerId")?.value || null) : null;
+    const supplier_id = party_type === "supplier" ? (document.getElementById("posSupplierId")?.value || null) : null;
 
     const custNameVal = (document.getElementById("posCustName")?.value || "").trim();
     if (!custNameVal) {
@@ -7362,6 +7532,7 @@ async function loadSalesPOSSubTab() {
       party_type: party_type,
       customer_gstin: customer_gstin,
       dealer_id: dealer_id,
+      supplier_id: supplier_id,
       customer_id: party_type === "customer" ? (document.getElementById("posCustId").value || null) : null,
       customer_name: custNameVal,
       father_name: document.getElementById("posFatherName").value.trim(),
@@ -7403,7 +7574,7 @@ async function loadSalesPOSSubTab() {
     };
 
     const posSubmitBtn = document.getElementById("posSubmitBtn");
-    setButtonLoading(posSubmitBtn, true, isCounterParty ? "Generating Tax Invoice..." : "Processing Sale...");
+    setButtonLoading(posSubmitBtn, true, isCounterParty ? "Generating Tax Invoice..." : "Confirming Order...");
 
     try {
       const res = await fetch(`${API_BASE}/sales?action=create`, {
@@ -7419,7 +7590,7 @@ async function loadSalesPOSSubTab() {
         if (isDirectInv) {
           showToast(`Tax Invoice #${invNum || data.sale.id} generated directly for Counter Customer!`, "success");
         } else {
-          showToast(`Sale #${data.sale.challan_number || data.sale.id} completed & Delivery Challan generated!`, "success");
+          showToast(`Order #${data.sale.id} confirmed successfully! Payment Receipt issued.`, "success");
         }
 
         // Fetch full sale details for accurate dual printing
@@ -7433,10 +7604,29 @@ async function loadSalesPOSSubTab() {
             printTaxInvoice(data.sale, cart);
           }
         } else {
-          if (dDetails.success) {
-            printDeliveryChallan(dDetails.sale, dDetails.items, dDetails.payments);
+          // Confirm Order: Issue and print Payment Receipt instead of DC!
+          // Delivery Challan can be raised on demand from Invoices section.
+          const initialP = (dDetails.success && dDetails.payments && dDetails.payments.length > 0)
+            ? dDetails.payments[0]
+            : (data.initial_receipt || null);
+
+          if (initialP && parseFloat(initialP.amount || 0) > 0) {
+            const printPayload = {
+              ...(dDetails.success ? dDetails.sale : data.sale),
+              ...initialP,
+              sale_id: data.sale.id,
+              amount: parseFloat(initialP.amount || 0),
+              receipt_number: initialP.receipt_number || `RCP-${String(data.sale.id).padStart(3, '0')}`,
+              customer_name: (dDetails.success ? dDetails.sale : data.sale).customer_name,
+              cell_phone: (dDetails.success ? dDetails.sale : data.sale).cell_phone,
+              company_name: (dDetails.success ? dDetails.sale : data.sale).company_name,
+              sale_grand_total: (dDetails.success ? dDetails.sale : data.sale).grand_total,
+              sale_paid_amount: (dDetails.success ? dDetails.sale : data.sale).paid_amount,
+              sale_pending_amount: (dDetails.success ? dDetails.sale : data.sale).pending_amount
+            };
+            printPaymentReceipt(printPayload);
           } else {
-            printDeliveryChallan(data.sale, cart);
+            showToast(`Order #${data.sale.id} confirmed with Zero Advance! Go to Invoices tab when you wish to raise DC or Tax Invoice.`, "info");
           }
         }
 
@@ -7659,22 +7849,22 @@ async function loadInvoicesSubTab() {
   const isSuper = userObj && (userObj.role === "superadmin" || userObj.username === "superadmin");
 
   subContent.innerHTML = `
-    <!-- SECTION 1: PENDING DELIVERY CHALLANS (WAITING FOR TAX INVOICE) -->
+    <!-- SECTION 1: PENDING DELIVERY CHALLANS & ORDERS (WAITING FOR DC OR TAX INVOICE) -->
     <div class="card mb-24" style="background:var(--bg-secondary);border:1px solid var(--border);padding:16px;margin-bottom:24px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:12px;">
-        <h4 style="font-size:15px;font-weight:700;color:var(--primary);margin:0;">🚛 Pending Delivery Challans (Waiting for Tax Invoice)</h4>
+        <h4 style="font-size:15px;font-weight:700;color:var(--primary);margin:0;">🚛 Orders & Sales (Raise Delivery Challan / Tax Invoice on Demand)</h4>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-          <input type="text" id="pendingDcSearchInp" class="form-input" placeholder="🔍 Search DC #, Customer, Phone, Company..." style="padding:5px 10px;font-size:12px;border-radius:6px;width:260px;max-width:100%;">
-          <span class="badge badge-warning" style="font-size:12px;">Select Date & Raise Tax Invoice on Demand</span>
+          <input type="text" id="pendingDcSearchInp" class="form-input" placeholder="🔍 Search Order / DC #, Customer, Phone, Company..." style="padding:5px 10px;font-size:12px;border-radius:6px;width:280px;max-width:100%;">
+          <span class="badge badge-warning" style="font-size:12px;">Raise DC & Tax Invoice on Demand</span>
         </div>
       </div>
       <div class="table-container">
         <table class="data-table">
           <thead>
             <tr>
-              <th>DC No</th>
+              <th>Order / DC No</th>
               <th>Company</th>
-              <th>DC Date</th>
+              <th>Order Date</th>
               <th>Customer & Phone</th>
               <th>Supply Type</th>
               <th>Grand Total</th>
@@ -7682,7 +7872,7 @@ async function loadInvoicesSubTab() {
             </tr>
           </thead>
           <tbody id="pendingDcsTableBody">
-            <tr><td colspan="7" style="text-align:center;padding:16px;"><div class="spinner"></div> Loading pending Delivery Challans...</td></tr>
+            <tr><td colspan="7" style="text-align:center;padding:16px;"><div class="spinner"></div> Loading orders & pending Delivery Challans...</td></tr>
           </tbody>
         </table>
       </div>
@@ -7743,9 +7933,15 @@ async function loadInvoicesSubTab() {
         }) : allPendingSales;
 
         if (filteredPending.length > 0) {
-          pendingTbody.innerHTML = filteredPending.map(s => `
+          pendingTbody.innerHTML = filteredPending.map(s => {
+            const hasDc = Boolean(s.challan_number && s.challan_number !== '' && s.challan_number !== 'null');
+            const dcBadge = hasDc
+              ? `<span class="badge badge-purple" style="font-weight:700;">DC #${esc(s.challan_number)}</span>`
+              : `<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">Order #${esc(s.id)} (DC Pending)</span>`;
+
+            return `
             <tr>
-              <td><span class="badge badge-purple" style="font-weight:700;">#${esc(s.challan_number || s.id)}</span></td>
+              <td>${dcBadge}</td>
               <td><span class="badge badge-outline">${esc(s.company_name || 'Main')}</span></td>
               <td>${formatDate(s.sale_date)}</td>
               <td>
@@ -7756,17 +7952,31 @@ async function loadInvoicesSubTab() {
               <td style="font-weight:700;color:var(--primary);">${formatCurrency(s.grand_total)}</td>
               <td>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                  <button class="btn btn-sm btn-primary printPendingDcBtn" data-saleid="${s.id}">
-                    🚚 Print DC
-                  </button>
-                  <button class="btn btn-sm btn-success raiseTaxInvBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}'>
+                  ${hasDc ? `
+                    <button class="btn btn-sm btn-primary printPendingDcBtn" data-saleid="${s.id}">
+                      🚚 Print DC
+                    </button>
+                  ` : `
+                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">
+                      🚚 Raise DC
+                    </button>
+                  `}
+                  <button class="btn btn-sm btn-info raiseTaxInvBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;border:none;font-weight:700;">
                     🧾 Raise Tax Invoice
                   </button>
-                  ${isSuper ? `<button class="btn btn-sm btn-danger deleteSaleDcBtn" data-saleid="${s.id}" data-dcno="${esc(s.challan_number || s.id)}">🗑️ Delete</button>` : ''}
+                  ${isSuper ? `<button class="btn btn-sm btn-danger deleteSaleDcBtn" data-saleid="${s.id}" data-dcno="${esc(s.challan_number || ('Order #' + s.id))}">🗑️ Delete</button>` : ''}
                 </div>
               </td>
             </tr>
-          `).join("");
+          `;
+          }).join("");
+
+          pendingTbody.querySelectorAll(".raiseDcBtn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const saleObj = JSON.parse(btn.dataset.sale);
+              openRaiseDcModal(saleObj, () => loadInvoicesSubTab());
+            });
+          });
 
           pendingTbody.querySelectorAll(".printPendingDcBtn").forEach(btn => {
             btn.addEventListener("click", async () => {
@@ -7807,7 +8017,7 @@ async function loadInvoicesSubTab() {
               const sId = btn.dataset.saleid;
               const dcNo = btn.dataset.dcno;
               if (!sId) return;
-              if (!confirm(`Are you sure you want to delete Delivery Challan #${dcNo}?\nThis action cannot be undone.`)) return;
+              if (!confirm(`Are you sure you want to delete ${dcNo}?\nThis action cannot be undone.`)) return;
 
               setButtonLoading(btn, true, "Deleting...");
               try {
@@ -7817,20 +8027,20 @@ async function loadInvoicesSubTab() {
                 });
                 const data = await res.json();
                 if (data.success) {
-                  showToast(data.message || "Delivery Challan deleted successfully!", "success");
+                  showToast(data.message || "Record deleted successfully!", "success");
                   loadInvoicesSubTab();
                 } else {
-                  showToast(data.error || "Failed to delete Delivery Challan", "error");
+                  showToast(data.error || "Failed to delete record", "error");
                   setButtonLoading(btn, false);
                 }
               } catch (err) {
-                showToast("Delete DC error: " + err.message, "error");
+                showToast("Delete error: " + err.message, "error");
                 setButtonLoading(btn, false);
               }
             });
           });
         } else {
-          pendingTbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text3);">${allPendingSales.length === 0 ? 'No pending Delivery Challans waiting for Tax Invoice. All DCs have invoices raised!' : 'No matching pending Delivery Challans found.'}</td></tr>`;
+          pendingTbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--text3);">${allPendingSales.length === 0 ? 'No pending orders or Delivery Challans waiting for Tax Invoice. All have invoices raised!' : 'No matching pending orders / Delivery Challans found.'}</td></tr>`;
         }
       }
 
@@ -7869,7 +8079,9 @@ async function loadInvoicesSubTab() {
           const isPaid = pending <= 0.01;
           const maxVal = Math.max(parseFloat(i.max_item_rate || 0), parseFloat(i.grand_total || 0), parseFloat(i.taxable_total || 0));
           const isCounterSale = i.party_type === 'counter' || (i.customer_name && String(i.customer_name).trim().toLowerCase() === 'counter customer');
-          const showDcBtn = !i.is_custom && !isCounterSale;
+          const hasDc = Boolean(i.challan_number && i.challan_number !== '' && i.challan_number !== 'null');
+          const showPrintDcBtn = !i.is_custom && !isCounterSale && hasDc;
+          const showRaiseDcBtn = !i.is_custom && !isCounterSale && !hasDc && i.sale_id;
           const hasInvoiceNo = i.invoice_number && String(i.invoice_number).trim() !== '';
 
           const custPhone = i.customer_phone || i.cell_phone || '';
@@ -7900,7 +8112,8 @@ async function loadInvoicesSubTab() {
             <td>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 ${hasInvoiceNo ? `<button class="btn btn-sm btn-info printInvFromInvBtn" data-saleid="${i.sale_id}">🧾 Print Tax Invoice</button>` : ''}
-                ${showDcBtn ? `<button class="btn btn-sm btn-primary printDcFromInvBtn" data-saleid="${i.sale_id}">🚚 Print DC</button>` : ''}
+                ${showPrintDcBtn ? `<button class="btn btn-sm btn-primary printDcFromInvBtn" data-saleid="${i.sale_id}">🚚 Print DC</button>` : ''}
+                ${showRaiseDcBtn ? `<button class="btn btn-sm btn-success raiseDcFromInvBtn" data-sale='${JSON.stringify({ id: i.sale_id, customer_name: i.customer_name, cell_phone: custPhone, grand_total: grand, company_id: i.company_id, sale_date: i.invoice_date, invoice_number: i.invoice_number }).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">🚚 Raise DC</button>` : ''}
                 ${pending > 0 ? `<button class="btn btn-sm btn-success recordPayInvBtn" data-saleid="${i.sale_id}">💳 Record Payment</button>` : ''}
                 ${isSuper ? `<button class="btn btn-sm btn-danger deleteInvBtn" data-invid="${i.id}" data-invno="${esc(i.invoice_number)}">🗑️ Delete</button>` : ''}
               </div>
@@ -7911,6 +8124,13 @@ async function loadInvoicesSubTab() {
         onRender: () => {
           const tbody = document.getElementById("invTableBody");
           if (!tbody) return;
+
+          tbody.querySelectorAll(".raiseDcFromInvBtn").forEach(btn => {
+            btn.addEventListener("click", () => {
+              const saleObj = JSON.parse(btn.dataset.sale);
+              openRaiseDcModal(saleObj, () => loadInvoicesSubTab());
+            });
+          });
           tbody.querySelectorAll(".printInvFromInvBtn").forEach(btn => {
             btn.addEventListener("click", async () => {
               const sId = btn.dataset.saleid;

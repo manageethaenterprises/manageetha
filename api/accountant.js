@@ -88,6 +88,9 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ EXPENSES MANAGEMENT ═══════════════
     else if (action === "expenses-list") {
+      try {
+        await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
+      } catch (colErr) {}
       // Auto-sync any released lead incentives into expenses table
       try {
         await sql`
@@ -140,8 +143,11 @@ module.exports = async function handler(req, res) {
     }
 
     else if (action === "expense-create") {
+      try {
+        await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
+      } catch (colErr) {}
       const {
-        company_id, expense_date, category, dealer_receiver, amount, payment_mode, description
+        company_id, expense_date, category, dealer_receiver, gstin, amount, payment_mode, description
       } = req.body;
 
       const compId = user.role === "superadmin" ? (company_id ? parseInt(company_id) : null) : user.company_id;
@@ -153,10 +159,10 @@ module.exports = async function handler(req, res) {
 
       const exp = await sql`
         INSERT INTO expenses (
-          company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+          company_id, expense_date, category, dealer_receiver, gstin, amount, payment_mode,
           description, receipt_number, approval_status, created_by
         ) VALUES (
-          ${compId}, ${expense_date || 'NOW()'}, ${category}, ${dealer_receiver || null},
+          ${compId}, ${expense_date || 'NOW()'}, ${category}, ${dealer_receiver || null}, ${gstin ? gstin.trim().toUpperCase() : null},
           ${parseFloat(amount)}, ${payment_mode || 'cash'}, ${description || null},
           ${receiptNo}, 'approved', ${user.id}
         )
@@ -177,7 +183,10 @@ module.exports = async function handler(req, res) {
       if (user.role !== "superadmin") {
         return res.status(403).json({ error: "Access denied. Only Superadmin can edit expenses." });
       }
-      const { id, category, dealer_receiver, amount, payment_mode, description } = req.body;
+      try {
+        await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
+      } catch (colErr) {}
+      const { id, category, dealer_receiver, gstin, amount, payment_mode, description } = req.body;
       const expId = parseInt(id);
       if (!expId) return res.status(400).json({ error: "Expense ID required" });
 
@@ -185,6 +194,7 @@ module.exports = async function handler(req, res) {
         UPDATE expenses SET
           category = COALESCE(${category}, category),
           dealer_receiver = ${dealer_receiver || null},
+          gstin = ${gstin ? gstin.trim().toUpperCase() : null},
           amount = ${parseFloat(amount || 0)},
           payment_mode = ${payment_mode || 'cash'},
           description = ${description || null}

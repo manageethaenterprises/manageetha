@@ -780,13 +780,29 @@ window.printQuotationVoucher = printQuotationVoucher;
 
 // ── Helper Modal: Raise Tax Invoice for Pending Delivery Challan ──
 async function openRaiseInvoiceModal(sale, onSuccess) {
+  let itemsSummaryStr = "";
+  let saleDetails = sale;
+  try {
+    const res = await fetch(`${API_BASE}/sales?action=get-details&id=${sale.id}`, { headers: authHeaders() });
+    const data = await res.json();
+    if (data.success) {
+      if (data.sale) saleDetails = { ...sale, ...data.sale };
+      if (data.items && data.items.length > 0) {
+        const serialsFound = data.items.filter(it => it.serial_number && String(it.serial_number).trim() && String(it.serial_number).trim() !== '—');
+        if (serialsFound.length > 0) {
+          itemsSummaryStr = serialsFound.map(it => `${esc(it.product_name || it.description || 'Product')}: <span style="font-family:monospace;color:#0369a1;font-weight:700;">${esc(it.serial_number)}</span>`).join("<br>");
+        }
+      }
+    }
+  } catch (e) {}
+
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
 
-  const supplyStr = (sale.supply_type || '').toLowerCase();
+  const supplyStr = (saleDetails.supply_type || sale.supply_type || '').toLowerCase();
   const isSubsidy = supplyStr.includes('sub') || supplyStr.includes('dept') || supplyStr.includes('scheme');
-  const currGrand = parseFloat(sale.grand_total || sale.total_amount || 0);
+  const currGrand = parseFloat(saleDetails.grand_total || sale.grand_total || sale.total_amount || 0);
 
   overlay.innerHTML = `
     <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:550px;width:100%;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
@@ -796,10 +812,16 @@ async function openRaiseInvoiceModal(sale, onSuccess) {
       </div>
 
       <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;font-size:12px;">
-        <div><strong>Customer:</strong> ${esc(sale.customer_name || 'Counter Customer')} (${esc(sale.cell_phone || 'No phone')})</div>
-        <div><strong>Delivery Challan Date:</strong> ${formatDate(sale.sale_date)}</div>
-        <div><strong>Type of Supply:</strong> <span class="badge badge-info">${esc(sale.supply_type || 'Direct Sale')}</span></div>
-        <div><strong>DC Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(sale.grand_total)}</strong></div>
+        <div><strong>Customer:</strong> ${esc(saleDetails.customer_name || sale.customer_name || 'Counter Customer')} (${esc(saleDetails.cell_phone || sale.cell_phone || 'No phone')})</div>
+        <div><strong>Delivery Challan Date:</strong> ${formatDate(saleDetails.sale_date || sale.sale_date)}</div>
+        <div><strong>Type of Supply:</strong> <span class="badge badge-info">${esc(saleDetails.supply_type || sale.supply_type || 'Direct Sale')}</span></div>
+        <div><strong>DC Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(currGrand)}</strong></div>
+        ${itemsSummaryStr ? `
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);">
+            <div style="color:var(--text2);font-weight:700;margin-bottom:2px;">⚙️ Chassis / Serial Nos (Auto-reflecting from DC):</div>
+            <div style="font-size:11.5px;line-height:1.4;">${itemsSummaryStr}</div>
+          </div>
+        ` : ''}
       </div>
 
       <form id="raiseInvoiceForm">
@@ -883,24 +905,119 @@ window.openRaiseInvoiceModal = openRaiseInvoiceModal;
 
 // ── Helper: Modal to Raise Delivery Challan on Demand ──
 async function openRaiseDcModal(sale, onSuccess) {
+  // Fetch full details and items for this sale
+  let saleItems = [];
+  let saleObj = sale;
+  try {
+    const res = await fetch(`${API_BASE}/sales?action=get-details&id=${sale.id}`, { headers: authHeaders() });
+    const data = await res.json();
+    if (data.success) {
+      if (data.sale) saleObj = { ...sale, ...data.sale };
+      if (data.items) saleItems = data.items;
+    }
+  } catch (err) {
+    console.error("Failed to load sale details for DC modal:", err);
+  }
+
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
 
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Render serial number inputs for each item in the sale
+  let itemsSerialHtml = "";
+  if (saleItems.length === 0) {
+    itemsSerialHtml = `<div style="font-size:12px;color:var(--text3);padding:10px 0;text-align:center;">No items recorded for this order.</div>`;
+  } else {
+    itemsSerialHtml = saleItems.map(itm => {
+      const itName = itm.description || itm.product_name || 'Product';
+      const itModel = (itm.model || itm.model_name) ? ` [Model: ${itm.model || itm.model_name}]` : '';
+      const itQty = parseInt(itm.quantity, 10) || 1;
+      const itRate = parseFloat(itm.rate || itm.dc_rate || 0);
+      const isMandatory = (itRate > 10000 || itm.serial_tracking === true);
+
+      const rawSn = itm.serial_number ? String(itm.serial_number).trim() : '';
+      const existingSerials = rawSn ? rawSn.split(',').map(s => s.trim()) : [];
+
+      let serialInputsBlock = "";
+      if (itQty > 1 && itQty <= 10) {
+        serialInputsBlock = `
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px;margin-top:6px;">
+            ${Array.from({ length: itQty }).map((_, unitIdx) => `
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:2px;">
+                  Unit ${unitIdx + 1} S/N ${isMandatory ? '<span style="color:var(--danger);">*</span>' : ''}
+                </label>
+                <input type="text" 
+                       class="form-input rdc-unit-serial" 
+                       data-itemid="${itm.id}" 
+                       data-unit="${unitIdx + 1}"
+                       data-itemname="${esc(itName)}"
+                       data-mandatory="${isMandatory ? 'true' : 'false'}"
+                       value="${esc(existingSerials[unitIdx] || '')}" 
+                       placeholder="Unit ${unitIdx + 1} Serial / Chassis No" 
+                       style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12px;width:100%;" 
+                       ${isMandatory ? 'required' : ''}>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } else if (itQty > 10) {
+        serialInputsBlock = `
+          <input type="text" 
+                 class="form-input rdc-item-serial" 
+                 data-itemid="${itm.id}" 
+                 data-itemname="${esc(itName)}"
+                 data-mandatory="${isMandatory ? 'true' : 'false'}"
+                 value="${esc(rawSn)}" 
+                 placeholder="Enter comma-separated Serial Numbers (e.g. SN-01, SN-02, ...)" 
+                 style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12.5px;width:100%;margin-top:4px;" 
+                 ${isMandatory ? 'required' : ''}>
+        `;
+      } else {
+        serialInputsBlock = `
+          <input type="text" 
+                 class="form-input rdc-item-serial" 
+                 data-itemid="${itm.id}" 
+                 data-itemname="${esc(itName)}"
+                 data-mandatory="${isMandatory ? 'true' : 'false'}"
+                 value="${esc(rawSn)}" 
+                 placeholder="Enter Chassis / Machine Serial No (e.g. MC-2026-9876)" 
+                 style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12.5px;width:100%;margin-top:4px;" 
+                 ${isMandatory ? 'required' : ''}>
+        `;
+      }
+
+      return `
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid ${isMandatory ? 'var(--primary)' : 'var(--border)'};margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
+            <div>
+              <strong style="font-size:12.5px;color:var(--text1);">${esc(itName)}${esc(itModel)}</strong>
+              <span style="font-size:11px;color:var(--text3);margin-left:6px;">(Qty: ${itQty} | Rate: ${formatCurrency(itRate)})</span>
+            </div>
+            ${isMandatory 
+              ? `<span class="badge badge-danger" style="font-weight:700;font-size:10.5px;">* Mandatory Serial No</span>` 
+              : `<span class="badge" style="background:var(--border);color:var(--text3);font-size:10.5px;">Optional</span>`}
+          </div>
+          ${serialInputsBlock}
+        </div>
+      `;
+    }).join('');
+  }
+
   overlay.innerHTML = `
-    <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:520px;width:100%;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
+    <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:620px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;">
-        <h3 style="font-size:17px;font-weight:700;color:var(--primary);margin:0;">🚚 Raise Delivery Challan — Order #${sale.id}</h3>
+        <h3 style="font-size:17px;font-weight:700;color:var(--primary);margin:0;">🚚 Raise Delivery Challan — Order #${saleObj.id}</h3>
         <button class="btn btn-sm btn-outline closeRaiseDcModal">&times;</button>
       </div>
 
       <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;font-size:12px;">
-        <div><strong>Customer / Party:</strong> ${esc(sale.customer_name || 'Counter Customer')} (${esc(sale.cell_phone || 'No phone')})</div>
-        <div><strong>Order Date:</strong> ${formatDate(sale.sale_date || sale.created_at)}</div>
-        <div><strong>Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(sale.grand_total)}</strong></div>
-        ${sale.invoice_number ? `<div><strong>Tax Invoice #:</strong> <span class="badge badge-purple">${esc(sale.invoice_number)}</span> (Invoice already raised)</div>` : ''}
+        <div><strong>Customer / Party:</strong> ${esc(saleObj.customer_name || 'Counter Customer')} (${esc(saleObj.cell_phone || 'No phone')})</div>
+        <div><strong>Order Date:</strong> ${formatDate(saleObj.sale_date || saleObj.created_at)}</div>
+        <div><strong>Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(saleObj.grand_total)}</strong></div>
+        ${saleObj.invoice_number ? `<div><strong>Tax Invoice #:</strong> <span class="badge badge-purple">${esc(saleObj.invoice_number)}</span> (Invoice already raised)</div>` : ''}
       </div>
 
       <form id="raiseDcForm">
@@ -910,14 +1027,31 @@ async function openRaiseDcModal(sale, onSuccess) {
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">Date shown on the official Delivery Challana dispatch document.</div>
         </div>
 
-        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
           <div class="form-group">
             <label class="form-label" style="font-weight:700;">Transporter Name</label>
-            <input type="text" id="rdcTransporter" class="form-input" placeholder="Driver / Transport service" value="${esc(sale.transporter_name || '')}">
+            <input type="text" id="rdcTransporter" class="form-input" placeholder="Driver / Transport service" value="${esc(saleObj.transporter_name || '')}">
           </div>
           <div class="form-group">
             <label class="form-label" style="font-weight:700;">Vehicle Number</label>
-            <input type="text" id="rdcVehicle" class="form-input" placeholder="AP 39 V 1234" value="${esc(sale.transporter_vehicle_no || '')}">
+            <input type="text" id="rdcVehicle" class="form-input" placeholder="AP 39 V 1234" value="${esc(saleObj.transporter_vehicle_no || '')}">
+          </div>
+        </div>
+
+        <!-- Product Serial / Chassis Numbers -->
+        <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <label class="form-label" style="font-weight:700;font-size:13px;color:var(--text1);margin:0;">
+              ⚙️ Product Chassis / Machine Serial Numbers
+            </label>
+            <span style="font-size:11px;color:var(--primary);font-weight:600;">Auto-reflects on Tax Invoice</span>
+          </div>
+          <div style="font-size:11.5px;color:var(--text2);margin-bottom:12px;">
+            Enter the serial / chassis numbers for the physical units being dispatched. Serial numbers are mandatory for machinery and high-value products, and will automatically reflect on the final Tax Invoice without entering again.
+          </div>
+
+          <div id="rdcItemsSerialContainer">
+            ${itemsSerialHtml}
           </div>
         </div>
 
@@ -948,15 +1082,60 @@ async function openRaiseDcModal(sale, onSuccess) {
     const transName = overlay.querySelector("#rdcTransporter").value.trim();
     const transVeh = overlay.querySelector("#rdcVehicle").value.trim();
 
+    // Validate mandatory serial numbers
+    const itemSerials = [];
+    for (const itm of saleItems) {
+      const itName = itm.description || itm.product_name || 'Product';
+      const itQty = parseInt(itm.quantity, 10) || 1;
+      const itRate = parseFloat(itm.rate || itm.dc_rate || 0);
+      const isMandatory = (itRate > 10000 || itm.serial_tracking === true);
+
+      let finalSerialStr = "";
+      if (itQty > 1 && itQty <= 10) {
+        const unitInputs = overlay.querySelectorAll(`.rdc-unit-serial[data-itemid="${itm.id}"]`);
+        const unitVals = [];
+        for (let u = 0; u < unitInputs.length; u++) {
+          const uInp = unitInputs[u];
+          const uVal = uInp.value.trim();
+          if (isMandatory && !uVal) {
+            uInp.focus();
+            uInp.style.borderColor = "var(--danger)";
+            setButtonLoading(btn, false);
+            return showToast(`Please enter Serial / Chassis Number for "${itName}" (Unit ${u + 1})! Serial number is mandatory to raise Delivery Challan.`, "error");
+          }
+          if (uVal) unitVals.push(uVal);
+        }
+        finalSerialStr = unitVals.join(", ");
+      } else {
+        const sInp = overlay.querySelector(`.rdc-item-serial[data-itemid="${itm.id}"]`);
+        const sVal = sInp ? sInp.value.trim() : "";
+        if (isMandatory && !sVal) {
+          if (sInp) {
+            sInp.focus();
+            sInp.style.borderColor = "var(--danger)";
+          }
+          setButtonLoading(btn, false);
+          return showToast(`Please enter Serial / Chassis Number for "${itName}"! Serial number is mandatory to raise Delivery Challan.`, "error");
+        }
+        finalSerialStr = sVal;
+      }
+
+      itemSerials.push({
+        id: itm.id,
+        serial_number: finalSerialStr
+      });
+    }
+
     try {
       const res = await fetch(`${API_BASE}/sales?action=raise-dc`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
-          sale_id: sale.id,
+          sale_id: saleObj.id,
           dc_date: dcDateVal,
           transporter_name: transName,
-          transporter_vehicle_no: transVeh
+          transporter_vehicle_no: transVeh,
+          item_serials: itemSerials
         })
       });
 
@@ -5617,54 +5796,29 @@ async function loadSalesPOSSubTab() {
       const transportExp = parseFloat(prod.transport_expenses || 0);
       const mrp = parseFloat(prod.mrp || 0) > 0 ? parseFloat(prod.mrp) : Math.round((rate * (1 + gstR / 100)) * 100) / 100;
 
-      const isHighValue = rate > 10000;
-      if (isHighValue) {
-        for (let i = 0; i < qty; i++) {
-          cart.push({
-            product_id: prod.id,
-            name: prod.name,
-            model: prod.model || '',
-            brand: prod.brand || '',
-            sku: prod.sku || '',
-            hsn_code: prod.hsn_sac || prod.hsn_code,
-            selling_rate: rate,
-            mrp: mrp,
-            price_mode: 'selling_price',
-            discount_percent: 0,
-            rate: rate,
-            purchase_rate: purRateExcl,
-            purchase_rate_incl_tax: purRateIncl,
-            transport_expenses: transportExp,
-            gst_rate: gstR,
-            quantity: 1,
-            serial_number: ""
-          });
-        }
+      const existing = cart.find(c => c.product_id == prod.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && !c.custom_rate && !c.custom_total);
+      if (existing) {
+        existing.quantity += qty;
       } else {
-        const existing = cart.find(c => c.product_id == prod.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && parseFloat(c.rate) <= 10000 && !c.custom_rate && !c.custom_total);
-        if (existing) {
-          existing.quantity += qty;
-        } else {
-          cart.push({
-            product_id: prod.id,
-            name: prod.name,
-            model: prod.model || '',
-            brand: prod.brand || '',
-            sku: prod.sku || '',
-            hsn_code: prod.hsn_sac || prod.hsn_code,
-            selling_rate: rate,
-            mrp: mrp,
-            price_mode: 'selling_price',
-            discount_percent: 0,
-            rate: rate,
-            purchase_rate: purRateExcl,
-            purchase_rate_incl_tax: purRateIncl,
-            transport_expenses: transportExp,
-            gst_rate: gstR,
-            quantity: qty,
-            serial_number: ""
-          });
-        }
+        cart.push({
+          product_id: prod.id,
+          name: prod.name,
+          model: prod.model || '',
+          brand: prod.brand || '',
+          sku: prod.sku || '',
+          hsn_code: prod.hsn_sac || prod.hsn_code,
+          selling_rate: rate,
+          mrp: mrp,
+          price_mode: 'selling_price',
+          discount_percent: 0,
+          rate: rate,
+          purchase_rate: purRateExcl,
+          purchase_rate_incl_tax: purRateIncl,
+          transport_expenses: transportExp,
+          gst_rate: gstR,
+          quantity: qty,
+          serial_number: ""
+        });
       }
 
       addedCount++;
@@ -5834,25 +5988,6 @@ async function loadSalesPOSSubTab() {
   });
 
   function updateCartUI() {
-    // Auto-expand any items > ₹10,000 with qty > 1 into 1-by-1 separate items so each has its own serial number input
-    let expandedCart = [];
-    cart.forEach(item => {
-      const isHighVal = parseFloat(item.rate || 0) > 10000;
-      if (isHighVal && item.quantity > 1) {
-        const q = item.quantity;
-        for (let k = 0; k < q; k++) {
-          expandedCart.push({
-            ...item,
-            quantity: 1,
-            serial_number: k === 0 ? (item.serial_number || '') : ''
-          });
-        }
-      } else {
-        expandedCart.push(item);
-      }
-    });
-    cart = expandedCart;
-
     const tbody = document.getElementById("cartTableBody");
     const gstArea = document.getElementById("posGstBreakdownArea");
     const selectedState = (document.getElementById("posSupplyState")?.value || "").trim().toLowerCase();
@@ -6094,25 +6229,11 @@ async function loadSalesPOSSubTab() {
           <td>
             <div style="font-weight:600;color:var(--text1);margin-bottom:2px;">${esc(item.name)}${item.model ? ` <span style="font-size:12px;color:var(--primary);font-weight:700;">[Model: ${esc(item.model)}]</span>` : ''}</div>
             <div style="font-size:11px;color:var(--text3);">HSN: ${esc(item.hsn_code || '—')}</div>
-            ${isHighValue ? `
-              <div style="margin-top:4px;">
-                <label style="font-size:11px;color:var(--primary);font-weight:700;display:block;margin-bottom:2px;">
-                  ⚙️ Chassis / Serial No *
-                </label>
-                <input type="text" 
-                       class="form-input cart-item-serial-input" 
-                       data-idx="${idx}" 
-                       value="${esc(item.serial_number || '')}" 
-                       placeholder="Enter Chassis / Machine Serial No" 
-                       style="padding:4px 8px;font-size:12px;font-family:monospace;width:100%;max-width:240px;border-color:var(--primary);" 
-                       required form="posCheckoutForm">
-              </div>
-            ` : ''}
           </td>
           <td style="text-align:center;">
             <div style="display:inline-flex;align-items:center;gap:3px;background:var(--bg-secondary);padding:3px;border-radius:6px;border:1px solid var(--border);">
               <button type="button" class="btn btn-sm btn-outline-danger decreaseCartQty" data-idx="${idx}" style="padding:2px 8px;font-size:13px;font-weight:800;line-height:1;border-radius:4px;" title="Decrease quantity">-</button>
-              <input type="number" min="1" class="form-input cart-qty-input" data-idx="${idx}" value="${item.quantity}" style="width:44px;text-align:center;padding:2px 4px;font-weight:700;font-size:13px;border:1px solid var(--border);border-radius:4px;" ${isHighValue ? 'readonly title="High-value items (>₹10k) tracked 1-by-1 per serial number"' : ''}>
+              <input type="number" min="1" class="form-input cart-qty-input" data-idx="${idx}" value="${item.quantity}" style="width:44px;text-align:center;padding:2px 4px;font-weight:700;font-size:13px;border:1px solid var(--border);border-radius:4px;">
               <button type="button" class="btn btn-sm btn-outline-success increaseCartQty" data-idx="${idx}" style="padding:2px 8px;font-size:13px;font-weight:800;line-height:1;border-radius:4px;" title="Increase quantity">+</button>
             </div>
           </td>
@@ -6338,37 +6459,17 @@ async function loadSalesPOSSubTab() {
           delete item.custom_total;
         }
 
-        const isHighVal = parseFloat(item.rate || 0) > 10000;
-
-        if (isHighVal) {
-          if (item.product_id) {
-            const prod = (productsList || []).find(p => p.id == item.product_id);
-            if (prod) {
-              const stock = parseInt(prod.current_stock, 10) || 0;
-              const currentInCart = cart.filter(c => c.product_id == item.product_id).reduce((sum, it) => sum + (parseInt(it.quantity, 10) || 0), 0);
-              if (currentInCart + 1 > stock) {
-                return showToast(`Stock limit reached! Only ${stock} unit(s) available for "${item.name}".`, "error");
-              }
+        if (item.product_id) {
+          const prod = (productsList || []).find(p => p.id == item.product_id);
+          if (prod) {
+            const stock = parseInt(prod.current_stock, 10) || 0;
+            const currentInCart = cart.filter(c => c.product_id == item.product_id).reduce((sum, it) => sum + (parseInt(it.quantity, 10) || 0), 0);
+            if (currentInCart + 1 > stock) {
+              return showToast(`Stock limit reached! Only ${stock} unit(s) available for "${item.name}".`, "error");
             }
           }
-          cart.push({
-            ...item,
-            quantity: 1,
-            serial_number: ""
-          });
-          showToast(`Added another unit of "${item.name}" (Requires separate Chassis/Serial No)`, "info");
-        } else {
-          if (item.product_id) {
-            const prod = (productsList || []).find(p => p.id == item.product_id);
-            if (prod) {
-              const stock = parseInt(prod.current_stock, 10) || 0;
-              if (item.quantity + 1 > stock) {
-                return showToast(`Stock limit reached! Only ${stock} unit(s) available for "${item.name}".`, "error");
-              }
-            }
-          }
-          item.quantity += 1;
         }
+        item.quantity += 1;
         updateCartUI();
       });
     });
@@ -7007,13 +7108,18 @@ async function loadSalesPOSSubTab() {
         ? parseFloat(matchedProd.mrp)
         : Math.round((rate * (1 + gstR / 100)) * 100) / 100;
 
-      const isHighValue = rate > 10000;
-      if (isHighValue) {
+      const existing = cart.find(c => c.product_id == matchedProd.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && !c.custom_rate && !c.custom_total);
+      if (existing) {
+        existing.quantity += 1;
+        playPosScanBeep(true);
+        showToast(`⚡ Scanned "${matchedProd.name}" - Incremented quantity to ${existing.quantity}`, "success");
+      } else {
         cart.push({
           product_id: matchedProd.id,
           name: matchedProd.name,
           model: matchedProd.model || '',
           brand: matchedProd.brand || '',
+          sku: matchedProd.sku || '',
           hsn_code: matchedProd.hsn_sac || matchedProd.hsn_code,
           selling_rate: rate,
           mrp: mrp,
@@ -7025,39 +7131,10 @@ async function loadSalesPOSSubTab() {
           transport_expenses: transportExp,
           gst_rate: gstR,
           quantity: 1,
-          serial_number: detectedSerialNo
+          serial_number: detectedSerialNo || ""
         });
         playPosScanBeep(true);
-        showToast(`⚡ Scanned high-value "${matchedProd.name}" - Added 1 unit (Serial: ${detectedSerialNo || '—'})`, "info");
-      } else {
-        const existing = cart.find(c => c.product_id == matchedProd.id && c.price_mode === 'selling_price' && (c.discount_percent || 0) === 0 && parseFloat(c.rate) <= 10000);
-        if (existing) {
-          existing.quantity += 1;
-          if (!existing.serial_number && detectedSerialNo) existing.serial_number = detectedSerialNo;
-          playPosScanBeep(true);
-          showToast(`⚡ Scanned "${matchedProd.name}" - Incremented quantity to ${existing.quantity}`, "success");
-        } else {
-          cart.push({
-            product_id: matchedProd.id,
-            name: matchedProd.name,
-            model: matchedProd.model || '',
-            brand: matchedProd.brand || '',
-            hsn_code: matchedProd.hsn_sac || matchedProd.hsn_code,
-            selling_rate: rate,
-            mrp: mrp,
-            price_mode: 'selling_price',
-            discount_percent: 0,
-            rate: rate,
-            purchase_rate: purRateExcl,
-            purchase_rate_incl_tax: purRateIncl,
-            transport_expenses: transportExp,
-            gst_rate: gstR,
-            quantity: 1,
-            serial_number: detectedSerialNo
-          });
-          playPosScanBeep(true);
-          showToast(`⚡ Scanned "${matchedProd.name}" - Added to cart (1 unit)`, "success");
-        }
+        showToast(`⚡ Scanned "${matchedProd.name}" - Added to cart`, "info");
       }
       updateCartUI();
     } else {
@@ -7343,17 +7420,6 @@ async function loadSalesPOSSubTab() {
   on("posCheckoutForm", "submit", async (e) => {
     e.preventDefault();
     if (cart.length === 0) return;
-
-    // Validate mandatory Chassis / Machine Serial No. for high-value items (> ₹10,000) in cart
-    for (let i = 0; i < cart.length; i++) {
-      const item = cart[i];
-      const isHighValue = parseFloat(item.rate || 0) > 10000;
-      if (isHighValue && (!item.serial_number || !item.serial_number.trim())) {
-        const itemInp = document.querySelector(`.cart-item-serial-input[data-idx="${i}"]`);
-        if (itemInp) itemInp.focus();
-        return showToast(`Please enter Chassis / Serial No. for high-value product "${item.name}" (> ₹10,000) in the cart!`, "error");
-      }
-    }
 
     const payMode = document.getElementById("posPayMode").value;
     let bankSub = null, utrNo = null, advanceAmt = 0, recBank = null, chequeDate = null, finAmt = 0, finId = null, bankAccountId = null;

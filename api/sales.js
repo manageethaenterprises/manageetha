@@ -1737,7 +1737,7 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ RAISE DELIVERY CHALLAN ON DEMAND ═══════════════
     else if (action === "raise-dc") {
-      const { sale_id, dc_date, transporter_name, transporter_vehicle_no, delivery_notes } = req.body;
+      const { sale_id, dc_date, transporter_name, transporter_vehicle_no, delivery_notes, item_serials } = req.body;
       if (!sale_id) return res.status(400).json({ error: "Sale ID is required to raise Delivery Challan" });
 
       const sRows = await sql`SELECT * FROM sales WHERE id = ${parseInt(sale_id)}`;
@@ -1761,6 +1761,20 @@ module.exports = async function handler(req, res) {
           transporter_vehicle_no = COALESCE(${transporter_vehicle_no || null}, transporter_vehicle_no)
         WHERE id = ${sale.id}
       `;
+
+      // Update item serial / chassis numbers in sale_items if provided
+      if (item_serials && Array.isArray(item_serials)) {
+        for (const itm of item_serials) {
+          if (itm && itm.id) {
+            const snVal = itm.serial_number ? String(itm.serial_number).trim() : null;
+            await sql`
+              UPDATE sale_items 
+              SET serial_number = ${snVal}
+              WHERE id = ${parseInt(itm.id)} AND sale_id = ${sale.id}
+            `;
+          }
+        }
+      }
 
       const fullSale = await sql`
         SELECT s.*, c.name as company_name, c.gstin as company_gstin, c.hsn_code as company_hsn,

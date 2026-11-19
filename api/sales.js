@@ -1529,7 +1529,7 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ RAISE TAX INVOICE FOR A DC ═══════════════
     else if (action === "raise-invoice") {
-      const { sale_id, invoice_date, custom_grand_total, custom_taxable_amount, editable_grand_total, editable_taxable_amount } = req.body;
+      const { sale_id, invoice_date, custom_grand_total, custom_taxable_amount, editable_grand_total, editable_taxable_amount, item_serials } = req.body;
       if (!sale_id) return res.status(400).json({ error: "Sale ID is required to raise Tax Invoice" });
 
       const sRows = await sql`SELECT * FROM sales WHERE id = ${parseInt(sale_id)}`;
@@ -1537,6 +1537,20 @@ module.exports = async function handler(req, res) {
 
       const sale = sRows[0];
       const compId = sale.company_id;
+
+      // Update item serial / chassis numbers in sale_items if provided
+      if (item_serials && Array.isArray(item_serials)) {
+        for (const itm of item_serials) {
+          if (itm && itm.id) {
+            const snVal = itm.serial_number ? String(itm.serial_number).trim() : null;
+            await sql`
+              UPDATE sale_items 
+              SET serial_number = ${snVal}
+              WHERE id = ${parseInt(itm.id)} AND sale_id = ${sale.id}
+            `;
+          }
+        }
+      }
 
       // Auto-migrate missing columns on invoices and sales tables to avoid DB schema errors
       try {

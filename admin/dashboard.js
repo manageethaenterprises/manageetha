@@ -1080,7 +1080,7 @@ window.addEventListener("hashchange", () => {
 
 // ═══════════════ LOAD MODULES ═══════════════
 
-const ERP_MODULE_VERSION = "20261119_v3";
+const ERP_MODULE_VERSION = "20261119_v4";
 
 function loadModules() {
   // Load module scripts dynamically with cache-busting version query parameter

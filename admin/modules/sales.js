@@ -778,50 +778,205 @@ function printQuotationVoucher(cart = [], partyDetails = {}, customTotals = null
 }
 window.printQuotationVoucher = printQuotationVoucher;
 
-// ── Helper Modal: Raise Tax Invoice for Pending Delivery Challan ──
+// ── Helper: Render Product Chassis / Serial Number Input Section (Shared for DC & Invoice) ──
+function renderItemSerialsSectionHtml(saleItems, sourceName) {
+  if (!saleItems || saleItems.length === 0) {
+    return `<div style="font-size:12px;color:var(--text3);padding:10px 0;text-align:center;">No items recorded for this order.</div>`;
+  }
+
+  return saleItems.map(itm => {
+    const itName = itm.description || itm.product_name || 'Product';
+    const itModel = (itm.model || itm.model_name) ? ` [Model: ${itm.model || itm.model_name}]` : '';
+    const itQty = parseInt(itm.quantity, 10) || 1;
+    const itRate = parseFloat(itm.rate || itm.dc_rate || 0);
+    const isMandatory = (itRate > 10000 || itm.serial_tracking === true);
+
+    const rawSn = itm.serial_number ? String(itm.serial_number).trim() : '';
+    const hasExisting = Boolean(rawSn && rawSn !== '—' && rawSn.toUpperCase() !== 'NA' && rawSn.toUpperCase() !== 'N/A');
+    const existingSerials = rawSn ? rawSn.split(',').map(s => s.trim()) : [];
+
+    let serialInputsBlock = "";
+    if (itQty > 1 && itQty <= 10) {
+      serialInputsBlock = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px;margin-top:6px;">
+          ${Array.from({ length: itQty }).map((_, unitIdx) => {
+            const unitVal = existingSerials[unitIdx] || '';
+            return `
+              <div>
+                <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:2px;">
+                  Unit ${unitIdx + 1} S/N ${isMandatory ? '<span style="color:var(--danger);">*</span>' : ''}
+                </label>
+                <input type="text" 
+                       class="form-input ser-unit-input" 
+                       data-itemid="${itm.id}" 
+                       data-unit="${unitIdx + 1}"
+                       data-itemname="${esc(itName)}"
+                       data-mandatory="${isMandatory ? 'true' : 'false'}"
+                       value="${esc(unitVal)}" 
+                       placeholder="Unit ${unitIdx + 1} Serial / Chassis No" 
+                       style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12px;width:100%;${hasExisting ? 'background:var(--bg-primary);color:#0369a1;cursor:default;' : ''}" 
+                       ${hasExisting ? 'readonly' : (isMandatory ? 'required' : '')}>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else if (itQty > 10) {
+      serialInputsBlock = `
+        <input type="text" 
+               class="form-input ser-item-input" 
+               data-itemid="${itm.id}" 
+               data-itemname="${esc(itName)}"
+               data-mandatory="${isMandatory ? 'true' : 'false'}"
+               value="${esc(rawSn)}" 
+               placeholder="Enter comma-separated Serial Numbers (e.g. SN-01, SN-02, ...)" 
+               style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12.5px;width:100%;margin-top:4px;${hasExisting ? 'background:var(--bg-primary);color:#0369a1;cursor:default;' : ''}" 
+               ${hasExisting ? 'readonly' : (isMandatory ? 'required' : '')}>
+      `;
+    } else {
+      serialInputsBlock = `
+        <input type="text" 
+               class="form-input ser-item-input" 
+               data-itemid="${itm.id}" 
+               data-itemname="${esc(itName)}"
+               data-mandatory="${isMandatory ? 'true' : 'false'}"
+               value="${esc(rawSn)}" 
+               placeholder="Enter Chassis / Machine Serial No (e.g. MC-2026-9876)" 
+               style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12.5px;width:100%;margin-top:4px;${hasExisting ? 'background:var(--bg-primary);color:#0369a1;cursor:default;' : ''}" 
+               ${hasExisting ? 'readonly' : (isMandatory ? 'required' : '')}>
+      `;
+    }
+
+    let statusBadge = "";
+    if (hasExisting) {
+      statusBadge = `<span class="badge badge-success" style="font-weight:700;font-size:10.5px;">✅ Saved (${esc(sourceName)}) — Read Only</span>`;
+    } else if (isMandatory) {
+      statusBadge = `<span class="badge badge-danger" style="font-weight:700;font-size:10.5px;">* Mandatory Serial No</span>`;
+    } else {
+      statusBadge = `<span class="badge" style="background:var(--border);color:var(--text3);font-size:10.5px;">Optional</span>`;
+    }
+
+    return `
+      <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid ${hasExisting ? '#10b981' : (isMandatory ? 'var(--primary)' : 'var(--border)')};margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
+          <div>
+            <strong style="font-size:12.5px;color:var(--text1);">${esc(itName)}${esc(itModel)}</strong>
+            <span style="font-size:11px;color:var(--text3);margin-left:6px;">(Qty: ${itQty} | Rate: ${formatCurrency(itRate)})</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${statusBadge}
+            ${hasExisting ? `<button type="button" class="btn btn-sm btn-outline btn-unlock-serial" data-itemid="${itm.id}" style="padding:1px 6px;font-size:10.5px;line-height:1.2;" title="Click to unlock and edit serial numbers">✏️ Edit</button>` : ''}
+          </div>
+        </div>
+        ${serialInputsBlock}
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Helper: Attach Unlock Edit Listeners ──
+function attachUnlockSerialListeners(container) {
+  container.querySelectorAll(".btn-unlock-serial").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const itmId = btn.dataset.itemid;
+      const inputs = container.querySelectorAll(`input[data-itemid="${itmId}"]`);
+      inputs.forEach(inp => {
+        inp.removeAttribute("readonly");
+        inp.style.background = "var(--bg-primary)";
+        inp.style.borderColor = "var(--primary)";
+        inp.style.cursor = "text";
+      });
+      if (inputs[0]) inputs[0].focus();
+      btn.style.display = "none";
+    });
+  });
+}
+
+// ── Helper: Validate and Collect Serial Numbers (Shared for DC & Invoice) ──
+function validateAndCollectItemSerials(container, saleItems, actionName) {
+  const itemSerials = [];
+  for (const itm of saleItems) {
+    const itName = itm.description || itm.product_name || 'Product';
+    const itQty = parseInt(itm.quantity, 10) || 1;
+    const itRate = parseFloat(itm.rate || itm.dc_rate || 0);
+    const isMandatory = (itRate > 10000 || itm.serial_tracking === true);
+
+    let finalSerialStr = "";
+    if (itQty > 1 && itQty <= 10) {
+      const unitInputs = container.querySelectorAll(`.ser-unit-input[data-itemid="${itm.id}"]`);
+      const unitVals = [];
+      for (let u = 0; u < unitInputs.length; u++) {
+        const uInp = unitInputs[u];
+        const uVal = uInp.value.trim();
+        if (isMandatory && !uVal) {
+          uInp.focus();
+          uInp.style.borderColor = "var(--danger)";
+          showToast(`Please enter Serial / Chassis Number for "${itName}" (Unit ${u + 1})! Serial number is mandatory to raise ${actionName}.`, "error");
+          return null;
+        }
+        if (uVal) unitVals.push(uVal);
+      }
+      finalSerialStr = unitVals.join(", ");
+    } else {
+      const sInp = container.querySelector(`.ser-item-input[data-itemid="${itm.id}"]`);
+      const sVal = sInp ? sInp.value.trim() : "";
+      if (isMandatory && !sVal) {
+        if (sInp) {
+          sInp.focus();
+          sInp.style.borderColor = "var(--danger)";
+        }
+        showToast(`Please enter Serial / Chassis Number for "${itName}"! Serial number is mandatory to raise ${actionName}.`, "error");
+        return null;
+      }
+      finalSerialStr = sVal;
+    }
+
+    itemSerials.push({
+      id: itm.id,
+      serial_number: finalSerialStr
+    });
+  }
+  return itemSerials;
+}
+
+// ── Helper Modal: Raise Tax Invoice ──
 async function openRaiseInvoiceModal(sale, onSuccess) {
-  let itemsSummaryStr = "";
   let saleDetails = sale;
+  let saleItems = [];
   try {
     const res = await fetch(`${API_BASE}/sales?action=get-details&id=${sale.id}`, { headers: authHeaders() });
     const data = await res.json();
     if (data.success) {
       if (data.sale) saleDetails = { ...sale, ...data.sale };
-      if (data.items && data.items.length > 0) {
-        const serialsFound = data.items.filter(it => it.serial_number && String(it.serial_number).trim() && String(it.serial_number).trim() !== '—');
-        if (serialsFound.length > 0) {
-          itemsSummaryStr = serialsFound.map(it => `${esc(it.product_name || it.description || 'Product')}: <span style="font-family:monospace;color:#0369a1;font-weight:700;">${esc(it.serial_number)}</span>`).join("<br>");
-        }
-      }
+      if (data.items) saleItems = data.items;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error("Failed to load details for invoice modal:", e);
+  }
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
-  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;";
+  overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
 
   const supplyStr = (saleDetails.supply_type || sale.supply_type || '').toLowerCase();
   const isSubsidy = supplyStr.includes('sub') || supplyStr.includes('dept') || supplyStr.includes('scheme');
   const currGrand = parseFloat(saleDetails.grand_total || sale.grand_total || sale.total_amount || 0);
 
+  const itemsSerialHtml = renderItemSerialsSectionHtml(saleItems, "Delivery Challan");
+
   overlay.innerHTML = `
-    <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:550px;width:100%;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
+    <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:620px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;">
-        <h3 style="font-size:17px;font-weight:700;color:var(--text1);margin:0;">🧾 Raise Tax Invoice — DC #${sale.challan_number || sale.id}</h3>
+        <h3 style="font-size:17px;font-weight:700;color:var(--text1);margin:0;">🧾 Raise Tax Invoice — ${sale.challan_number ? `DC #${sale.challan_number}` : `Order #${sale.id}`}</h3>
         <button class="btn btn-sm btn-outline closeRaiseModal">&times;</button>
       </div>
 
       <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;font-size:12px;">
         <div><strong>Customer:</strong> ${esc(saleDetails.customer_name || sale.customer_name || 'Counter Customer')} (${esc(saleDetails.cell_phone || sale.cell_phone || 'No phone')})</div>
-        <div><strong>Delivery Challan Date:</strong> ${formatDate(saleDetails.sale_date || sale.sale_date)}</div>
+        <div><strong>Order / DC Date:</strong> ${formatDate(saleDetails.sale_date || sale.sale_date)}</div>
         <div><strong>Type of Supply:</strong> <span class="badge badge-info">${esc(saleDetails.supply_type || sale.supply_type || 'Direct Sale')}</span></div>
-        <div><strong>DC Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(currGrand)}</strong></div>
-        ${itemsSummaryStr ? `
-          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);">
-            <div style="color:var(--text2);font-weight:700;margin-bottom:2px;">⚙️ Chassis / Serial Nos (Auto-reflecting from DC):</div>
-            <div style="font-size:11.5px;line-height:1.4;">${itemsSummaryStr}</div>
-          </div>
-        ` : ''}
+        <div><strong>Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(currGrand)}</strong></div>
+        ${sale.challan_number ? `<div><strong>Delivery Challan #:</strong> <span class="badge badge-purple">${esc(sale.challan_number)}</span></div>` : ''}
       </div>
 
       <form id="raiseInvoiceForm">
@@ -845,7 +1000,24 @@ async function openRaiseInvoiceModal(sale, onSuccess) {
           </div>
         ` : ''}
 
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <!-- Product Chassis / Serial Numbers -->
+        <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <label class="form-label" style="font-weight:700;font-size:13px;color:var(--text1);margin:0;">
+              ⚙️ Product Chassis / Machine Serial Numbers
+            </label>
+            <span style="font-size:11px;color:var(--primary);font-weight:600;">Syncs across DC & Invoice</span>
+          </div>
+          <div style="font-size:11.5px;color:var(--text2);margin-bottom:12px;">
+            Serial numbers are mandatory for machinery and high-value equipment. If already entered in Delivery Challan, they are shown as read-only.
+          </div>
+
+          <div id="rinvItemsSerialContainer">
+            ${itemsSerialHtml}
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
           <button type="button" class="btn btn-secondary closeRaiseModal">Cancel</button>
           <button type="submit" class="btn btn-primary" id="btnSubmitRaiseInv" style="background:linear-gradient(135deg, #10b981, #059669);font-weight:700;">
             🧾 Generate Tax Invoice
@@ -857,10 +1029,15 @@ async function openRaiseInvoiceModal(sale, onSuccess) {
 
   document.body.appendChild(overlay);
   overlay.querySelectorAll(".closeRaiseModal").forEach(b => b.addEventListener("click", () => overlay.remove()));
+  attachUnlockSerialListeners(overlay);
 
   overlay.querySelector("#raiseInvoiceForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btnSub = overlay.querySelector("#btnSubmitRaiseInv");
+
+    const itemSerials = validateAndCollectItemSerials(overlay, saleItems, "Tax Invoice");
+    if (!itemSerials) return;
+
     setButtonLoading(btnSub, true, "Generating Tax Invoice...");
 
     const invDate = overlay.querySelector("#raiseInvDate").value;
@@ -869,7 +1046,8 @@ async function openRaiseInvoiceModal(sale, onSuccess) {
     const payload = {
       sale_id: sale.id,
       invoice_date: invDate,
-      custom_grand_total: editableGrandTotal
+      custom_grand_total: editableGrandTotal,
+      item_serials: itemSerials
     };
 
     try {
@@ -905,7 +1083,6 @@ window.openRaiseInvoiceModal = openRaiseInvoiceModal;
 
 // ── Helper: Modal to Raise Delivery Challan on Demand ──
 async function openRaiseDcModal(sale, onSuccess) {
-  // Fetch full details and items for this sale
   let saleItems = [];
   let saleObj = sale;
   try {
@@ -924,87 +1101,7 @@ async function openRaiseDcModal(sale, onSuccess) {
   overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;";
 
   const todayStr = new Date().toISOString().split('T')[0];
-
-  // Render serial number inputs for each item in the sale
-  let itemsSerialHtml = "";
-  if (saleItems.length === 0) {
-    itemsSerialHtml = `<div style="font-size:12px;color:var(--text3);padding:10px 0;text-align:center;">No items recorded for this order.</div>`;
-  } else {
-    itemsSerialHtml = saleItems.map(itm => {
-      const itName = itm.description || itm.product_name || 'Product';
-      const itModel = (itm.model || itm.model_name) ? ` [Model: ${itm.model || itm.model_name}]` : '';
-      const itQty = parseInt(itm.quantity, 10) || 1;
-      const itRate = parseFloat(itm.rate || itm.dc_rate || 0);
-      const isMandatory = (itRate > 10000 || itm.serial_tracking === true);
-
-      const rawSn = itm.serial_number ? String(itm.serial_number).trim() : '';
-      const existingSerials = rawSn ? rawSn.split(',').map(s => s.trim()) : [];
-
-      let serialInputsBlock = "";
-      if (itQty > 1 && itQty <= 10) {
-        serialInputsBlock = `
-          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px;margin-top:6px;">
-            ${Array.from({ length: itQty }).map((_, unitIdx) => `
-              <div>
-                <label style="font-size:11px;font-weight:700;color:var(--text2);display:block;margin-bottom:2px;">
-                  Unit ${unitIdx + 1} S/N ${isMandatory ? '<span style="color:var(--danger);">*</span>' : ''}
-                </label>
-                <input type="text" 
-                       class="form-input rdc-unit-serial" 
-                       data-itemid="${itm.id}" 
-                       data-unit="${unitIdx + 1}"
-                       data-itemname="${esc(itName)}"
-                       data-mandatory="${isMandatory ? 'true' : 'false'}"
-                       value="${esc(existingSerials[unitIdx] || '')}" 
-                       placeholder="Unit ${unitIdx + 1} Serial / Chassis No" 
-                       style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12px;width:100%;" 
-                       ${isMandatory ? 'required' : ''}>
-              </div>
-            `).join('')}
-          </div>
-        `;
-      } else if (itQty > 10) {
-        serialInputsBlock = `
-          <input type="text" 
-                 class="form-input rdc-item-serial" 
-                 data-itemid="${itm.id}" 
-                 data-itemname="${esc(itName)}"
-                 data-mandatory="${isMandatory ? 'true' : 'false'}"
-                 value="${esc(rawSn)}" 
-                 placeholder="Enter comma-separated Serial Numbers (e.g. SN-01, SN-02, ...)" 
-                 style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12.5px;width:100%;margin-top:4px;" 
-                 ${isMandatory ? 'required' : ''}>
-        `;
-      } else {
-        serialInputsBlock = `
-          <input type="text" 
-                 class="form-input rdc-item-serial" 
-                 data-itemid="${itm.id}" 
-                 data-itemname="${esc(itName)}"
-                 data-mandatory="${isMandatory ? 'true' : 'false'}"
-                 value="${esc(rawSn)}" 
-                 placeholder="Enter Chassis / Machine Serial No (e.g. MC-2026-9876)" 
-                 style="font-family:monospace;font-weight:700;text-transform:uppercase;font-size:12.5px;width:100%;margin-top:4px;" 
-                 ${isMandatory ? 'required' : ''}>
-        `;
-      }
-
-      return `
-        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px;border:1px solid ${isMandatory ? 'var(--primary)' : 'var(--border)'};margin-bottom:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:4px;">
-            <div>
-              <strong style="font-size:12.5px;color:var(--text1);">${esc(itName)}${esc(itModel)}</strong>
-              <span style="font-size:11px;color:var(--text3);margin-left:6px;">(Qty: ${itQty} | Rate: ${formatCurrency(itRate)})</span>
-            </div>
-            ${isMandatory 
-              ? `<span class="badge badge-danger" style="font-weight:700;font-size:10.5px;">* Mandatory Serial No</span>` 
-              : `<span class="badge" style="background:var(--border);color:var(--text3);font-size:10.5px;">Optional</span>`}
-          </div>
-          ${serialInputsBlock}
-        </div>
-      `;
-    }).join('');
-  }
+  const itemsSerialHtml = renderItemSerialsSectionHtml(saleItems, "Tax Invoice");
 
   overlay.innerHTML = `
     <div class="modal-content" style="background:var(--bg-primary);border-radius:12px;max-width:620px;width:100%;max-height:90vh;overflow-y:auto;padding:24px;border:1px solid var(--border);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);">
@@ -1044,10 +1141,10 @@ async function openRaiseDcModal(sale, onSuccess) {
             <label class="form-label" style="font-weight:700;font-size:13px;color:var(--text1);margin:0;">
               ⚙️ Product Chassis / Machine Serial Numbers
             </label>
-            <span style="font-size:11px;color:var(--primary);font-weight:600;">Auto-reflects on Tax Invoice</span>
+            <span style="font-size:11px;color:var(--primary);font-weight:600;">Syncs across DC & Invoice</span>
           </div>
           <div style="font-size:11.5px;color:var(--text2);margin-bottom:12px;">
-            Enter the serial / chassis numbers for the physical units being dispatched. Serial numbers are mandatory for machinery and high-value products, and will automatically reflect on the final Tax Invoice without entering again.
+            Serial numbers are mandatory for machinery and high-value equipment. If already entered while raising Tax Invoice, they are shown as read-only.
           </div>
 
           <div id="rdcItemsSerialContainer">
@@ -1072,59 +1169,20 @@ async function openRaiseDcModal(sale, onSuccess) {
   };
 
   overlay.querySelectorAll(".closeRaiseDcModal").forEach(b => b.addEventListener("click", closeModal));
+  attachUnlockSerialListeners(overlay);
 
   overlay.querySelector("#raiseDcForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = overlay.querySelector("#btnConfirmRaiseDc");
+
+    const itemSerials = validateAndCollectItemSerials(overlay, saleItems, "Delivery Challan");
+    if (!itemSerials) return;
+
     setButtonLoading(btn, true, "Generating DC...");
 
     const dcDateVal = overlay.querySelector("#rdcDate").value;
     const transName = overlay.querySelector("#rdcTransporter").value.trim();
     const transVeh = overlay.querySelector("#rdcVehicle").value.trim();
-
-    // Validate mandatory serial numbers
-    const itemSerials = [];
-    for (const itm of saleItems) {
-      const itName = itm.description || itm.product_name || 'Product';
-      const itQty = parseInt(itm.quantity, 10) || 1;
-      const itRate = parseFloat(itm.rate || itm.dc_rate || 0);
-      const isMandatory = (itRate > 10000 || itm.serial_tracking === true);
-
-      let finalSerialStr = "";
-      if (itQty > 1 && itQty <= 10) {
-        const unitInputs = overlay.querySelectorAll(`.rdc-unit-serial[data-itemid="${itm.id}"]`);
-        const unitVals = [];
-        for (let u = 0; u < unitInputs.length; u++) {
-          const uInp = unitInputs[u];
-          const uVal = uInp.value.trim();
-          if (isMandatory && !uVal) {
-            uInp.focus();
-            uInp.style.borderColor = "var(--danger)";
-            setButtonLoading(btn, false);
-            return showToast(`Please enter Serial / Chassis Number for "${itName}" (Unit ${u + 1})! Serial number is mandatory to raise Delivery Challan.`, "error");
-          }
-          if (uVal) unitVals.push(uVal);
-        }
-        finalSerialStr = unitVals.join(", ");
-      } else {
-        const sInp = overlay.querySelector(`.rdc-item-serial[data-itemid="${itm.id}"]`);
-        const sVal = sInp ? sInp.value.trim() : "";
-        if (isMandatory && !sVal) {
-          if (sInp) {
-            sInp.focus();
-            sInp.style.borderColor = "var(--danger)";
-          }
-          setButtonLoading(btn, false);
-          return showToast(`Please enter Serial / Chassis Number for "${itName}"! Serial number is mandatory to raise Delivery Challan.`, "error");
-        }
-        finalSerialStr = sVal;
-      }
-
-      itemSerials.push({
-        id: itm.id,
-        serial_number: finalSerialStr
-      });
-    }
 
     try {
       const res = await fetch(`${API_BASE}/sales?action=raise-dc`, {

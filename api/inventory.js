@@ -30,6 +30,8 @@ function safeNum(val, fallback = 0) {
 
 async function ensureExpensesColumns(sql) {
   try {
+    await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS invoice_date DATE;`;
+    await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
     await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS dealer_receiver VARCHAR(255);`;
     await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS dealer_receiver_number VARCHAR(20);`;
     await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS dealer_receiver_email VARCHAR(100);`;
@@ -2689,10 +2691,10 @@ module.exports = async function handler(req, res) {
 
             await sql`
               INSERT INTO expenses (
-                company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+                company_id, expense_date, invoice_date, category, dealer_receiver, amount, payment_mode,
                 description, receipt_number, approval_status, created_by
               ) VALUES (
-                ${updated[0].company_id}, NOW(), 'Inventory Purchase', ${sName},
+                ${updated[0].company_id}, NOW(), ${purchase_date ? new Date(purchase_date) : new Date()}, 'Inventory Purchase', ${sName},
                 ${paidAmt}, 'bank', ${notes || `Stock Receipt Purchase [${gstTypeStr}] - Bill #${bill_no || 'N/A'}`},
                 ${'EXP-PUR-' + purchaseRec[0].id}, 'approved', ${user.id}
               )
@@ -2771,10 +2773,10 @@ module.exports = async function handler(req, res) {
               }
               await sql`
                 INSERT INTO expenses (
-                  company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+                  company_id, expense_date, invoice_date, category, dealer_receiver, amount, payment_mode,
                   description, receipt_number, approval_status, created_by
                 ) VALUES (
-                  ${compId}, NOW(), 'Inventory Purchase', ${sName},
+                  ${compId}, NOW(), ${r.purchase_date ? new Date(r.purchase_date) : new Date()}, 'Inventory Purchase', ${sName},
                   ${bAmt}, 'bank', ${r.notes || `Stock Receipt Purchase - Bill #${r.bill_no || 'N/A'}`},
                   ${'EXP-PUR-' + purchaseRec[0].id}, 'approved', ${user.id}
                 )
@@ -2970,10 +2972,10 @@ module.exports = async function handler(req, res) {
         await ensureExpensesColumns(sql);
         await sql`
           INSERT INTO expenses (
-            company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+            company_id, expense_date, invoice_date, category, dealer_receiver, amount, payment_mode,
             description, receipt_number, approval_status, created_by
           ) VALUES (
-            ${compId}, ${purchase_date ? new Date(purchase_date) : new Date()}, 'Inventory Purchase', ${dealerName},
+            ${compId}, ${purchase_date ? new Date(purchase_date) : new Date()}, ${purchase_date ? new Date(purchase_date) : null}, 'Inventory Purchase', ${dealerName},
             ${paidAmt}, 'bank', ${notes || `Purchase Entry - Bill #${bill_no || 'N/A'}`},
             ${'EXP-PUR-' + purId}, 'approved', ${user.id}
           )
@@ -3161,10 +3163,10 @@ module.exports = async function handler(req, res) {
             await ensureExpensesColumns(sql);
             await sql`
               INSERT INTO expenses (
-                company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+                company_id, expense_date, invoice_date, category, dealer_receiver, amount, payment_mode,
                 description, receipt_number, approval_status, created_by
               ) VALUES (
-                ${groupCompId}, ${pDate}, 'Inventory Purchase', ${supplier_name || 'Supplier'},
+                ${groupCompId}, ${pDate}, ${pDate}, 'Inventory Purchase', ${supplier_name || 'Supplier'},
                 ${paidAmt}, 'bank', ${notes || `Bulk Import - Bill #${bill_no || 'N/A'}`},
                 ${'EXP-PUR-' + purId}, 'approved', ${user.id}
               )
@@ -3817,16 +3819,17 @@ module.exports = async function handler(req, res) {
               amount = ${paidAmt},
               dealer_receiver = ${dealerName},
               expense_date = ${purchase_date ? new Date(purchase_date) : new Date()},
+              invoice_date = ${purchase_date ? new Date(purchase_date) : null},
               description = ${`Purchase Entry - Bill #${bill_no || 'N/A'}`}
             WHERE id = ${expExists[0].id}
           `;
         } else {
           await sql`
             INSERT INTO expenses (
-              company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+              company_id, expense_date, invoice_date, category, dealer_receiver, amount, payment_mode,
               description, receipt_number, approval_status, created_by
             ) VALUES (
-              ${compId}, ${purchase_date ? new Date(purchase_date) : new Date()}, 'Inventory Purchase', ${dealerName},
+              ${compId}, ${purchase_date ? new Date(purchase_date) : new Date()}, ${purchase_date ? new Date(purchase_date) : null}, 'Inventory Purchase', ${dealerName},
               ${paidAmt}, 'bank', ${`Purchase Entry - Bill #${bill_no || 'N/A'}`},
               ${expReceiptNum}, 'approved', ${user.id}
             )

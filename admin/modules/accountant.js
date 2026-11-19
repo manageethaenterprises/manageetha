@@ -117,9 +117,10 @@ async function loadExpensesSubTab() {
           <tr>
             <th>Receipt #</th>
             <th>Company</th>
-            <th>Date</th>
+            <th>Date Recorded</th>
+            <th>Invoice Date</th>
             <th>Category</th>
-            <th>Receiver / dealer</th>
+            <th>Receiver / Dealer</th>
             <th>Amount</th>
             <th>Payment Mode</th>
             <th>Description</th>
@@ -127,7 +128,7 @@ async function loadExpensesSubTab() {
           </tr>
         </thead>
         <tbody id="expTableBody">
-          <tr><td colspan="9" style="text-align:center;padding:20px;"><div class="spinner"></div> Loading expenses...</td></tr>
+          <tr><td colspan="10" style="text-align:center;padding:20px;"><div class="spinner"></div> Loading expenses...</td></tr>
         </tbody>
       </table>
     </div>
@@ -138,7 +139,7 @@ async function loadExpensesSubTab() {
 
     <!-- EXPENSE MODAL -->
     <div class="modal-overlay" id="expModal" style="display:none;">
-      <div class="modal-box" style="max-width:520px;">
+      <div class="modal-box" style="max-width:540px;">
         <div class="modal-header">
           <h3 id="expModalTitle">Record New Expense</h3>
           <button class="modal-close" id="expModalClose">&times;</button>
@@ -146,6 +147,16 @@ async function loadExpensesSubTab() {
         <form id="expForm">
           <input type="hidden" id="eEditingId" value="">
           <div class="modal-body" style="padding:20px 24px;">
+            <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">DATE RECORDED *</label>
+                <input type="date" id="eExpenseDate" class="form-input" required style="width:100%;">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">INVOICE DATE (OPTIONAL)</label>
+                <input type="date" id="eInvoiceDate" class="form-input" style="width:100%;">
+              </div>
+            </div>
             <div class="form-group" style="margin-bottom:14px;">
               <label class="form-label" style="display:block;margin-bottom:6px;font-weight:600;font-size:12px;color:var(--text2);border:none;">CATEGORY *</label>
               <select id="eCategory" class="form-select" required style="width:100%;">
@@ -233,7 +244,10 @@ async function loadExpensesSubTab() {
           <tr>
             <td><span class="badge badge-purple">${esc(e.receipt_number)}</span></td>
             <td style="font-weight:600;">${esc(e.company_name || 'All Companies')}</td>
-            <td>${formatDate(e.expense_date)}</td>
+            <td style="white-space:nowrap;">${formatDate(e.expense_date)}</td>
+            <td style="white-space:nowrap;">
+              ${e.invoice_date ? `<strong style="color:var(--text1);">${formatDate(e.invoice_date)}</strong>` : `<span style="color:var(--text3);">—</span>`}
+            </td>
             <td><span class="badge badge-outline" style="font-weight:600;">${esc(e.category)}</span></td>
             <td style="font-weight:700;color:var(--text1);">
               ${esc(e.dealer_receiver || '—')}
@@ -270,6 +284,8 @@ async function loadExpensesSubTab() {
                 if (exp) {
                   document.getElementById("eEditingId").value = exp.id;
                   document.getElementById("expModalTitle").textContent = `Edit Expense #${exp.receipt_number}`;
+                  if (document.getElementById("eExpenseDate")) document.getElementById("eExpenseDate").value = exp.expense_date ? exp.expense_date.split('T')[0] : '';
+                  if (document.getElementById("eInvoiceDate")) document.getElementById("eInvoiceDate").value = exp.invoice_date ? exp.invoice_date.split('T')[0] : '';
                   document.getElementById("eCategory").value = exp.category || "Inventory Purchase";
                   document.getElementById("eAmount").value = exp.amount || "";
                   document.getElementById("edealer").value = exp.dealer_receiver || "";
@@ -339,7 +355,8 @@ async function loadExpensesSubTab() {
       <tr>
         <td style="text-align:center;padding:8px;border:1px solid #cbd5e1;">${idx + 1}</td>
         <td style="padding:8px;border:1px solid #cbd5e1;font-family:monospace;font-weight:bold;">${esc(e.receipt_number)}</td>
-        <td style="padding:8px;border:1px solid #cbd5e1;">${formatDate(e.expense_date)}</td>
+        <td style="padding:8px;border:1px solid #cbd5e1;white-space:nowrap;">${formatDate(e.expense_date)}</td>
+        <td style="padding:8px;border:1px solid #cbd5e1;white-space:nowrap;">${e.invoice_date ? formatDate(e.invoice_date) : '—'}</td>
         <td style="padding:8px;border:1px solid #cbd5e1;">${esc(e.company_name || compName)}</td>
         <td style="padding:8px;border:1px solid #cbd5e1;font-weight:bold;">${esc(e.category)}</td>
         <td style="padding:8px;border:1px solid #cbd5e1;">${esc(e.dealer_receiver || '—')}</td>
@@ -396,10 +413,11 @@ async function loadExpensesSubTab() {
             <tr>
               <th style="width:30px;">#</th>
               <th>Receipt #</th>
-              <th>Date</th>
+              <th>Date Recorded</th>
+              <th>Invoice Date</th>
               <th>Company</th>
               <th>Category</th>
-              <th>dealer / Receiver</th>
+              <th>Dealer / Receiver</th>
               <th>Mode</th>
               <th>Description / Remarks</th>
               <th style="text-align:right;">Amount (₹)</th>
@@ -534,7 +552,8 @@ async function loadExpensesSubTab() {
               </td>
               <td style="padding:3px 6px;border:1px solid #000;width:25%;">
                 <span style="color:#64748b;font-size:8.5px;text-transform:uppercase;display:block;">Voucher Date:</span>
-                <b>${formatDate(exp.expense_date || new Date())}</b>
+                <b style="font-size:10.5px;">${formatDate(exp.expense_date || new Date())}</b>
+                ${exp.invoice_date ? `<div style="font-size:9.5px;color:#334155;margin-top:2px;"><strong>Invoice Date:</strong> ${formatDate(exp.invoice_date)}</div>` : ''}
               </td>
             </tr>
             <tr>
@@ -671,6 +690,9 @@ async function loadExpensesSubTab() {
     if (document.getElementById("expModalTitle")) document.getElementById("expModalTitle").textContent = "Record New Expense";
     shouldPrintVoucherOnSave = true;
     document.getElementById("expForm").reset();
+    const today = new Date().toISOString().split('T')[0];
+    if (document.getElementById("eExpenseDate")) document.getElementById("eExpenseDate").value = today;
+    if (document.getElementById("eInvoiceDate")) document.getElementById("eInvoiceDate").value = today;
     document.getElementById("expModal").style.display = "flex";
   });
   on("expModalClose", "click", () => { document.getElementById("expModal").style.display = "none"; });
@@ -729,6 +751,8 @@ async function loadExpensesSubTab() {
     const payload = {
       id: editingId || undefined,
       company_id: activeCompId,
+      expense_date: document.getElementById("eExpenseDate")?.value || new Date().toISOString().split('T')[0],
+      invoice_date: document.getElementById("eInvoiceDate")?.value || null,
       category: document.getElementById("eCategory").value,
       amount: document.getElementById("eAmount").value,
       dealer_receiver: document.getElementById("edealer").value.trim(),
@@ -749,7 +773,8 @@ async function loadExpensesSubTab() {
         const savedExp = data.expense || {
           ...payload,
           receipt_number: `EXP-${Date.now().toString().slice(-6)}`,
-          expense_date: new Date()
+          expense_date: payload.expense_date,
+          invoice_date: payload.invoice_date
         };
         showToast(data.message || "Expense saved successfully", "success");
         document.getElementById("expModal").style.display = "none";

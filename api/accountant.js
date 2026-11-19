@@ -89,18 +89,38 @@ module.exports = async function handler(req, res) {
     // ═══════════════ EXPENSES MANAGEMENT ═══════════════
     else if (action === "expenses-list") {
       try {
+        await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS invoice_date DATE;`;
         await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
+        // Backfill invoice_date for past inventory purchases
+        await sql`
+          UPDATE expenses e
+          SET invoice_date = p.purchase_date
+          FROM purchases p
+          WHERE e.invoice_date IS NULL
+            AND e.receipt_number = ('EXP-PUR-' || p.id::text)
+            AND p.purchase_date IS NOT NULL;
+        `;
+        // Backfill invoice_date for past lead incentives
+        await sql`
+          UPDATE expenses e
+          SET invoice_date = COALESCE(s.invoice_date, s.sale_date)
+          FROM sales s
+          WHERE e.invoice_date IS NULL
+            AND e.receipt_number = ('EXP-INC-' || s.id::text)
+            AND (s.invoice_date IS NOT NULL OR s.sale_date IS NOT NULL);
+        `;
       } catch (colErr) {}
       // Auto-sync any released lead incentives into expenses table
       try {
         await sql`
           INSERT INTO expenses (
-            company_id, expense_date, category, dealer_receiver, amount, payment_mode,
+            company_id, expense_date, invoice_date, category, dealer_receiver, amount, payment_mode,
             description, receipt_number, approval_status, created_by
           )
           SELECT 
             s.company_id, 
             COALESCE(s.incentive_release_date, s.created_at, CURRENT_DATE), 
+            COALESCE(s.invoice_date, s.sale_date),
             'Lead Incentives', 
             COALESCE(NULLIF(TRIM(s.lead_generated_by), ''), 'Lead Generator'), 
             s.lead_incentive_amount, 
@@ -123,20 +143,28 @@ module.exports = async function handler(req, res) {
       let rows;
       if (isAll) {
         rows = await sql`
-          SELECT e.*, c.name as company_name, u.username as created_by_user
+          SELECT e.*, 
+                 COALESCE(e.invoice_date, p.purchase_date, s.invoice_date, s.sale_date) as invoice_date,
+                 c.name as company_name, u.username as created_by_user
           FROM expenses e
+          LEFT JOIN purchases p ON e.receipt_number = ('EXP-PUR-' || p.id::text)
+          LEFT JOIN sales s ON e.receipt_number = ('EXP-INC-' || s.id::text)
           LEFT JOIN companies c ON e.company_id = c.id
           LEFT JOIN users u ON e.created_by = u.id
-          ORDER BY e.expense_date DESC
+          ORDER BY e.expense_date DESC, e.id DESC
         `;
       } else {
         rows = await sql`
-          SELECT e.*, c.name as company_name, u.username as created_by_user
+          SELECT e.*, 
+                 COALESCE(e.invoice_date, p.purchase_date, s.invoice_date, s.sale_date) as invoice_date,
+                 c.name as company_name, u.username as created_by_user
           FROM expenses e
+          LEFT JOIN purchases p ON e.receipt_number = ('EXP-PUR-' || p.id::text)
+          LEFT JOIN sales s ON e.receipt_number = ('EXP-INC-' || s.id::text)
           LEFT JOIN companies c ON e.company_id = c.id
           LEFT JOIN users u ON e.created_by = u.id
           WHERE e.company_id = ${parseInt(compQuery)}
-          ORDER BY e.expense_date DESC
+          ORDER BY e.expense_date DESC, e.id DESC
         `;
       }
       return res.status(200).json({ success: true, expenses: rows });
@@ -144,10 +172,11 @@ module.exports = async function handler(req, res) {
 
     else if (action === "expense-create") {
       try {
+        await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS invoice_date DATE;`;
         await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
       } catch (colErr) {}
       const {
-        company_id, expense_date, category, dealer_receiver, gstin, amount, payment_mode, description
+        company_id, expense_date, invoice_date, category, dealer_receiver, gstin, amount, payment_mode, description
       } = req.body;
 
       const compId = user.role === "superadmin" ? (company_id ? parseInt(company_id) : null) : user.company_id;
@@ -159,10 +188,10 @@ module.exports = async function handler(req, res) {
 
       const exp = await sql`
         INSERT INTO expenses (
-          company_id, expense_date, category, dealer_receiver, gstin, amount, payment_mode,
+          company_id, expense_date, invoice_date, category, dealer_receiver, gstin, amount, payment_mode,
           description, receipt_number, approval_status, created_by
         ) VALUES (
-          ${compId}, ${expense_date || 'NOW()'}, ${category}, ${dealer_receiver || null}, ${gstin ? gstin.trim().toUpperCase() : null},
+          ${compId}, ${expense_date ? new Date(expense_date) : new Date()}, ${invoice_date ? new Date(invoice_date) : null}, ${category}, ${dealer_receiver || null}, ${gstin ? gstin.trim().toUpperCase() : null},
           ${parseFloat(amount)}, ${payment_mode || 'cash'}, ${description || null},
           ${receiptNo}, 'approved', ${user.id}
         )
@@ -184,15 +213,18 @@ module.exports = async function handler(req, res) {
         return res.status(403).json({ error: "Access denied. Only Superadmin can edit expenses." });
       }
       try {
+        await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS invoice_date DATE;`;
         await sql`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS gstin VARCHAR(50);`;
       } catch (colErr) {}
-      const { id, category, dealer_receiver, gstin, amount, payment_mode, description } = req.body;
+      const { id, expense_date, invoice_date, category, dealer_receiver, gstin, amount, payment_mode, description } = req.body;
       const expId = parseInt(id);
       if (!expId) return res.status(400).json({ error: "Expense ID required" });
 
       const updated = await sql`
         UPDATE expenses SET
           category = COALESCE(${category}, category),
+          expense_date = COALESCE(${expense_date ? new Date(expense_date) : null}, expense_date),
+          invoice_date = ${invoice_date ? new Date(invoice_date) : null},
           dealer_receiver = ${dealer_receiver || null},
           gstin = ${gstin ? gstin.trim().toUpperCase() : null},
           amount = ${parseFloat(amount || 0)},

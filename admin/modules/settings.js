@@ -312,7 +312,7 @@ function loadSecuritySubTab() {
               Click the button to receive an instant 6-digit authentication code to <strong>${hasEmail ? esc(u.email) : 'your email'}</strong>.
             </div>
           </div>
-          <button type="button" class="btn btn-primary" id="btnRequestOtp" ${!hasEmail ? 'disabled' : ''} style="padding:9px 20px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px;">
+          <button type="button" class="btn btn-primary" id="btnRequestOtp" data-no-auto-loading="true" ${!hasEmail ? 'disabled' : ''} style="padding:9px 20px;font-weight:700;font-size:13px;display:inline-flex;align-items:center;gap:6px;">
             <span>📩</span> <span id="btnRequestOtpText">Send Verification OTP</span>
           </button>
         </div>
@@ -363,7 +363,7 @@ function loadSecuritySubTab() {
           <div id="passMatchIndicator" style="font-size:12px;font-weight:700;margin-bottom:18px;min-height:18px;"></div>
 
           <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--border);padding-top:16px;">
-            <button type="submit" class="btn btn-success" id="btnSubmitResetPassword" style="padding:9px 24px;font-size:13.5px;font-weight:800;display:inline-flex;align-items:center;gap:6px;">
+            <button type="submit" class="btn btn-success" id="btnSubmitResetPassword" data-no-auto-loading="true" style="padding:9px 24px;font-size:13.5px;font-weight:800;display:inline-flex;align-items:center;gap:6px;">
               <span>🔒</span> Verify OTP & Reset Password
             </button>
           </div>
@@ -507,10 +507,11 @@ function loadSecuritySubTab() {
       return showToast("New password and confirm password do not match.", "error");
     }
 
-    const origHtml = btn ? btn.innerHTML : "Reset Password";
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Verifying & Resetting...`;
+      btn.style.pointerEvents = "none";
+      btn.style.opacity = "0.75";
+      btn.innerHTML = `<span class="btn-spinner-inline" style="display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;vertical-align:middle;"></span> Verifying & Resetting...`;
     }
 
     try {
@@ -525,33 +526,84 @@ function loadSecuritySubTab() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast(data.message || "Password successfully reset! You can now use your new password.", "success");
-        // Reset form
-        document.getElementById("resetPasswordOtpForm")?.reset();
-        if (matchInd) matchInd.innerHTML = "";
+        showToast(data.message || "Password successfully reset!", "success");
+
+        // Return flow and all fields back to normal initial state
+        resetOtpFlowToNormal();
+
         const statusBanner = document.getElementById("otpStatusBanner");
         if (statusBanner) {
           statusBanner.style.display = "block";
           statusBanner.style.background = "#dcfce7";
           statusBanner.style.border = "1px solid #86efac";
           statusBanner.style.color = "#166534";
-          statusBanner.innerHTML = `<strong>🎉 Success:</strong> Your password has been successfully updated! You can use it on your next login.`;
+          statusBanner.innerHTML = `<strong>✅ Password Reset Successfully:</strong> Your password has been updated. Your current session remains active and you can continue working normally.`;
         }
       } else {
         showToast(data.error || "Failed to reset password", "error");
+        if (btn) {
+          btn.disabled = false;
+          btn.style.pointerEvents = "";
+          btn.style.opacity = "";
+          btn.innerHTML = `<span>🔒</span> Verify OTP & Reset Password`;
+        }
       }
     } catch (err) {
       showToast("Error resetting password: " + err.message, "error");
-    } finally {
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = origHtml;
+        btn.style.pointerEvents = "";
+        btn.style.opacity = "";
+        btn.innerHTML = `<span>🔒</span> Verify OTP & Reset Password`;
       }
     }
   });
 
   if (otpCooldownSeconds > 0) {
     startOtpCooldown(otpCooldownSeconds);
+  }
+}
+
+function resetOtpFlowToNormal() {
+  if (otpCooldownTimer) {
+    clearInterval(otpCooldownTimer);
+    otpCooldownTimer = null;
+  }
+  otpCooldownSeconds = 0;
+
+  const reqBtn = document.getElementById("btnRequestOtp");
+  if (reqBtn) {
+    reqBtn.disabled = false;
+    reqBtn.style.pointerEvents = "";
+    reqBtn.style.opacity = "";
+    reqBtn.style.cursor = "pointer";
+    reqBtn.innerHTML = `<span>📩</span> <span id="btnRequestOtpText">Send Verification OTP</span>`;
+  }
+
+  const form = document.getElementById("resetPasswordOtpForm");
+  if (form) form.reset();
+
+  const otpInp = document.getElementById("setOtpCode");
+  if (otpInp) {
+    otpInp.value = "";
+    otpInp.style.borderColor = "";
+  }
+
+  const p1 = document.getElementById("setNewPassword");
+  if (p1) p1.value = "";
+
+  const p2 = document.getElementById("setConfirmPassword");
+  if (p2) p2.value = "";
+
+  const matchInd = document.getElementById("passMatchIndicator");
+  if (matchInd) matchInd.innerHTML = "";
+
+  const subBtn = document.getElementById("btnSubmitResetPassword");
+  if (subBtn) {
+    subBtn.disabled = false;
+    subBtn.style.pointerEvents = "";
+    subBtn.style.opacity = "";
+    subBtn.innerHTML = `<span>🔒</span> Verify OTP & Reset Password`;
   }
 }
 

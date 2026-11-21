@@ -2412,6 +2412,7 @@ async function loadLeaveSubTab(isGenApplyLeave = false) {
   const loggedUser = getUser() || {};
   const isSuperAdmin = loggedUser.role === "superadmin" || loggedUser.username === "superadmin";
   const isAdminRole = ['superadmin', 'storeadmin', 'hr', 'hr_manager'].includes(loggedUser.role);
+  const isHrOrSuperAdmin = ['superadmin', 'hr', 'hr_manager'].includes(String(loggedUser.role || '').toLowerCase()) || loggedUser.username === "superadmin";
 
   subContent.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
@@ -2424,7 +2425,7 @@ async function loadLeaveSubTab(isGenApplyLeave = false) {
         </p>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
-        ${isAdminRole ? `<button class="btn btn-secondary" id="configLeaveQuotasBtn">⚙️ Configure Leave Quotas</button>` : ''}
+        ${isHrOrSuperAdmin ? `<button class="btn btn-secondary" id="configLeaveQuotasBtn">⚙️ Configure Leave Quotas</button>` : ''}
         <button class="btn btn-primary" id="applyLeaveBtn">+ Apply for Leave</button>
       </div>
     </div>
@@ -2789,7 +2790,7 @@ async function loadLeaveSubTab(isGenApplyLeave = false) {
   on("leaveModalClose", "click", () => { document.getElementById("leaveModal").style.display = "none"; });
   on("leaveModalCancel", "click", () => { document.getElementById("leaveModal").style.display = "none"; });
 
-  if (document.getElementById("configLeaveQuotasBtn")) {
+  if (isHrOrSuperAdmin && document.getElementById("configLeaveQuotasBtn")) {
     on("configLeaveQuotasBtn", "click", async () => {
       const container = document.getElementById("leaveTypesConfigContainer");
       if (container) {

@@ -1303,9 +1303,9 @@ module.exports = async function handler(req, res) {
 
     else if (action === "save-leave-types" || action === "leave-types-save") {
       const uRole = String(user.role || '').toLowerCase();
-      const allowedRoles = ['superadmin', 'admin', 'storeadmin', 'store_admin', 'hr', 'hr_manager', 'manager'];
-      if (!allowedRoles.includes(uRole)) {
-        return res.status(403).json({ error: "Access denied. Only Superadmin, Admin, Storeadmin, and HR can configure leave quotas." });
+      const allowedRoles = ['superadmin', 'hr', 'hr_manager'];
+      if (!allowedRoles.includes(uRole) && user.username !== 'superadmin') {
+        return res.status(403).json({ error: "Access denied. Only Superadmin and HR can configure leave quotas." });
       }
 
       const { company_id, types } = req.body;

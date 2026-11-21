@@ -13,6 +13,11 @@ let otpCooldownSeconds = 0;
 async function renderSettingsModule(tabKey, container) {
   const isSuperadmin = currentUser && currentUser.role === "superadmin";
 
+  let savedSubtab = localStorage.getItem("settings_active_subtab") || "profileTab";
+  if (savedSubtab === "manageUsersTab" && !isSuperadmin) {
+    savedSubtab = "profileTab";
+  }
+
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px;">
       <div style="background:linear-gradient(135deg, var(--primary) 0%, #1e40af 100%);color:#fff;padding:20px 24px;">
@@ -38,14 +43,14 @@ async function renderSettingsModule(tabKey, container) {
 
       <!-- SUB-TABS -->
       <div class="sub-tabs-bar" style="margin:0;padding:10px 18px 0;background:var(--bg-secondary);border-bottom:1px solid var(--border);">
-        <button class="sub-tab active" data-subtab="profileTab">
+        <button class="sub-tab ${savedSubtab === 'profileTab' ? 'active' : ''}" data-subtab="profileTab">
           👤 My Profile
         </button>
-        <button class="sub-tab" data-subtab="securityTab">
+        <button class="sub-tab ${savedSubtab === 'securityTab' ? 'active' : ''}" data-subtab="securityTab">
           🔐 Security & Password Reset (Email OTP)
         </button>
         ${isSuperadmin ? `
-        <button class="sub-tab" data-subtab="manageUsersTab">
+        <button class="sub-tab ${savedSubtab === 'manageUsersTab' ? 'active' : ''}" data-subtab="manageUsersTab">
           👥 Manage User Profiles (Superadmin)
         </button>
         ` : ''}
@@ -64,15 +69,23 @@ async function renderSettingsModule(tabKey, container) {
       container.querySelectorAll(".sub-tab").forEach(t => t.classList.remove("active"));
       tab.classList.add("active");
       const target = tab.dataset.subtab;
+      localStorage.setItem("settings_active_subtab", target);
       if (target === "profileTab") loadProfileSubTab();
       else if (target === "securityTab") loadSecuritySubTab();
       else if (target === "manageUsersTab" && isSuperadmin) loadManageUsersSubTab();
     });
   });
 
-  // Default to profile subtab
+  // Load user profile data and activate preserved subtab
   await fetchUserProfileData();
-  loadProfileSubTab();
+
+  if (savedSubtab === "manageUsersTab" && isSuperadmin) {
+    loadManageUsersSubTab();
+  } else if (savedSubtab === "securityTab") {
+    loadSecuritySubTab();
+  } else {
+    loadProfileSubTab();
+  }
 }
 
 async function fetchUserProfileData() {

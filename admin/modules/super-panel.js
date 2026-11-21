@@ -310,13 +310,15 @@ async function renderSuperDashboard(container) {
 // ═══════════════════════════════════════════════════
 
 async function renderSuperpanelUI(container) {
+  const savedSubtab = localStorage.getItem("superpanel_active_subtab") || "companiesTab";
+
   container.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
       <div class="sub-tabs-bar">
-        <button class="sub-tab active" data-subtab="companiesTab">🏢 Companies & Branches</button>
-        <button class="sub-tab" data-subtab="menuMappingTab">🔐 Roles & Menu Permissions</button>
-        <button class="sub-tab" data-subtab="usersTab">👤 User Accounts</button>
-        <button class="sub-tab" data-subtab="controlsTab">⚙️ System Toggles</button>
+        <button class="sub-tab ${savedSubtab === 'companiesTab' ? 'active' : ''}" data-subtab="companiesTab">🏢 Companies & Branches</button>
+        <button class="sub-tab ${savedSubtab === 'menuMappingTab' ? 'active' : ''}" data-subtab="menuMappingTab">🔐 Roles & Menu Permissions</button>
+        <button class="sub-tab ${savedSubtab === 'usersTab' ? 'active' : ''}" data-subtab="usersTab">👤 User Accounts</button>
+        <button class="sub-tab ${savedSubtab === 'controlsTab' ? 'active' : ''}" data-subtab="controlsTab">⚙️ System Toggles</button>
       </div>
 
       <div class="sub-content-area" id="superpanelSubContent">
@@ -332,6 +334,7 @@ async function renderSuperpanelUI(container) {
       buttons.forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       const target = btn.dataset.subtab;
+      localStorage.setItem("superpanel_active_subtab", target);
       if (target === "companiesTab") loadCompaniesSubTab();
       else if (target === "menuMappingTab") loadMenuMappingSubTab();
       else if (target === "usersTab") loadUsersSubTab();
@@ -339,7 +342,10 @@ async function renderSuperpanelUI(container) {
     });
   });
 
-  loadCompaniesSubTab();
+  if (savedSubtab === "menuMappingTab") loadMenuMappingSubTab();
+  else if (savedSubtab === "usersTab") loadUsersSubTab();
+  else if (savedSubtab === "controlsTab") loadControlsSubTab();
+  else loadCompaniesSubTab();
 }
 
 // ── SubTab 1: Companies Management ──

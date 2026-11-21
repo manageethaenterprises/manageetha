@@ -5706,18 +5706,23 @@ function openQuickAddProductModal(onProductCreated, defaultSupplierId = null) {
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Weight (kg)</label>
-              <input type="number" step="0.001" id="qpWeight" class="form-input" placeholder="e.g. 12.5" style="padding:6px 10px;font-size:13px;">
-            </div>
-
-            <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Purchase Rate (Excl. Tax ₹) *</label>
               <input type="number" step="0.01" id="qpPurRate" class="form-input" required placeholder="e.g. 1250" style="padding:6px 10px;font-size:13px;">
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Selling Percentage (%)</label>
+              <input type="number" step="0.01" id="qpSellingPct" class="form-input" value="100" placeholder="100" style="padding:6px 10px;font-size:13px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Selling Price (Incl. Tax ₹)</label>
-              <input type="number" step="0.01" id="qpSelling" class="form-input" placeholder="e.g.  " style="padding:6px 10px;font-size:13px;">
+              <input type="number" step="0.01" id="qpSelling" class="form-input" placeholder="e.g. 2950" style="padding:6px 10px;font-size:13px;">
+            </div>
+
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Weight (kg)</label>
+              <input type="number" step="0.001" id="qpWeight" class="form-input" placeholder="e.g. 12.5" style="padding:6px 10px;font-size:13px;">
             </div>
 
             <div class="form-group" style="margin-bottom:0;">
@@ -5793,6 +5798,42 @@ function openQuickAddProductModal(onProductCreated, defaultSupplierId = null) {
     });
   }
 
+  const qpPurRate = overlay.querySelector("#qpPurRate");
+  const qpGst = overlay.querySelector("#qpGst");
+  const qpSellingPct = overlay.querySelector("#qpSellingPct");
+  const qpSelling = overlay.querySelector("#qpSelling");
+
+  function autoCalcQpRates(source = "") {
+    const prExcl = parseFloat(qpPurRate?.value || 0);
+    const gst = parseFloat(qpGst?.value || 0);
+
+    if (source === "selling") {
+      const sellIncl = parseFloat(qpSelling?.value || 0);
+      if (prExcl > 0 && sellIncl > 0) {
+        const sellExcl = sellIncl / (1 + gst / 100);
+        const marginPct = ((sellExcl - prExcl) / prExcl) * 100;
+        if (qpSellingPct) {
+          qpSellingPct.value = Math.max(0, Math.round(marginPct * 100) / 100);
+        }
+      }
+      return;
+    }
+
+    const sellPct = parseFloat(qpSellingPct?.value || 0);
+    if (prExcl > 0) {
+      const sellExcl = sellPct > 0 ? (prExcl * (1 + sellPct / 100)) : prExcl;
+      const sellIncl = Math.round(sellExcl * (1 + gst / 100) * 100) / 100;
+      if (qpSelling) {
+        qpSelling.value = sellIncl || '';
+      }
+    }
+  }
+
+  if (qpPurRate) qpPurRate.addEventListener("input", () => autoCalcQpRates("purRate"));
+  if (qpGst) qpGst.addEventListener("input", () => autoCalcQpRates("gst"));
+  if (qpSellingPct) qpSellingPct.addEventListener("input", () => autoCalcQpRates("pct"));
+  if (qpSelling) qpSelling.addEventListener("input", () => autoCalcQpRates("selling"));
+
   overlay.querySelector("#quickAddProductForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const submitBtn = e.target.querySelector("button[type='submit']");
@@ -5807,6 +5848,14 @@ function openQuickAddProductModal(onProductCreated, defaultSupplierId = null) {
     const purRate = parseFloat(overlay.querySelector("#qpPurRate").value || 0);
     const gstRateVal = parseFloat(overlay.querySelector("#qpGst").value || 18);
     const purRateIncl = Math.round(purRate * (1 + gstRateVal / 100) * 100) / 100;
+    const sellingPct = parseFloat(overlay.querySelector("#qpSellingPct")?.value || 0);
+    const sellingPriceVal = parseFloat(overlay.querySelector("#qpSelling").value || 0);
+    const sellingExcl = sellingPriceVal > 0 
+      ? Math.round((sellingPriceVal / (1 + gstRateVal / 100)) * 100) / 100 
+      : (purRate > 0 ? (sellingPct > 0 ? Math.round(purRate * (1 + sellingPct / 100) * 100) / 100 : purRate) : 0);
+    const finalMrp = sellingPriceVal > 0 
+      ? sellingPriceVal 
+      : Math.round(sellingExcl * (1 + gstRateVal / 100) * 100) / 100;
 
     const payload = {
       company_id: targetCompId,
@@ -5826,8 +5875,9 @@ function openQuickAddProductModal(onProductCreated, defaultSupplierId = null) {
       weight: parseFloat(overlay.querySelector("#qpWeight").value || 0),
       purchase_rate: purRate,
       purchase_rate_incl_tax: purRateIncl,
-      selling_rate: parseFloat(overlay.querySelector("#qpSelling").value || 0),
-      mrp: parseFloat(overlay.querySelector("#qpSelling").value || 0),
+      selling_percentage: sellingPct,
+      selling_rate: sellingExcl,
+      mrp: finalMrp,
       initial_stock: 0,
       current_stock: 0,
       min_stock: parseInt(overlay.querySelector("#qpMinStock").value || 5, 10)

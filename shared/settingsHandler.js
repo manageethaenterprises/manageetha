@@ -1,4 +1,4 @@
-const { getSQL } = require("../shared/db");
+const { getSQL } = require("./db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
@@ -108,7 +108,7 @@ function maskEmail(email) {
   return `${first}${asterisks}${last}@${domain}`;
 }
 
-module.exports = async function handler(req, res) {
+async function handleSettings(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const user = authenticateUser(req);
@@ -585,4 +585,8 @@ module.exports = async function handler(req, res) {
     console.error("Settings handler error:", err);
     return res.status(500).json({ error: "Settings server error", details: err.message });
   }
+}
+
+module.exports = {
+  handleSettings
 };

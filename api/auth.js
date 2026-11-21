@@ -1,6 +1,7 @@
 const { getSQL } = require("../shared/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { handleSettings } = require("../shared/settingsHandler");
 
 const JWT_SECRET = process.env.JWT_SECRET || "business-erp-jwt-secret-key-2026";
 
@@ -9,6 +10,7 @@ module.exports = async function handler(req, res) {
 
   const action =
     req.query.action ||
+    req.body?.action ||
     (req.url && req.url.includes("/login")
       ? "login"
       : req.url && req.url.includes("/logout")
@@ -20,6 +22,20 @@ module.exports = async function handler(req, res) {
             : req.url && req.url.includes("/change-password")
               ? "change-password"
               : null);
+
+  const settingsActions = [
+    "get-profile",
+    "update-profile",
+    "send-otp",
+    "reset-password-otp",
+    "admin-users-list",
+    "admin-update-user",
+    "admin-reset-password",
+    "admin-send-user-otp",
+  ];
+  if (settingsActions.includes(action) || (req.url && req.url.includes("/settings"))) {
+    return handleSettings(req, res);
+  }
 
   const sql = getSQL();
 

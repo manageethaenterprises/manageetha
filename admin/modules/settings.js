@@ -77,7 +77,7 @@ async function renderSettingsModule(tabKey, container) {
 
 async function fetchUserProfileData() {
   try {
-    const res = await fetch(`${API_BASE}/settings?action=get-profile`, {
+    const res = await fetch(`${API_BASE}/auth?action=get-profile`, {
       headers: authHeaders()
     });
     const data = await res.json();
@@ -219,7 +219,7 @@ function loadProfileSubTab() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/settings?action=update-profile`, {
+      const res = await fetch(`${API_BASE}/auth?action=update-profile`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload)
@@ -440,7 +440,7 @@ function loadSecuritySubTab() {
     const statusBanner = document.getElementById("otpStatusBanner");
 
     try {
-      const res = await fetch(`${API_BASE}/settings?action=send-otp`, {
+      const res = await fetch(`${API_BASE}/auth?action=send-otp`, {
         method: "POST",
         headers: authHeaders()
       });
@@ -509,7 +509,7 @@ function loadSecuritySubTab() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/settings?action=reset-password-otp`, {
+      const res = await fetch(`${API_BASE}/auth?action=reset-password-otp`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
@@ -760,7 +760,7 @@ async function loadManageUsersSubTab() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/settings?action=admin-update-user`, {
+      const res = await fetch(`${API_BASE}/auth?action=admin-update-user`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload)
@@ -803,7 +803,7 @@ async function loadManageUsersSubTab() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/settings?action=admin-reset-password`, {
+      const res = await fetch(`${API_BASE}/auth?action=admin-reset-password`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
@@ -852,7 +852,7 @@ async function fetchAdminUsers() {
   if (!tbody) return;
 
   try {
-    const res = await fetch(`${API_BASE}/settings?action=admin-users-list&company_id=${comp}`, {
+    const res = await fetch(`${API_BASE}/auth?action=admin-users-list&company_id=${comp}`, {
       headers: authHeaders()
     });
     const data = await res.json();
@@ -996,7 +996,7 @@ function renderAdminUsersTable() {
       btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
 
       try {
-        const res = await fetch(`${API_BASE}/settings?action=admin-send-user-otp`, {
+        const res = await fetch(`${API_BASE}/auth?action=admin-send-user-otp`, {
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({ target_user_id: uid })

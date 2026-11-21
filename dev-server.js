@@ -104,8 +104,8 @@ app.all('/api/marketing', runHandler('./api/marketing'));
 // 12. Reports
 app.all('/api/reports', runHandler('./api/reports'));
 
-// 13. Settings (+ profile, password reset OTP, user management)
-app.all('/api/settings', runHandler('./api/settings'));
+// 13. Settings (routed to auth handler to stay within Vercel 12-function limit)
+app.all('/api/settings', runHandler('./api/auth'));
 
 // ═══════════════ STATIC FILES ═══════════════
 app.use(express.static(__dirname));

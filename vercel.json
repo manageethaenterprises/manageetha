@@ -17,7 +17,7 @@
     { "source": "/api/accountant", "destination": "/api/accountant" },
     { "source": "/api/marketing", "destination": "/api/marketing" },
     { "source": "/api/reports", "destination": "/api/reports" },
-    { "source": "/api/settings", "destination": "/api/settings" }
+    { "source": "/api/settings", "destination": "/api/auth" }
   ],
   "headers": [
     {

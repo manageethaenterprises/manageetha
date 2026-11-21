@@ -933,7 +933,7 @@ async function loadProductsSubTab() {
               </div>
               <div class="form-group">
                 <label class="form-label">Selling Percentage (%)</label>
-                <input type="number" step="0.01" id="pSellingPct" class="form-input" value="100" placeholder="100">
+                <input type="number" step="0.01" id="pSellingPct" class="form-input" value="0" placeholder="0">
               </div>
               <div class="form-group">
                 <label class="form-label">Selling Price Excl. Tax (₹)</label>
@@ -1434,7 +1434,7 @@ async function loadProductsSubTab() {
               document.getElementById("pPurRate").value = p.purchase_rate || '';
               document.getElementById("pPurRateIncl").value = p.purchase_rate_incl_tax || '';
               document.getElementById("pTransportExp").value = p.transport_expenses || '0';
-              document.getElementById("pSellingPct").value = p.selling_percentage !== undefined ? p.selling_percentage : '100';
+              document.getElementById("pSellingPct").value = p.selling_percentage !== undefined ? p.selling_percentage : '0';
               document.getElementById("pSellRate").value = p.selling_rate || '';
               const mrpEl = document.getElementById("pMrp");
               if (mrpEl) {
@@ -5712,7 +5712,7 @@ function openQuickAddProductModal(onProductCreated, defaultSupplierId = null) {
 
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:12px;font-weight:600;margin-bottom:3px;">Selling Percentage (%)</label>
-              <input type="number" step="0.01" id="qpSellingPct" class="form-input" value="100" placeholder="100" style="padding:6px 10px;font-size:13px;">
+              <input type="number" step="0.01" id="qpSellingPct" class="form-input" value="0" placeholder="0" style="padding:6px 10px;font-size:13px;">
             </div>
 
             <div class="form-group" style="margin-bottom:0;">

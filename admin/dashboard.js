@@ -606,6 +606,19 @@ function renderUserInfo() {
   document.getElementById("userRole").textContent = u.role.replace(/_/g, " ");
   document.getElementById("headerAvatar").textContent = u.username.charAt(0).toUpperCase();
 
+  const userInfoEl = document.getElementById("userInfo");
+  if (userInfoEl && !userInfoEl.dataset.hasSettingsClick) {
+    userInfoEl.dataset.hasSettingsClick = "true";
+    userInfoEl.style.cursor = "pointer";
+    userInfoEl.title = "Click to view Profile & Settings (Email OTP)";
+    userInfoEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (typeof switchTab === "function") {
+        switchTab("gen_settings");
+      }
+    });
+  }
+
   // Update brand
   if (u.company_logo) {
     const logoBox = document.getElementById("logoBox");
@@ -840,7 +853,8 @@ const ALIAS_TO_CANONICAL_MAP = {
 
   // General
   'gen_today_tasks': 'gen_today_tasks', 'today_tasks': 'gen_today_tasks',
-  'gen_apply_leave': 'gen_apply_leave', 'apply_leave': 'gen_apply_leave'
+  'gen_apply_leave': 'gen_apply_leave', 'apply_leave': 'gen_apply_leave',
+  'gen_settings': 'gen_settings', 'profile_settings': 'gen_settings', 'profile': 'gen_settings'
 };
 
 window.hasMenuAccess = function (tabOrMenuKey) {
@@ -849,10 +863,15 @@ window.hasMenuAccess = function (tabOrMenuKey) {
   if (!user) return false;
   if (user.role === 'superadmin') return true;
 
+  const clean = String(tabOrMenuKey).trim().toLowerCase();
+
+  // Settings & Profile accessible to all authenticated users
+  if (['gen_settings', 'profile_settings', 'profile'].includes(clean)) {
+    return true;
+  }
+
   const menus = window.currentMenus || (typeof currentMenus !== 'undefined' ? currentMenus : []);
   if (!Array.isArray(menus) || menus.length === 0) return false;
-
-  const clean = String(tabOrMenuKey).trim().toLowerCase();
 
   // 1. Direct match on menu_key
   if (menus.some(m => (m.menu_key || '').trim().toLowerCase() === clean)) {
@@ -1080,7 +1099,7 @@ window.addEventListener("hashchange", () => {
 
 // ═══════════════ LOAD MODULES ═══════════════
 
-const ERP_MODULE_VERSION = "20261121_v3";
+const ERP_MODULE_VERSION = "20261121_v4";
 
 function loadModules() {
   // Load module scripts dynamically with cache-busting version query parameter
@@ -1094,6 +1113,7 @@ function loadModules() {
     "/admin/modules/accountant.js",
     "/admin/modules/marketing.js",
     "/admin/modules/reports.js",
+    "/admin/modules/settings.js",
   ];
 
   scripts.forEach((src) => {

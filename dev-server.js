@@ -104,6 +104,9 @@ app.all('/api/marketing', runHandler('./api/marketing'));
 // 12. Reports
 app.all('/api/reports', runHandler('./api/reports'));
 
+// 13. Settings (+ profile, password reset OTP, user management)
+app.all('/api/settings', runHandler('./api/settings'));
+
 // ═══════════════ STATIC FILES ═══════════════
 app.use(express.static(__dirname));
 

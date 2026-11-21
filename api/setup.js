@@ -1574,6 +1574,7 @@ module.exports = async function handler(req, res) {
       // General
       { cat: 'general', key: 'gen_apply_leave', label: 'Apply Leave', icon: '🏖️', sort: 0 },
       { cat: 'general', key: 'gen_today_tasks', label: 'Today Tasks', icon: '📋', sort: 1 },
+      { cat: 'general', key: 'gen_settings', label: 'Settings', icon: '⚙️', sort: 2 },
     ];
 
     for (const m of menuItems) {

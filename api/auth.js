@@ -294,6 +294,18 @@ function getISTTime(d = new Date()) {
         `;
       }
 
+      // Ensure 'gen_settings' (Settings in General menu) is always present for all users
+      if (!mappedMenus.some(m => (m.menu_key || '').trim().toLowerCase() === 'gen_settings')) {
+        mappedMenus.push({
+          menu_key: 'gen_settings',
+          menu_label: 'Settings',
+          icon: '⚙️',
+          category_key: 'general',
+          category_label: 'General',
+          category_icon: '📋'
+        });
+      }
+
       // Send companies (all for superadmin, assigned company + branches for others)
       let companies = [];
       if (user.role === "superadmin") {

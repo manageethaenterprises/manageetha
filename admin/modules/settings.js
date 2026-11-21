@@ -433,9 +433,10 @@ function loadSecuritySubTab() {
   const btnRequest = document.getElementById("btnRequestOtp");
   btnRequest?.addEventListener("click", async () => {
     if (btnRequest.disabled) return;
-    const origHtml = btnRequest.innerHTML;
     btnRequest.disabled = true;
-    btnRequest.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i> Sending OTP...`;
+    btnRequest.style.pointerEvents = "none";
+    btnRequest.style.opacity = "0.75";
+    btnRequest.innerHTML = `<span class="btn-spinner-inline" style="display:inline-block;width:13px;height:13px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;margin-right:6px;vertical-align:middle;"></span> Sending OTP...`;
 
     const statusBanner = document.getElementById("otpStatusBanner");
 
@@ -471,12 +472,16 @@ function loadSecuritySubTab() {
           statusBanner.innerHTML = `<strong>❌ Error:</strong> ${esc(data.error || "Failed to dispatch OTP email.")}`;
         }
         btnRequest.disabled = false;
-        btnRequest.innerHTML = origHtml;
+        btnRequest.style.pointerEvents = "";
+        btnRequest.style.opacity = "";
+        btnRequest.innerHTML = `<span>📩</span> <span id="btnRequestOtpText">Send Verification OTP</span>`;
       }
     } catch (err) {
       showToast("Error requesting OTP: " + err.message, "error");
       btnRequest.disabled = false;
-      btnRequest.innerHTML = origHtml;
+      btnRequest.style.pointerEvents = "";
+      btnRequest.style.opacity = "";
+      btnRequest.innerHTML = `<span>📩</span> <span id="btnRequestOtpText">Send Verification OTP</span>`;
     }
   });
 
@@ -544,25 +549,54 @@ function loadSecuritySubTab() {
       }
     }
   });
+
+  if (otpCooldownSeconds > 0) {
+    startOtpCooldown(otpCooldownSeconds);
+  }
 }
 
 function startOtpCooldown(seconds) {
-  if (otpCooldownTimer) clearInterval(otpCooldownTimer);
+  if (otpCooldownTimer) {
+    clearInterval(otpCooldownTimer);
+    otpCooldownTimer = null;
+  }
   otpCooldownSeconds = seconds;
 
   const btn = document.getElementById("btnRequestOtp");
-  const btnText = document.getElementById("btnRequestOtpText");
+  if (!btn) return;
 
-  if (btn) btn.disabled = true;
+  btn.disabled = true;
+  btn.style.pointerEvents = "none";
+  btn.style.opacity = "0.75";
+  btn.style.cursor = "not-allowed";
+
+  const renderTimerText = (sec) => {
+    btn.innerHTML = `<span>⏱️</span> <span id="btnRequestOtpText">Resend OTP in ${sec}s</span>`;
+  };
+
+  renderTimerText(otpCooldownSeconds);
 
   otpCooldownTimer = setInterval(() => {
     otpCooldownSeconds--;
-    if (btnText) btnText.textContent = `Resend OTP in ${otpCooldownSeconds}s`;
+    const curBtn = document.getElementById("btnRequestOtp");
+    if (!curBtn) {
+      if (otpCooldownSeconds <= 0) {
+        clearInterval(otpCooldownTimer);
+        otpCooldownTimer = null;
+      }
+      return;
+    }
 
-    if (otpCooldownSeconds <= 0) {
+    if (otpCooldownSeconds > 0) {
+      renderTimerText(otpCooldownSeconds);
+    } else {
       clearInterval(otpCooldownTimer);
-      if (btn) btn.disabled = false;
-      if (btnText) btnText.textContent = `Resend Verification OTP`;
+      otpCooldownTimer = null;
+      curBtn.disabled = false;
+      curBtn.style.pointerEvents = "";
+      curBtn.style.opacity = "";
+      curBtn.style.cursor = "pointer";
+      curBtn.innerHTML = `<span>📩</span> <span id="btnRequestOtpText">Resend Verification OTP</span>`;
     }
   }, 1000);
 }

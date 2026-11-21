@@ -1085,15 +1085,40 @@ window.openRaiseInvoiceModal = openRaiseInvoiceModal;
 async function openRaiseDcModal(sale, onSuccess) {
   let saleItems = [];
   let saleObj = sale;
+  const loggedUser = (typeof currentUser !== "undefined" && currentUser) ? currentUser : JSON.parse(localStorage.getItem("erp_user") || "{}");
+  const isSuper = loggedUser && (loggedUser.role === "superadmin" || loggedUser.username === "superadmin");
+
   try {
     const res = await fetch(`${API_BASE}/sales?action=get-details&id=${sale.id}`, { headers: authHeaders() });
     const data = await res.json();
     if (data.success) {
       if (data.sale) saleObj = { ...sale, ...data.sale };
       if (data.items) saleItems = data.items;
+      if (data.payments && Array.isArray(data.payments)) {
+        saleObj.payments = data.payments;
+        const totalPaid = data.payments.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+        saleObj.paid_amount = totalPaid;
+      }
     }
   } catch (err) {
     console.error("Failed to load sale details for DC modal:", err);
+  }
+
+  // Permission guard for non-superadmin employees:
+  if (!isSuper) {
+    const hasInvoice = Boolean((saleObj.invoice_number && String(saleObj.invoice_number).trim() !== '') || saleObj.has_invoice);
+    if (!hasInvoice) {
+      showToast("Access Restricted: Tax Invoice must be raised first before issuing Delivery Challan. (Only Superadmin can bypass).", "error");
+      return;
+    }
+
+    const grand = parseFloat(saleObj.grand_total || 0);
+    const paid = parseFloat(saleObj.paid_amount || 0);
+    const pending = Math.max(0, grand - paid);
+    if (pending > 0.01) {
+      showToast(`Access Restricted: Cannot issue Delivery Challan with an outstanding balance of ${formatCurrency(pending)}. Full payment of the bill is required before issuing DC. (Only Superadmin can bypass).`, "error");
+      return;
+    }
   }
 
   const overlay = document.createElement("div");
@@ -8086,11 +8111,15 @@ async function loadInvoicesSubTab() {
                     <button class="btn btn-sm btn-primary printPendingDcBtn" data-saleid="${s.id}">
                       🚚 Print DC
                     </button>
-                  ` : `
+                  ` : (isSuper ? `
                     <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">
                       🚚 Raise DC
                     </button>
-                  `}
+                  ` : `
+                    <button class="btn btn-sm btn-outline-secondary" disabled title="Tax Invoice must be raised first before issuing Delivery Challan (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.65;font-weight:600;font-size:11.5px;">
+                      🔒 DC Locked (Invoice Required)
+                    </button>
+                  `)}
                   <button class="btn btn-sm btn-info raiseTaxInvBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;border:none;font-weight:700;">
                     🧾 Raise Tax Invoice
                   </button>
@@ -8243,7 +8272,17 @@ async function loadInvoicesSubTab() {
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
                 ${hasInvoiceNo ? `<button class="btn btn-sm btn-info printInvFromInvBtn" data-saleid="${i.sale_id}">🧾 Print Tax Invoice</button>` : ''}
                 ${showPrintDcBtn ? `<button class="btn btn-sm btn-primary printDcFromInvBtn" data-saleid="${i.sale_id}">🚚 Print DC</button>` : ''}
-                ${showRaiseDcBtn ? `<button class="btn btn-sm btn-success raiseDcFromInvBtn" data-sale='${JSON.stringify({ id: i.sale_id, customer_name: i.customer_name, cell_phone: custPhone, grand_total: grand, company_id: i.company_id, sale_date: i.invoice_date, invoice_number: i.invoice_number }).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">🚚 Raise DC</button>` : ''}
+                ${showRaiseDcBtn ? (
+                  (isPaid || isSuper) ? `
+                    <button class="btn btn-sm btn-success raiseDcFromInvBtn" data-sale='${JSON.stringify({ id: i.sale_id, customer_name: i.customer_name, cell_phone: custPhone, grand_total: grand, paid_amount: paid, company_id: i.company_id, sale_date: i.invoice_date, invoice_number: i.invoice_number }).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;" title="${(!isPaid && isSuper) ? `Superadmin Override: Pending Balance of ${formatCurrency(pending)}` : 'Generate Delivery Challan'}">
+                      🚚 Raise DC${(!isPaid && isSuper) ? ' (Superadmin)' : ''}
+                    </button>
+                  ` : `
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Cannot issue Delivery Challan: Outstanding balance of ${formatCurrency(pending)} pending. Full payment required before issuing DC. (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.75;font-weight:600;font-size:11.5px;">
+                      🔒 DC Locked (Bal: ${formatCurrency(pending)})
+                    </button>
+                  `
+                ) : ''}
                 ${pending > 0 ? `<button class="btn btn-sm btn-success recordPayInvBtn" data-saleid="${i.sale_id}">💳 Record Payment</button>` : ''}
                 ${isSuper ? `<button class="btn btn-sm btn-danger deleteInvBtn" data-invid="${i.id}" data-invno="${esc(i.invoice_number)}">🗑️ Delete</button>` : ''}
               </div>

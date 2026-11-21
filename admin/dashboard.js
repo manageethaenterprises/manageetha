@@ -527,7 +527,14 @@ async function initDashboard() {
     }
 
     window.currentUser = currentUser = data.user;
-    window.currentMenus = currentMenus = data.menus || [];
+    window.currentMenus = currentMenus = (data.menus || []).filter(m => {
+      if (currentUser.role === 'superadmin') {
+        const isToday = (m.menu_label && m.menu_label.toLowerCase().includes("today task")) ||
+                        (m.menu_key && m.menu_key.toLowerCase().includes("today_tasks"));
+        return !isToday;
+      }
+      return true;
+    });
     window.currentCompanies = currentCompanies = data.companies || [];
 
     // Lock company selection to logged-in user's assigned company if not superadmin
@@ -553,15 +560,21 @@ async function initDashboard() {
     // Preserve active route across refresh
     const hashRoute = location.hash.replace(/^#/, '');
     const savedRoute = hashRoute || localStorage.getItem("currentRoute");
-    if (savedRoute && window.hasMenuAccess(savedRoute)) {
+    const isSuper = currentUser.role === "superadmin";
+    const isTodayRoute = savedRoute && (savedRoute.includes("today_tasks") || savedRoute === "today_tasks");
+
+    if (savedRoute && window.hasMenuAccess(savedRoute) && !(isSuper && isTodayRoute)) {
       switchTab(savedRoute);
-    } else if (currentUser.role !== "superadmin") {
+    } else if (!isSuper) {
       // Default dashboard for employees/staff is Today Tasks
       const todayTasksMenu = currentMenus.find(m => m.menu_key && m.menu_key.includes("today_tasks") && window.hasMenuAccess(m.menu_key)) || currentMenus[0];
       if (todayTasksMenu) switchTab(todayTasksMenu.menu_key);
       else if (currentMenus.length > 0) switchTab(currentMenus[0].menu_key);
     } else if (currentMenus.length > 0) {
-      switchTab(currentMenus[0].menu_key);
+      const saDefault = currentMenus.find(m => m.menu_key === 'sa_dashboard' || m.menu_key === 'sa_superpanel') ||
+                        currentMenus.find(m => !m.menu_key.includes('today_tasks')) ||
+                        currentMenus[0];
+      if (saDefault) switchTab(saDefault.menu_key);
     }
 
     // Start activity heartbeat (keeps online status accurate)
@@ -634,9 +647,13 @@ function renderSidebar() {
   nav.innerHTML = "";
 
   if (currentUser.role === "superadmin") {
-    // Superadmin sees all menus grouped by category
+    // Superadmin sees all menus grouped by category (excluding module Today Tasks)
     const grouped = {};
     currentMenus.forEach((m) => {
+      const isTodayTask = (m.menu_label && m.menu_label.toLowerCase().includes("today task")) ||
+                          (m.menu_key && m.menu_key.toLowerCase().includes("today_tasks"));
+      if (isTodayTask) return;
+
       const catKey = m.category_key || "general";
       if (!grouped[catKey]) {
         grouped[catKey] = { label: m.category_label || catKey, icon: m.category_icon || "📋", items: [] };
@@ -645,6 +662,7 @@ function renderSidebar() {
     });
 
     Object.entries(grouped).forEach(([catKey, cat]) => {
+      if (!cat.items || cat.items.length === 0) return;
       nav.innerHTML += `<div class="nav-category" data-cat="${esc(catKey)}">${esc(cat.icon)} ${esc(cat.label)}</div>`;
       cat.items.forEach((m) => {
         const cleanKey = esc((m.menu_key || '').trim());
@@ -861,7 +879,13 @@ window.hasMenuAccess = function (tabOrMenuKey) {
   if (!tabOrMenuKey) return false;
   const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
   if (!user) return false;
-  if (user.role === 'superadmin') return true;
+  if (user.role === 'superadmin') {
+    const clean = String(tabOrMenuKey).trim().toLowerCase();
+    if (clean.includes('today_tasks') || clean === 'today_tasks') {
+      return false;
+    }
+    return true;
+  }
 
   const clean = String(tabOrMenuKey).trim().toLowerCase();
 
@@ -926,7 +950,15 @@ window.hasMenuAccess = function (tabOrMenuKey) {
 window.renderModuleSubTabsBar = function (allTabs, activeKey) {
   const user = window.currentUser || (typeof currentUser !== 'undefined' ? currentUser : null);
   const isSuper = user && user.role === 'superadmin';
-  const permitted = isSuper ? allTabs : allTabs.filter(t => window.hasMenuAccess(t.key));
+  let candidateTabs = allTabs;
+  if (isSuper) {
+    candidateTabs = allTabs.filter(t => {
+      const isToday = (t.label && t.label.toLowerCase().includes("today task")) ||
+                      (t.key && (t.key.toLowerCase().includes("today_tasks") || t.key.toLowerCase().includes("tasks")));
+      return !isToday;
+    });
+  }
+  const permitted = isSuper ? candidateTabs : candidateTabs.filter(t => window.hasMenuAccess(t.key));
 
   if (permitted.length === 0) {
     return {
@@ -984,7 +1016,11 @@ function switchTab(tabKey) {
     if (typeof showToast === "function") {
       showToast("Access Restricted: You do not have permission for this section.", "error");
     }
-    const fallbackMenu = (window.currentMenus && window.currentMenus.length > 0) ? window.currentMenus[0].menu_key : null;
+    const fallbackMenu = (window.currentMenus && window.currentMenus.length > 0)
+      ? (window.currentUser && window.currentUser.role === 'superadmin'
+          ? (window.currentMenus.find(m => !m.menu_key.includes('today_tasks')) || window.currentMenus[0]).menu_key
+          : window.currentMenus[0].menu_key)
+      : null;
     if (fallbackMenu && fallbackMenu !== cleanKey && window.hasMenuAccess(fallbackMenu)) {
       return switchTab(fallbackMenu);
     }
@@ -1091,7 +1127,10 @@ window.addEventListener("hashchange", () => {
       if (activeTab && window.hasMenuAccess(activeTab)) {
         try { history.replaceState(null, '', `#${activeTab}`); } catch(e) {}
       } else if (window.currentMenus && window.currentMenus.length > 0) {
-        switchTab(window.currentMenus[0].menu_key);
+        const fallback = (window.currentUser && window.currentUser.role === 'superadmin')
+          ? (window.currentMenus.find(m => !m.menu_key.includes('today_tasks')) || window.currentMenus[0]).menu_key
+          : window.currentMenus[0].menu_key;
+        switchTab(fallback);
       }
     }
   }
@@ -1099,7 +1138,7 @@ window.addEventListener("hashchange", () => {
 
 // ═══════════════ LOAD MODULES ═══════════════
 
-const ERP_MODULE_VERSION = "20261121_v9";
+const ERP_MODULE_VERSION = "20261121_v10";
 
 function loadModules() {
   // Load module scripts dynamically with cache-busting version query parameter

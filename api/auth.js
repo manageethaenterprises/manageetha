@@ -269,11 +269,12 @@ function getISTTime(d = new Date()) {
       // Get mapped menus for this user (supports custom per-user menu configuration or role defaults)
       let mappedMenus = [];
       if (user.role === "superadmin") {
-        // Superadmin gets all superadmin menus
+        // Superadmin gets all superadmin menus (excluding module-level Today Tasks)
         mappedMenus = await sql`
           SELECT m.menu_key, m.menu_label, m.icon, mc.category_key, mc.category_label, mc.icon as category_icon
           FROM menus m
           JOIN menu_categories mc ON m.category_id = mc.id
+          WHERE m.menu_key NOT ILIKE '%today_tasks%' AND m.menu_label NOT ILIKE '%today task%'
           ORDER BY mc.sort_order, m.sort_order
         `;
       } else if (user.custom_menus_json && typeof user.custom_menus_json === "string" && user.custom_menus_json.trim() !== "") {

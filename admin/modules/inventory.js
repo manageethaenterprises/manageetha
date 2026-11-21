@@ -463,7 +463,15 @@ async function openSupplierModal(supplierObj = null, onSuccessCallback = null, d
 
   initialContacts.forEach(c => renderContactRow(c));
 
-  overlay.querySelector("#addContactRowBtn").addEventListener("click", () => renderContactRow());
+  overlay.querySelector("#addContactRowBtn").addEventListener("click", () => {
+    renderContactRow();
+    const lastRow = contactsListContainer.lastElementChild;
+    if (lastRow) {
+      setTimeout(() => {
+        lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 30);
+    }
+  });
 
   overlay.querySelector("#supplierForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1026,7 +1034,7 @@ async function loadProductsSubTab() {
       ).join('');
   }
 
-  function appendSupplierRow(item = {}, isChecked = false) {
+  function appendSupplierRow(item = {}, isChecked = false, autoScroll = false) {
     const tbody = document.getElementById("pSuppliersTableBody");
     if (!tbody) return;
 
@@ -1060,6 +1068,12 @@ async function loadProductsSubTab() {
     `;
 
     tbody.appendChild(tr);
+
+    if (autoScroll) {
+      setTimeout(() => {
+        tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 30);
+    }
 
     const radio = tr.querySelector(".p-sup-primary-radio");
     const sel = tr.querySelector(".p-sup-select");
@@ -1698,7 +1712,7 @@ async function loadProductsSubTab() {
   });
 
   on("pAddSupplierRowBtn", "click", () => {
-    appendSupplierRow({}, false);
+    appendSupplierRow({}, false, true);
   });
 
   on("quickAddSupInProdBtn", "click", () => {
@@ -6071,7 +6085,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
             }
           </style>
 
-          <div class="table-container" style="max-height:380px;overflow-y:auto;overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+          <div class="table-container" id="mpTableContainer" style="max-height:400px;overflow-y:auto;overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05);scroll-behavior:smooth;scroll-padding-bottom:60px;">
             <table class="data-table mp-entry-table" style="font-size:12.5px;width:100%;min-width:1320px;border-collapse:collapse;">
               <thead>
                 <tr style="background:var(--bg-secondary);">
@@ -6292,7 +6306,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     }
   }
 
-  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '', initialPkg = 0, initialTransport = 0, initialDiscount = 0) {
+  function addRow(initialProdId = null, initialQty = 1, initialRate = '', initialGst = 18, initialSerial = '', initialModel = '', initialPkg = 0, initialTransport = 0, initialDiscount = 0, autoScroll = false) {
     itemRowIndex++;
     const tr = document.createElement("tr");
     tr.id = `mpRow_${itemRowIndex}`;
@@ -6327,6 +6341,51 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     `;
 
     tbody.appendChild(tr);
+
+    if (autoScroll) {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const tableContainer = overlay.querySelector("#mpTableContainer") || tbody.closest('.table-container') || tbody.parentElement;
+          if (tableContainer) {
+            tableContainer.scrollTo({
+              top: tableContainer.scrollHeight + 500,
+              behavior: 'smooth'
+            });
+          }
+          const modalBody = overlay.querySelector('.modal-body') || tbody.closest('.modal-body');
+          if (modalBody) {
+            const addBtn = overlay.querySelector('#mpAddRowBtn');
+            const target = addBtn || tableContainer;
+            if (target) {
+              const targetRect = target.getBoundingClientRect();
+              const mbRect = modalBody.getBoundingClientRect();
+              if (targetRect.bottom > mbRect.bottom) {
+                modalBody.scrollBy({
+                  top: (targetRect.bottom - mbRect.bottom) + 30,
+                  behavior: 'smooth'
+                });
+              }
+            }
+          }
+          // Flash / highlight newly created row
+          tr.style.transition = 'background-color 0.8s ease';
+          tr.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+          setTimeout(() => {
+            tr.style.backgroundColor = '';
+          }, 1200);
+
+          // Focus product selector in new row
+          const pSel = tr.querySelector('.mpProdSel');
+          if (pSel) {
+            try {
+              pSel.focus({ preventScroll: true });
+            } catch (_) {
+              pSel.focus();
+            }
+          }
+        }, 30);
+      });
+    }
 
     const prodSel = tr.querySelector(".mpProdSel");
     const serialInp = tr.querySelector(".mpSerialNo");
@@ -6587,7 +6646,9 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
     addRow();
   }
 
-  overlay.querySelector("#mpAddRowBtn").addEventListener("click", () => addRow());
+  overlay.querySelector("#mpAddRowBtn").addEventListener("click", () => {
+    addRow(null, 1, '', 18, '', '', 0, 0, 0, true);
+  });
   overlay.querySelector("#mpAddQuickProdHeaderBtn").addEventListener("click", () => {
     const curSupId = overlay.querySelector("#mpSupplierId")?.value || null;
     openQuickAddProductModal((newP) => {
@@ -6596,7 +6657,7 @@ async function openMultiPurchaseEntryModal(onSuccessCallback, editPurchase = nul
         const val = sel.value;
         sel.innerHTML = renderProductOptionsHtml(val);
       });
-      addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18, '', newP.model || '', newP.packaging_charges || 0, newP.transport_expenses || 0, 0);
+      addRow(newP.id, 1, newP.purchase_rate || 0, newP.gst_rate || 18, '', newP.model || '', newP.packaging_charges || 0, newP.transport_expenses || 0, 0, true);
     }, curSupId);
   });
 

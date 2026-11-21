@@ -3288,6 +3288,12 @@ function openCustomInvoiceModal(onSuccess) {
   document.getElementById("btnAddCustItem").addEventListener("click", () => {
     addItemRow("", "", 0, 0);
     recalcCustomTotals();
+    const lastRow = itemsTbody.lastElementChild;
+    if (lastRow) {
+      setTimeout(() => {
+        lastRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 30);
+    }
   });
 
   invTypeSel.addEventListener("change", (e) => {

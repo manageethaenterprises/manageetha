@@ -2889,6 +2889,9 @@ async function loadLeaveSubTab(isGenApplyLeave = false) {
           </td>
         `;
         tbody.appendChild(tr);
+        setTimeout(() => {
+          tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 30);
       });
     }
   }

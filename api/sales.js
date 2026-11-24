@@ -1760,8 +1760,20 @@ module.exports = async function handler(req, res) {
       const sale = sRows[0];
       const compId = sale.company_id;
 
-      // Permission guard: Only superadmin can raise DC if pending balance is more than ₹10,000
+      // Permission guard: Only superadmin can raise DC without prior Tax Invoice or if pending balance is more than ₹10,000
       if (user.role !== "superadmin") {
+        const invRows = await sql`
+          SELECT id, invoice_number FROM invoices 
+          WHERE sale_id = ${sale.id}
+          LIMIT 1
+        `;
+        const hasInvoice = Boolean((sale.invoice_number && sale.invoice_number.trim() !== '') || (invRows.length > 0 && invRows[0].invoice_number));
+        if (!hasInvoice) {
+          return res.status(400).json({
+            error: "Delivery Challan cannot be issued before raising Tax Invoice. Please raise Tax Invoice first. (Only Superadmin can bypass)."
+          });
+        }
+
         const paySum = await sql`
           SELECT COALESCE(SUM(amount), 0) as total_paid 
           FROM sale_payments 

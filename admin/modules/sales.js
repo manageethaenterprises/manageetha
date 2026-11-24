@@ -1106,6 +1106,12 @@ async function openRaiseDcModal(sale, onSuccess) {
 
   // Permission guard for non-superadmin employees:
   if (!isSuper) {
+    const hasInvoice = Boolean((saleObj.invoice_number && String(saleObj.invoice_number).trim() !== '') || saleObj.has_invoice);
+    if (!hasInvoice) {
+      showToast("Access Restricted: Tax Invoice must be raised first before issuing Delivery Challan. (Only Superadmin can bypass).", "error");
+      return;
+    }
+
     const grand = parseFloat(saleObj.grand_total || 0);
     const paid = parseFloat(saleObj.paid_amount || 0);
     const pending = Math.max(0, grand - paid);
@@ -8109,13 +8115,13 @@ async function loadInvoicesSubTab() {
                     <button class="btn btn-sm btn-primary printPendingDcBtn" data-saleid="${s.id}">
                       🚚 Print DC
                     </button>
-                  ` : (canRaisePendingDc ? `
-                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;" title="${(! (pPending <= 10000) && isSuper) ? `Superadmin Override: Pending Balance of ${formatCurrency(pPending)} (> ₹10,000)` : 'Generate Delivery Challan'}">
-                      🚚 Raise DC${(! (pPending <= 10000) && isSuper) ? ' (Superadmin)' : ''}
+                  ` : (isSuper ? `
+                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">
+                      🚚 Raise DC
                     </button>
                   ` : `
-                    <button class="btn btn-sm btn-outline-danger" disabled title="Cannot issue Delivery Challan: Outstanding balance of ${formatCurrency(pPending)} exceeds ₹10,000 threshold. (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.75;font-weight:600;font-size:11.5px;">
-                      🔒 DC Locked (Bal: ${formatCurrency(pPending)})
+                    <button class="btn btn-sm btn-outline-secondary" disabled title="Tax Invoice must be raised first before issuing Delivery Challan (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.65;font-weight:600;font-size:11.5px;">
+                      🔒 DC Locked (Invoice Required)
                     </button>
                   `)}
                   <button class="btn btn-sm btn-info raiseTaxInvBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;border:none;font-weight:700;">

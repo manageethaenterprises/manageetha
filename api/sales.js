@@ -1760,20 +1760,8 @@ module.exports = async function handler(req, res) {
       const sale = sRows[0];
       const compId = sale.company_id;
 
-      // Permission guard: Only superadmin can raise DC without prior Tax Invoice or with outstanding balance
+      // Permission guard: Only superadmin can raise DC if pending balance is more than ₹10,000
       if (user.role !== "superadmin") {
-        const invRows = await sql`
-          SELECT id, invoice_number FROM invoices 
-          WHERE sale_id = ${sale.id}
-          LIMIT 1
-        `;
-        const hasInvoice = Boolean((sale.invoice_number && sale.invoice_number.trim() !== '') || (invRows.length > 0 && invRows[0].invoice_number));
-        if (!hasInvoice) {
-          return res.status(400).json({
-            error: "Delivery Challan cannot be issued before raising Tax Invoice. Please raise Tax Invoice first. (Only Superadmin can bypass)."
-          });
-        }
-
         const paySum = await sql`
           SELECT COALESCE(SUM(amount), 0) as total_paid 
           FROM sale_payments 
@@ -1783,9 +1771,9 @@ module.exports = async function handler(req, res) {
         const grandTotal = parseFloat(sale.grand_total || 0);
         const pendingBalance = Math.max(0, grandTotal - totalPaid);
 
-        if (pendingBalance > 0.01) {
+        if (pendingBalance > 10000) {
           return res.status(400).json({
-            error: `Delivery Challan cannot be issued with an outstanding balance of ₹${pendingBalance.toFixed(2)}. Full payment of the bill is required before issuing DC. (Only Superadmin can bypass).`
+            error: `Delivery Challan cannot be issued with an outstanding balance of ₹${pendingBalance.toFixed(2)}. Employees can only issue DC if the pending balance is ₹10,000 or less. (Only Superadmin can bypass).`
           });
         }
       }

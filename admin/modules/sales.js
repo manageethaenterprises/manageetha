@@ -1106,17 +1106,11 @@ async function openRaiseDcModal(sale, onSuccess) {
 
   // Permission guard for non-superadmin employees:
   if (!isSuper) {
-    const hasInvoice = Boolean((saleObj.invoice_number && String(saleObj.invoice_number).trim() !== '') || saleObj.has_invoice);
-    if (!hasInvoice) {
-      showToast("Access Restricted: Tax Invoice must be raised first before issuing Delivery Challan. (Only Superadmin can bypass).", "error");
-      return;
-    }
-
     const grand = parseFloat(saleObj.grand_total || 0);
     const paid = parseFloat(saleObj.paid_amount || 0);
     const pending = Math.max(0, grand - paid);
-    if (pending > 0.01) {
-      showToast(`Access Restricted: Cannot issue Delivery Challan with an outstanding balance of ${formatCurrency(pending)}. Full payment of the bill is required before issuing DC. (Only Superadmin can bypass).`, "error");
+    if (pending > 10000) {
+      showToast(`Access Restricted: Cannot issue Delivery Challan with an outstanding balance of ${formatCurrency(pending)}. Employees can only issue DC if pending balance is ₹10,000 or less. (Only Superadmin can bypass).`, "error");
       return;
     }
   }
@@ -8090,6 +8084,10 @@ async function loadInvoicesSubTab() {
         if (filteredPending.length > 0) {
           pendingTbody.innerHTML = filteredPending.map(s => {
             const hasDc = Boolean(s.challan_number && s.challan_number !== '' && s.challan_number !== 'null');
+            const pGrand = parseFloat(s.grand_total || 0);
+            const pPaid = parseFloat(s.paid_amount || 0);
+            const pPending = Math.max(0, pGrand - pPaid);
+            const canRaisePendingDc = (pPending <= 10000) || isSuper;
             const dcBadge = hasDc
               ? `<span class="badge badge-purple" style="font-weight:700;">DC #${esc(s.challan_number)}</span>`
               : `<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">Order #${esc(s.id)} (DC Pending)</span>`;
@@ -8111,13 +8109,13 @@ async function loadInvoicesSubTab() {
                     <button class="btn btn-sm btn-primary printPendingDcBtn" data-saleid="${s.id}">
                       🚚 Print DC
                     </button>
-                  ` : (isSuper ? `
-                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">
-                      🚚 Raise DC
+                  ` : (canRaisePendingDc ? `
+                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;" title="${(! (pPending <= 10000) && isSuper) ? `Superadmin Override: Pending Balance of ${formatCurrency(pPending)} (> ₹10,000)` : 'Generate Delivery Challan'}">
+                      🚚 Raise DC${(! (pPending <= 10000) && isSuper) ? ' (Superadmin)' : ''}
                     </button>
                   ` : `
-                    <button class="btn btn-sm btn-outline-secondary" disabled title="Tax Invoice must be raised first before issuing Delivery Challan (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.65;font-weight:600;font-size:11.5px;">
-                      🔒 DC Locked (Invoice Required)
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Cannot issue Delivery Challan: Outstanding balance of ${formatCurrency(pPending)} exceeds ₹10,000 threshold. (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.75;font-weight:600;font-size:11.5px;">
+                      🔒 DC Locked (Bal: ${formatCurrency(pPending)})
                     </button>
                   `)}
                   <button class="btn btn-sm btn-info raiseTaxInvBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#4f46e5,#3b82f6);color:#fff;border:none;font-weight:700;">
@@ -8236,6 +8234,7 @@ async function loadInvoicesSubTab() {
           const grand = parseFloat(i.grand_total || 0);
           const pending = Math.max(0, grand - paid);
           const isPaid = pending <= 0.01;
+          const isEligibleForDc = pending <= 10000;
           const maxVal = Math.max(parseFloat(i.max_item_rate || 0), parseFloat(i.grand_total || 0), parseFloat(i.taxable_total || 0));
           const isCounterSale = i.party_type === 'counter' || (i.customer_name && String(i.customer_name).trim().toLowerCase() === 'counter customer');
           const hasDc = Boolean(i.challan_number && i.challan_number !== '' && i.challan_number !== 'null');
@@ -8273,12 +8272,12 @@ async function loadInvoicesSubTab() {
                 ${hasInvoiceNo ? `<button class="btn btn-sm btn-info printInvFromInvBtn" data-saleid="${i.sale_id}">🧾 Print Tax Invoice</button>` : ''}
                 ${showPrintDcBtn ? `<button class="btn btn-sm btn-primary printDcFromInvBtn" data-saleid="${i.sale_id}">🚚 Print DC</button>` : ''}
                 ${showRaiseDcBtn ? (
-                  (isPaid || isSuper) ? `
-                    <button class="btn btn-sm btn-success raiseDcFromInvBtn" data-sale='${JSON.stringify({ id: i.sale_id, customer_name: i.customer_name, cell_phone: custPhone, grand_total: grand, paid_amount: paid, company_id: i.company_id, sale_date: i.invoice_date, invoice_number: i.invoice_number }).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;" title="${(!isPaid && isSuper) ? `Superadmin Override: Pending Balance of ${formatCurrency(pending)}` : 'Generate Delivery Challan'}">
-                      🚚 Raise DC${(!isPaid && isSuper) ? ' (Superadmin)' : ''}
+                  (isEligibleForDc || isSuper) ? `
+                    <button class="btn btn-sm btn-success raiseDcFromInvBtn" data-sale='${JSON.stringify({ id: i.sale_id, customer_name: i.customer_name, cell_phone: custPhone, grand_total: grand, paid_amount: paid, company_id: i.company_id, sale_date: i.invoice_date, invoice_number: i.invoice_number }).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;" title="${(!isEligibleForDc && isSuper) ? `Superadmin Override: Pending Balance of ${formatCurrency(pending)} (> ₹10,000)` : 'Generate Delivery Challan'}">
+                      🚚 Raise DC${(!isEligibleForDc && isSuper) ? ' (Superadmin)' : ''}
                     </button>
                   ` : `
-                    <button class="btn btn-sm btn-outline-danger" disabled title="Cannot issue Delivery Challan: Outstanding balance of ${formatCurrency(pending)} pending. Full payment required before issuing DC. (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.75;font-weight:600;font-size:11.5px;">
+                    <button class="btn btn-sm btn-outline-danger" disabled title="Cannot issue Delivery Challan: Outstanding balance of ${formatCurrency(pending)} exceeds ₹10,000 threshold. (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.75;font-weight:600;font-size:11.5px;">
                       🔒 DC Locked (Bal: ${formatCurrency(pending)})
                     </button>
                   `

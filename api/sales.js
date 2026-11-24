@@ -1993,6 +1993,7 @@ module.exports = async function handler(req, res) {
       if (isAll) {
         rows = await sql`
           SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
+                 COALESCE(i.discount_amount, s.discount_amount, 0)::numeric as discount_amount,
                  COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
                  COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
                  c.name as company_name,
@@ -2016,6 +2017,7 @@ module.exports = async function handler(req, res) {
       } else {
         rows = await sql`
           SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
+                 COALESCE(i.discount_amount, s.discount_amount, 0)::numeric as discount_amount,
                  COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
                  COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
                  c.name as company_name,

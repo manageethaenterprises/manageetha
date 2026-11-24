@@ -8445,7 +8445,7 @@ async function loadInvoicesSubTab() {
             </td>
             <td style="font-weight:700;color:var(--text1);">
               ${formatCurrency(grand)}
-              ${parseFloat(s.discount_amount || 0) > 0 ? `<div style="font-size:10.5px;color:var(--warning);font-weight:600;">(-${formatCurrency(s.discount_amount)} disc)</div>` : ''}
+              ${parseFloat(i.discount_amount || 0) > 0 ? `<div style="font-size:10.5px;color:var(--warning);font-weight:600;">(-${formatCurrency(i.discount_amount)} disc)</div>` : ''}
             </td>
             <td style="font-weight:700;color:var(--success);">${formatCurrency(paid)}</td>
             <td style="font-weight:700;color:${pending > 0 ? 'var(--danger)' : 'var(--success)'};">

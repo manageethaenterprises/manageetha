@@ -205,7 +205,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-left: 3.5px solid #ffffff;
   border-radius: 6px;
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.8), 0 0 16px rgba(255, 255, 255, 0.45);
+  /* text-shadow: 0 0 8px rgba(255, 255, 255, 0.8), 0 0 16px rgba(255, 255, 255, 0.45); */
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.1), inset 0 0 8px rgba(255, 255, 255, 0.03);
   display: flex;
   align-items: center;

@@ -1986,61 +1986,75 @@ module.exports = async function handler(req, res) {
 
     // ═══════════════ INVOICES LIST ═══════════════
     else if (action === "invoices-list") {
+      try {
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0;`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_type VARCHAR(20) DEFAULT 'flat';`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_value NUMERIC(15,2) DEFAULT 0;`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0;`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_type VARCHAR(20) DEFAULT 'flat';`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_value NUMERIC(15,2) DEFAULT 0;`;
+      } catch (_) {}
+
       // Auto-heal and maintain continuous sequential numbering across branch families
       await resequenceInvoices(sql, null);
 
-      let rows;
-      if (isAll) {
-        rows = await sql`
-          SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
-                 COALESCE(i.discount_amount, s.discount_amount, 0)::numeric as discount_amount,
-                 COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
-                 COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
-                 c.name as company_name,
-                 COALESCE(ret.return_count, 0)::int as return_count,
-                 COALESCE(ret.total_refunded, 0)::numeric as total_refunded,
-                 COALESCE(item_stat.max_rate, s.grand_total, i.grand_total, 0)::numeric as max_item_rate
-          FROM invoices i
-          LEFT JOIN sales s ON i.sale_id = s.id
-          LEFT JOIN customers cust ON i.customer_id = cust.id
-          LEFT JOIN companies c ON i.company_id = c.id
-          LEFT JOIN (
-            SELECT sale_id, COUNT(id) as return_count, SUM(refund_amount) as total_refunded
-            FROM sales_returns GROUP BY sale_id
-          ) ret ON ret.sale_id = i.sale_id
-          LEFT JOIN (
-            SELECT sale_id, MAX(GREATEST(COALESCE(rate, 0), COALESCE(taxable_value, 0), COALESCE(total, 0))) as max_rate
-            FROM sale_items GROUP BY sale_id
-          ) item_stat ON (item_stat.sale_id = i.sale_id OR item_stat.sale_id = s.id)
-          ORDER BY i.created_at DESC
-        `;
-      } else {
-        rows = await sql`
-          SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
-                 COALESCE(i.discount_amount, s.discount_amount, 0)::numeric as discount_amount,
-                 COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
-                 COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
-                 c.name as company_name,
-                 COALESCE(ret.return_count, 0)::int as return_count,
-                 COALESCE(ret.total_refunded, 0)::numeric as total_refunded,
-                 COALESCE(item_stat.max_rate, s.grand_total, i.grand_total, 0)::numeric as max_item_rate
-          FROM invoices i
-          LEFT JOIN sales s ON i.sale_id = s.id
-          LEFT JOIN customers cust ON i.customer_id = cust.id
-          LEFT JOIN companies c ON i.company_id = c.id
-          LEFT JOIN (
-            SELECT sale_id, COUNT(id) as return_count, SUM(refund_amount) as total_refunded
-            FROM sales_returns GROUP BY sale_id
-          ) ret ON ret.sale_id = i.sale_id
-          LEFT JOIN (
-            SELECT sale_id, MAX(GREATEST(COALESCE(rate, 0), COALESCE(taxable_value, 0), COALESCE(total, 0))) as max_rate
-            FROM sale_items GROUP BY sale_id
-          ) item_stat ON (item_stat.sale_id = i.sale_id OR item_stat.sale_id = s.id)
-          WHERE i.company_id = ${parseInt(compQuery)}
-          ORDER BY i.created_at DESC
-        `;
+      try {
+        let rows;
+        if (isAll) {
+          rows = await sql`
+            SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
+                   COALESCE(s.discount_amount, 0)::numeric as discount_amount,
+                   COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
+                   COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
+                   c.name as company_name,
+                   COALESCE(ret.return_count, 0)::int as return_count,
+                   COALESCE(ret.total_refunded, 0)::numeric as total_refunded,
+                   COALESCE(item_stat.max_rate, s.grand_total, i.grand_total, 0)::numeric as max_item_rate
+            FROM invoices i
+            LEFT JOIN sales s ON i.sale_id = s.id
+            LEFT JOIN customers cust ON i.customer_id = cust.id
+            LEFT JOIN companies c ON i.company_id = c.id
+            LEFT JOIN (
+              SELECT sale_id, COUNT(id) as return_count, SUM(refund_amount) as total_refunded
+              FROM sales_returns GROUP BY sale_id
+            ) ret ON ret.sale_id = i.sale_id
+            LEFT JOIN (
+              SELECT sale_id, MAX(GREATEST(COALESCE(rate, 0), COALESCE(taxable_value, 0), COALESCE(total, 0))) as max_rate
+              FROM sale_items GROUP BY sale_id
+            ) item_stat ON (item_stat.sale_id = i.sale_id OR item_stat.sale_id = s.id)
+            ORDER BY i.created_at DESC
+          `;
+        } else {
+          rows = await sql`
+            SELECT i.*, s.challan_number, s.paid_amount, s.pending_amount, s.payment_status, s.payment_mode, s.is_custom, s.custom_type, s.party_type,
+                   COALESCE(s.discount_amount, 0)::numeric as discount_amount,
+                   COALESCE(s.customer_name, cust.name, 'Counter Customer') as customer_name,
+                   COALESCE(s.cell_phone, cust.phone, '') as customer_phone,
+                   c.name as company_name,
+                   COALESCE(ret.return_count, 0)::int as return_count,
+                   COALESCE(ret.total_refunded, 0)::numeric as total_refunded,
+                   COALESCE(item_stat.max_rate, s.grand_total, i.grand_total, 0)::numeric as max_item_rate
+            FROM invoices i
+            LEFT JOIN sales s ON i.sale_id = s.id
+            LEFT JOIN customers cust ON i.customer_id = cust.id
+            LEFT JOIN companies c ON i.company_id = c.id
+            LEFT JOIN (
+              SELECT sale_id, COUNT(id) as return_count, SUM(refund_amount) as total_refunded
+              FROM sales_returns GROUP BY sale_id
+            ) ret ON ret.sale_id = i.sale_id
+            LEFT JOIN (
+              SELECT sale_id, MAX(GREATEST(COALESCE(rate, 0), COALESCE(taxable_value, 0), COALESCE(total, 0))) as max_rate
+              FROM sale_items GROUP BY sale_id
+            ) item_stat ON (item_stat.sale_id = i.sale_id OR item_stat.sale_id = s.id)
+            WHERE i.company_id = ${parseInt(compQuery)}
+            ORDER BY i.created_at DESC
+          `;
+        }
+        return res.status(200).json({ success: true, invoices: rows });
+      } catch (listErr) {
+        console.error("invoices-list query error:", listErr);
+        return res.status(500).json({ error: "Failed to fetch invoices: " + listErr.message });
       }
-      return res.status(200).json({ success: true, invoices: rows });
     }
 
     // ═══════════════ RESEQUENCE INVOICES MANUAL TRIGGER ═══════════════

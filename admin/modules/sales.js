@@ -1105,19 +1105,24 @@ async function openRaiseDcModal(sale, onSuccess) {
   }
 
   // Permission guard for non-superadmin employees:
+  // If no Tax Invoice raised: allowed only if NO pending balance (fully paid)
+  // If Tax Invoice raised: allowed if pending balance <= 10,000
   if (!isSuper) {
     const hasInvoice = Boolean((saleObj.invoice_number && String(saleObj.invoice_number).trim() !== '') || saleObj.has_invoice);
-    if (!hasInvoice) {
-      showToast("Access Restricted: Tax Invoice must be raised first before issuing Delivery Challan. (Only Superadmin can bypass).", "error");
-      return;
-    }
-
     const grand = parseFloat(saleObj.grand_total || 0);
     const paid = parseFloat(saleObj.paid_amount || 0);
     const pending = Math.max(0, grand - paid);
-    if (pending > 10000) {
-      showToast(`Access Restricted: Cannot issue Delivery Challan with an outstanding balance of ${formatCurrency(pending)}. Employees can only issue DC if pending balance is ₹10,000 or less. (Only Superadmin can bypass).`, "error");
-      return;
+
+    if (!hasInvoice) {
+      if (pending > 0.01) {
+        showToast(`Access Restricted: Cannot issue Delivery Challan before raising Tax Invoice when there is a pending balance of ${formatCurrency(pending)}. Full payment is required to issue DC directly without invoice. (Only Superadmin can bypass).`, "error");
+        return;
+      }
+    } else {
+      if (pending > 10000) {
+        showToast(`Access Restricted: Cannot issue Delivery Challan with an outstanding balance of ${formatCurrency(pending)}. Pending balance exceeds ₹10,000. (Only Superadmin can bypass).`, "error");
+        return;
+      }
     }
   }
 
@@ -8093,7 +8098,8 @@ async function loadInvoicesSubTab() {
             const pGrand = parseFloat(s.grand_total || 0);
             const pPaid = parseFloat(s.paid_amount || 0);
             const pPending = Math.max(0, pGrand - pPaid);
-            const canRaisePendingDc = (pPending <= 10000) || isSuper;
+            const isFullyPaid = pPending <= 0.01;
+            const canRaiseDirectDc = isFullyPaid || isSuper;
             const dcBadge = hasDc
               ? `<span class="badge badge-purple" style="font-weight:700;">DC #${esc(s.challan_number)}</span>`
               : `<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:700;">Order #${esc(s.id)} (DC Pending)</span>`;
@@ -8115,12 +8121,12 @@ async function loadInvoicesSubTab() {
                     <button class="btn btn-sm btn-primary printPendingDcBtn" data-saleid="${s.id}">
                       🚚 Print DC
                     </button>
-                  ` : (isSuper ? `
-                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;">
-                      🚚 Raise DC
+                  ` : (canRaiseDirectDc ? `
+                    <button class="btn btn-sm btn-success raiseDcBtn" data-sale='${JSON.stringify(s).replace(/'/g, "&apos;")}' style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-weight:700;" title="${(!isFullyPaid && isSuper) ? `Superadmin Override: Pending Balance of ${formatCurrency(pPending)}` : 'Generate Delivery Challan (Fully Paid)'}">
+                      🚚 Raise DC${(!isFullyPaid && isSuper) ? ' (Superadmin)' : ''}
                     </button>
                   ` : `
-                    <button class="btn btn-sm btn-outline-secondary" disabled title="Tax Invoice must be raised first before issuing Delivery Challan (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.65;font-weight:600;font-size:11.5px;">
+                    <button class="btn btn-sm btn-outline-secondary" disabled title="Tax Invoice must be raised first before issuing Delivery Challan when there is a pending balance of ${formatCurrency(pPending)} (Only Superadmin can bypass)" style="cursor:not-allowed;opacity:0.65;font-weight:600;font-size:11.5px;">
                       🔒 DC Locked (Invoice Required)
                     </button>
                   `)}

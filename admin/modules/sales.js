@@ -975,7 +975,7 @@ async function openRaiseInvoiceModal(sale, onSuccess) {
         <div><strong>Customer:</strong> ${esc(saleDetails.customer_name || sale.customer_name || 'Counter Customer')} (${esc(saleDetails.cell_phone || sale.cell_phone || 'No phone')})</div>
         <div><strong>Order / DC Date:</strong> ${formatDate(saleDetails.sale_date || sale.sale_date)}</div>
         <div><strong>Type of Supply:</strong> <span class="badge badge-info">${esc(saleDetails.supply_type || sale.supply_type || 'Direct Sale')}</span></div>
-        <div><strong>Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(currGrand)}</strong></div>
+        <div><strong>Grand Total:</strong> <strong style="color:var(--primary);">${formatCurrency(currGrand)}</strong>${parseFloat(saleDetails.discount_amount || 0) > 0 ? ` <span style="font-size:11px;color:var(--warning);font-weight:700;">(-${formatCurrency(saleDetails.discount_amount)} disc)</span>` : ''}</div>
         ${sale.challan_number ? `<div><strong>Delivery Challan #:</strong> <span class="badge badge-purple">${esc(sale.challan_number)}</span></div>` : ''}
       </div>
 
@@ -1724,6 +1724,12 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
   const totalTaxable = items.reduce((acc, i) => acc + (parseFloat(i.taxable_value || (parseFloat(i.rate || 0) * (parseInt(i.quantity) || 1))) * taxRatio), 0);
   const totalTax = items.reduce((acc, i) => acc + (((parseFloat(i.taxable_value || (parseFloat(i.rate || 0) * (parseInt(i.quantity) || 1))) * taxRatio) * (i.gst_rate || 18)) / 100), 0);
 
+  const discountAmt = parseFloat(sale.discount_amount || 0);
+  const discType = sale.discount_type || 'flat';
+  const discVal = parseFloat(sale.discount_value || 0);
+  const invGrandTotal = parseFloat(sale.grand_total || 0);
+  const subtotalBeforeOverallDisc = Math.round((invGrandTotal + discountAmt) * 100) / 100;
+
   const hasDiscount = items.some(it => parseFloat(it.discount !== undefined ? it.discount : (it.discount_percent || 0)) > 0);
   const curUserObj = (typeof getUser === 'function' ? getUser() : null) || (typeof currentUser !== 'undefined' && currentUser ? currentUser : null) || JSON.parse(localStorage.getItem('erp_user') || '{}');
   const loggedInUserName = curUserObj.name || curUserObj.full_name || curUserObj.username || 'manaswini';
@@ -1922,11 +1928,25 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
           </thead>
           <tbody>
             ${itemRowsHtml}
+            ${discountAmt > 0 ? `
+              <tr style="background:#f8fafc;font-size:10px;font-weight:600;">
+                <td colspan="3" style="text-align:right;">Subtotal (Before Discount):</td>
+                <td style="text-align:center;">${items.reduce((a, i) => a + (parseInt(i.quantity) || 1), 0)} NOS</td>
+                <td colspan="${hasDiscount ? 4 : 3}"></td>
+                <td style="text-align:right;font-size:11px;">₹${subtotalBeforeOverallDisc.toFixed(2)}</td>
+              </tr>
+              <tr style="background:#fffbeb;font-size:10px;font-weight:700;color:#b45309;">
+                <td colspan="${hasDiscount ? 8 : 7}" style="text-align:right;">
+                  🏷️ Discount Allowed ${discType === 'percent' && discVal > 0 ? `(${discVal}%)` : ''}:
+                </td>
+                <td style="text-align:right;color:#b45309;font-size:11px;">-₹${discountAmt.toFixed(2)}</td>
+              </tr>
+            ` : ''}
             <tr class="total-row">
-              <td colspan="3" style="text-align:right;">Total:</td>
+              <td colspan="3" style="text-align:right;">${discountAmt > 0 ? 'Net Invoice Total:' : 'Total:'}</td>
               <td style="text-align:center;">${items.reduce((a, i) => a + (parseInt(i.quantity) || 1), 0)} NOS</td>
               <td colspan="${hasDiscount ? 4 : 3}"></td>
-              <td style="text-align:right;font-size:12px;font-weight:bold;">₹${parseFloat(sale.grand_total).toFixed(2)}</td>
+              <td style="text-align:right;font-size:12px;font-weight:bold;color:#15803d;">₹${invGrandTotal.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
@@ -1987,7 +2007,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
         </table>
 
         <div style="padding:4px 6px;background:#fffbe6;border-bottom:1.5px solid #000;display:flex;justify-content:space-between;font-size:11px;font-weight:bold;">
-          <div>Invoice Grand Total: ₹${parseFloat(sale.grand_total).toFixed(2)}</div>
+          <div>Invoice Grand Total: ₹${invGrandTotal.toFixed(2)}${discountAmt > 0 ? ` <span style="font-size:10px;color:#b45309;font-weight:600;">(Discount: -₹${discountAmt.toFixed(2)})</span>` : ''}</div>
           <div style="color:#15803d;">Paid Amount: ₹${totalPaid.toFixed(2)}</div>
           <div style="color:${pendingAmt > 0 ? '#b91c1c' : '#15803d'};">
             ${pendingAmt > 0 ? `⚠️ Pending Balance: ₹${pendingAmt.toFixed(2)}` : `✅ FULLY PAID`}
@@ -3568,6 +3588,11 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
   const dcGrandTotal = targetDcTotal > 0 ? targetDcTotal : itemsDcSum;
   const dcRatio = (itemsDcSum > 0 && targetDcTotal > 0 && Math.abs(targetDcTotal - itemsDcSum) > 0.5) ? (targetDcTotal / itemsDcSum) : 1;
 
+  const discountAmt = parseFloat(sale.discount_amount || 0);
+  const discType = sale.discount_type || 'flat';
+  const discVal = parseFloat(sale.discount_value || 0);
+  const subtotalBeforeOverallDisc = Math.round((dcGrandTotal + discountAmt) * 100) / 100;
+
   const itemRowsHtml = items.map((it, idx) => {
     const rawSn = it.serial_number ? String(it.serial_number).trim() : '';
     const hasSn = rawSn && rawSn !== '—' && rawSn.toUpperCase() !== 'NA' && rawSn.toUpperCase() !== 'N/A';
@@ -3699,18 +3724,30 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
           </thead>
           <tbody>
             ${itemRowsHtml}
+            ${discountAmt > 0 ? `
+              <tr style="background:#f8fafc;font-size:11px;font-weight:600;">
+                <td colspan="5" style="text-align:right;">Subtotal (Before Discount):</td>
+                <td style="text-align:right;">${formatCurrency(subtotalBeforeOverallDisc)}</td>
+              </tr>
+              <tr style="background:#fffbeb;font-size:11px;font-weight:700;color:#b45309;">
+                <td colspan="5" style="text-align:right;">
+                  🏷️ Discount Allowed ${discType === 'percent' && discVal > 0 ? `(${discVal}%)` : ''}:
+                </td>
+                <td style="text-align:right;color:#b45309;">-${formatCurrency(discountAmt)}</td>
+              </tr>
+            ` : ''}
             <tr style="font-weight:bold;background:#f0fdf4;">
-              <td colspan="3" style="text-align:right;">TOTAL AMOUNT:</td>
+              <td colspan="3" style="text-align:right;">${discountAmt > 0 ? 'NET TOTAL AMOUNT:' : 'TOTAL AMOUNT:'}</td>
               <td style="text-align:center;">${items.reduce((acc, i) => acc + (parseInt(i.quantity) || 1), 0)}</td>
               <td></td>
-              <td style="text-align:right;">${formatCurrency(dcGrandTotal)}</td>
+              <td style="text-align:right;color:#15803d;">${formatCurrency(dcGrandTotal)}</td>
             </tr>
           </tbody>
         </table>
 
         <!-- PAYMENT STATUS BAR -->
         <div style="border:1px solid #15803d;padding:8px;background:#f0fdf4;margin-bottom:8px;display:flex;justify-content:space-between;font-weight:bold;font-size:12px;">
-          <div>Grand Total: ${formatCurrency(dcGrandTotal)}</div>
+          <div>Grand Total: ${formatCurrency(dcGrandTotal)}${discountAmt > 0 ? ` <span style="font-size:11px;color:#b45309;font-weight:normal;">(Discount: -${formatCurrency(discountAmt)})</span>` : ''}</div>
           <div style="color:#15803d;">Paid Amount: ${formatCurrency(totalPaid)}</div>
           <div style="color:${pendingDcBal > 0 ? '#b91c1c' : '#15803d'};">
             ${pendingDcBal > 0 ? `⚠️ Remaining Balance: ${formatCurrency(pendingDcBal)}` : `✅ FULLY PAID`}
@@ -4077,6 +4114,9 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
     const grandTotal = parseFloat(sale.grand_total || 0);
     const totalPaid = payments.reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
     const pendingBalance = Math.max(0, grandTotal - totalPaid);
+    const priorDiscount = parseFloat(sale.discount_amount || 0);
+    const baseTaxable = parseFloat(sale.taxable_amount || sale.total_amount || 0);
+    const baseTax = parseFloat(sale.tax_amount || 0);
 
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
@@ -4089,10 +4129,11 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
           <button class="btn btn-sm btn-outline closePayModal">&times;</button>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;padding:12px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);text-align:center;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);text-align:center;">
           <div>
             <div style="font-size:12px;color:var(--text3);">Invoice Total</div>
-            <div style="font-size:16px;font-weight:700;color:var(--text1);">${formatCurrency(grandTotal)}</div>
+            <div style="font-size:16px;font-weight:700;color:var(--text1);" id="modalInvoiceTotalDisplay">${formatCurrency(grandTotal)}</div>
+            ${priorDiscount > 0 ? `<div style="font-size:10.5px;color:var(--text3);margin-top:2px;">(Prior Disc: ${formatCurrency(priorDiscount)})</div>` : ''}
           </div>
           <div>
             <div style="font-size:12px;color:var(--text3);">Already Paid</div>
@@ -4100,8 +4141,44 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
           </div>
           <div>
             <div style="font-size:12px;color:var(--text3);">Pending Balance</div>
-            <div style="font-size:16px;font-weight:700;color:${pendingBalance > 0 ? 'var(--danger)' : 'var(--success)'};">
+            <div style="font-size:16px;font-weight:700;color:${pendingBalance > 0 ? 'var(--danger)' : 'var(--success)'};" id="modalPendingBalDisplay">
               ${formatCurrency(pendingBalance)}
+            </div>
+          </div>
+        </div>
+
+        <!-- OVERALL / SETTLEMENT DISCOUNT (Matches POS Billing UI) -->
+        <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:8px;">
+            <div>
+              <label class="form-label" style="font-weight:700;color:var(--text1);font-size:11px;margin-bottom:4px;">🏷️ OVERALL DISCOUNT</label>
+              <div style="display:flex;gap:4px;align-items:center;">
+                <input type="number" step="0.01" id="modalDiscountAmtInput" class="form-input" value="0.00" placeholder="0.00" style="font-weight:700;width:125px;padding:4px 8px;font-size:14px;box-sizing:border-box;">
+                <select id="modalDiscountType" class="form-select" style="width:60px;font-weight:700;padding:4px 6px;font-size:14px;box-sizing:border-box;">
+                  <option value="flat">₹</option>
+                  <option value="percent">%</option>
+                </select>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:700;color:var(--text3);font-size:11px;margin-bottom:2px;text-transform:uppercase;">DISCOUNT APPLIED</div>
+              <span id="modalDiscountAppliedText" style="font-size:15px;font-weight:800;color:var(--warning);">-₹0.00</span>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12.5px;color:var(--text2);">
+            <span>Taxable Amount:</span>
+            <span id="modalTaxableText" style="font-weight:600;color:var(--text1);">${formatCurrency(baseTaxable)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12.5px;color:var(--text2);">
+            <span>GST Total:</span>
+            <span id="modalGstText" style="font-weight:600;color:var(--text1);">${formatCurrency(baseTax)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;color:var(--success);border-top:1px solid var(--border);padding-top:6px;margin-top:6px;">
+            <span>Grand Total:</span>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-weight:800;font-size:15px;color:var(--success);">₹</span>
+              <span id="modalAdjGrandTotalText" style="font-weight:800;font-size:15px;color:var(--success);">${grandTotal.toFixed(2)}</span>
             </div>
           </div>
         </div>
@@ -4135,7 +4212,7 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
             </div>
             <div class="form-group">
               <label class="form-label">Amount Paid (₹) *</label>
-              <input type="number" step="0.01" id="modalPayAmount" class="form-input" value="${pendingBalance.toFixed(2)}" max="${pendingBalance.toFixed(2)}" min="0.01" style="font-weight:700;font-size:15px;color:var(--primary-light);" required>
+              <input type="number" step="0.01" id="modalPayAmount" class="form-input" value="${pendingBalance.toFixed(2)}" max="${pendingBalance.toFixed(2)}" min="0.00" style="font-weight:700;font-size:15px;color:var(--primary-light);" required>
             </div>
           </div>
 
@@ -4231,11 +4308,98 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
     const payAmtInput = overlay.querySelector("#modalPayAmount");
     const payModeSel = overlay.querySelector("#modalPayMode");
 
+    const baseGrand = grandTotal;
+    const basePending = pendingBalance;
+
+    const discInput = overlay.querySelector("#modalDiscountAmtInput");
+    const discTypeSel = overlay.querySelector("#modalDiscountType");
+    const discAppliedText = overlay.querySelector("#modalDiscountAppliedText");
+    const taxableText = overlay.querySelector("#modalTaxableText");
+    const gstText = overlay.querySelector("#modalGstText");
+    const adjGrandText = overlay.querySelector("#modalAdjGrandTotalText");
+    const invTotalDisplay = overlay.querySelector("#modalInvoiceTotalDisplay");
+    const pendingBalDisplay = overlay.querySelector("#modalPendingBalDisplay");
+
+    let calculatedDiscount = 0;
+    let currentEffectivePending = basePending;
+    let currentEffectiveGrand = baseGrand;
+
+    function recalculateModalDiscount() {
+      const dType = discTypeSel.value;
+      const dVal = parseFloat(discInput.value || 0);
+
+      if (dVal <= 0 || isNaN(dVal)) {
+        calculatedDiscount = 0;
+      } else if (dType === "percent") {
+        const pctBase = basePending > 0 ? basePending : baseGrand;
+        calculatedDiscount = Math.round((pctBase * (dVal / 100)) * 100) / 100;
+      } else {
+        calculatedDiscount = Math.round(dVal * 100) / 100;
+      }
+
+      if (calculatedDiscount > basePending) {
+        calculatedDiscount = basePending;
+      }
+
+      currentEffectiveGrand = Math.max(0, Math.round((baseGrand - calculatedDiscount) * 100) / 100);
+      currentEffectivePending = Math.max(0, Math.round((basePending - calculatedDiscount) * 100) / 100);
+
+      const ratio = baseGrand > 0 ? (currentEffectiveGrand / baseGrand) : 1;
+      const adjTaxable = Math.round((baseTaxable * ratio) * 100) / 100;
+      const adjTax = Math.round((baseTax * ratio) * 100) / 100;
+
+      discAppliedText.textContent = calculatedDiscount > 0
+        ? `-₹${calculatedDiscount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : "-₹0.00";
+
+      if (taxableText) taxableText.textContent = formatCurrency(adjTaxable);
+      if (gstText) gstText.textContent = formatCurrency(adjTax);
+      if (adjGrandText) adjGrandText.textContent = currentEffectiveGrand.toFixed(2);
+
+      if (invTotalDisplay) {
+        invTotalDisplay.innerHTML = calculatedDiscount > 0
+          ? `${formatCurrency(currentEffectiveGrand)} <span style="font-size:11px;color:var(--text3);text-decoration:line-through;">${formatCurrency(baseGrand)}</span>`
+          : formatCurrency(baseGrand);
+      }
+
+      if (pendingBalDisplay) {
+        pendingBalDisplay.innerHTML = calculatedDiscount > 0
+          ? `${formatCurrency(currentEffectivePending)} <div style="font-size:10.5px;color:var(--warning);font-weight:600;margin-top:1px;">(-${formatCurrency(calculatedDiscount)} disc)</div>`
+          : formatCurrency(basePending);
+        pendingBalDisplay.style.color = currentEffectivePending > 0 ? 'var(--danger)' : 'var(--success)';
+      }
+
+      const fullOpt = stlSel.querySelector('option[value="full"]');
+      if (fullOpt) {
+        fullOpt.textContent = `✅ Full Payment (Clear Remaining ${formatCurrency(currentEffectivePending)})`;
+      }
+
+      payAmtInput.max = currentEffectivePending.toFixed(2);
+      if (stlSel.value === "full") {
+        payAmtInput.value = currentEffectivePending.toFixed(2);
+      } else {
+        const curAmt = parseFloat(payAmtInput.value || 0);
+        if (curAmt > currentEffectivePending) {
+          payAmtInput.value = currentEffectivePending.toFixed(2);
+        }
+      }
+
+      if (currentEffectivePending <= 0) {
+        payAmtInput.min = "0.00";
+        if (stlSel.value !== "full") stlSel.value = "full";
+      } else {
+        payAmtInput.min = "0.00";
+      }
+    }
+
+    discInput.addEventListener("input", recalculateModalDiscount);
+    discTypeSel.addEventListener("change", recalculateModalDiscount);
+
     stlSel.addEventListener("change", () => {
       if (stlSel.value === "full") {
-        payAmtInput.value = pendingBalance.toFixed(2);
+        payAmtInput.value = currentEffectivePending.toFixed(2);
       } else {
-        if (parseFloat(payAmtInput.value || 0) === parseFloat(pendingBalance.toFixed(2))) {
+        if (parseFloat(payAmtInput.value || 0) === parseFloat(currentEffectivePending.toFixed(2))) {
           payAmtInput.value = "0.00";
         }
         payAmtInput.focus();
@@ -4245,9 +4409,9 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
 
     payAmtInput.addEventListener("input", () => {
       const curVal = parseFloat(payAmtInput.value || 0);
-      if (curVal < pendingBalance - 0.01) {
+      if (curVal < currentEffectivePending - 0.01) {
         if (stlSel.value !== "part") stlSel.value = "part";
-      } else if (curVal >= pendingBalance) {
+      } else if (curVal >= currentEffectivePending) {
         if (stlSel.value !== "full") stlSel.value = "full";
       }
     });
@@ -4268,7 +4432,7 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
       if (totalNotesAmt > 0) {
         if (payAmtInput) payAmtInput.value = totalNotesAmt.toFixed(2);
         if (stlSel) {
-          if (totalNotesAmt < pendingBalance - 0.01) stlSel.value = "part";
+          if (totalNotesAmt < currentEffectivePending - 0.01) stlSel.value = "part";
           else stlSel.value = "full";
         }
       }
@@ -4472,12 +4636,12 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
       e.preventDefault();
       const subBtn = overlay.querySelector('button[type="submit"]');
 
-      const amt = parseFloat(payAmtInput.value);
-      if (isNaN(amt) || amt <= 0) {
-        return showToast("Please enter a valid payment amount", "error");
+      const amt = parseFloat(payAmtInput.value || 0);
+      if ((isNaN(amt) || amt <= 0) && calculatedDiscount <= 0) {
+        return showToast("Please enter a valid payment amount or settlement discount", "error");
       }
-      if (amt > pendingBalance + 0.01) {
-        return showToast(`Payment amount cannot exceed pending balance of ${formatCurrency(pendingBalance)}`, "error");
+      if (amt > currentEffectivePending + 0.01) {
+        return showToast(`Payment amount cannot exceed remaining balance of ${formatCurrency(currentEffectivePending)}`, "error");
       }
 
       setButtonLoading(subBtn, true, "Recording Payment...");
@@ -4572,6 +4736,9 @@ async function openRecordPaymentModal(saleId, refreshCallback) {
           : refNo,
         cheque_dd_date: chequeDate,
         amount: amt,
+        discount_amount: calculatedDiscount,
+        discount_type: discTypeSel.value,
+        discount_value: parseFloat(discInput.value || 0),
         receiving_bank: recBankText,
         bank_account_id: bankAccountId,
         notes: overlay.querySelector("#modalPayNotes")?.value.trim(),
@@ -7721,6 +7888,8 @@ async function loadSalesPOSSubTab() {
       financer_id: finId,
       finance_amount: finAmt,
       discount_amount: finalDiscount,
+      discount_type: discType,
+      discount_value: discInpVal,
       vip_perk_notes: document.getElementById("posVipGiftSelect")?.value || null,
       warranty_term: isCounterParty ? "no_warranty" : (document.getElementById("posWarrantyTerm")?.value || "1_year"),
       transporter_name: isCounterParty ? null : (document.getElementById("posTransName")?.value.trim() || null),
@@ -7908,7 +8077,10 @@ async function loadHistorySubTab() {
               `).join("")) : '<span style="color:var(--text3);font-size:12px;">General Sales Item</span>'}
             </td>
             <td><span class="badge badge-info">${esc(s.supply_type || 'Direct Sale')}</span></td>
-            <td style="font-weight:700;color:var(--text1);">${formatCurrency(grand)}</td>
+            <td style="font-weight:700;color:var(--text1);">
+              ${formatCurrency(grand)}
+              ${parseFloat(s.discount_amount || 0) > 0 ? `<div style="font-size:10.5px;color:var(--warning);font-weight:600;">(-${formatCurrency(s.discount_amount)} disc)</div>` : ''}
+            </td>
             <td style="font-weight:700;color:var(--success);">${formatCurrency(paid)}</td>
             <td style="font-weight:700;color:${pending > 0 ? 'var(--danger)' : 'var(--success)'};">
               ${formatCurrency(pending)}
@@ -8114,7 +8286,10 @@ async function loadInvoicesSubTab() {
                 <div style="font-size:11px;color:var(--text3);">${esc(s.cell_phone || '')}</div>
               </td>
               <td><span class="badge badge-info">${esc(s.supply_type || 'Direct Sale')}</span></td>
-              <td style="font-weight:700;color:var(--primary);">${formatCurrency(s.grand_total)}</td>
+              <td style="font-weight:700;color:var(--primary);">
+                ${formatCurrency(s.grand_total)}
+                ${parseFloat(s.discount_amount || 0) > 0 ? `<div style="font-size:10.5px;color:var(--warning);font-weight:600;">(-${formatCurrency(s.discount_amount)} disc)</div>` : ''}
+              </td>
               <td>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">
                   ${hasDc ? `
@@ -8268,7 +8443,10 @@ async function loadInvoicesSubTab() {
               <div style="font-weight:600;color:var(--text1);">${esc(i.customer_name || 'Counter Customer')}</div>
               ${custPhone ? `<div style="font-size:11px;color:var(--text3);">📞 ${esc(custPhone)}</div>` : ''}
             </td>
-            <td style="font-weight:700;color:var(--text1);">${formatCurrency(grand)}</td>
+            <td style="font-weight:700;color:var(--text1);">
+              ${formatCurrency(grand)}
+              ${parseFloat(s.discount_amount || 0) > 0 ? `<div style="font-size:10.5px;color:var(--warning);font-weight:600;">(-${formatCurrency(s.discount_amount)} disc)</div>` : ''}
+            </td>
             <td style="font-weight:700;color:var(--success);">${formatCurrency(paid)}</td>
             <td style="font-weight:700;color:${pending > 0 ? 'var(--danger)' : 'var(--success)'};">
               ${formatCurrency(pending)}

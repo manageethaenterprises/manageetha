@@ -758,6 +758,9 @@ module.exports = async function handler(req, res) {
         await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS dc_rate NUMERIC(12,2)`;
         await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS dc_taxable_value NUMERIC(12,2)`;
         await sql`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS dc_total NUMERIC(12,2)`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0;`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_type VARCHAR(20) DEFAULT 'flat';`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_value NUMERIC(15,2) DEFAULT 0;`;
         await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS is_finalized BOOLEAN DEFAULT true;`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'generated';`;
@@ -768,6 +771,9 @@ module.exports = async function handler(req, res) {
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS igst_total NUMERIC(12,2);`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS tax_total NUMERIC(12,2);`;
         await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS grand_total NUMERIC(12,2);`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0;`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_type VARCHAR(20) DEFAULT 'flat';`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_value NUMERIC(15,2) DEFAULT 0;`;
       } catch (e) {}
 
       const compId = user.role === "superadmin" ? (company_id ? parseInt(company_id) : (user.company_id || 1)) : (user.company_id || 1);
@@ -1049,7 +1055,13 @@ module.exports = async function handler(req, res) {
       }
 
       try {
-        await sql`UPDATE sales SET dc_grand_total = ${grandTotal} WHERE id = ${newSale[0].id}`;
+        await sql`
+          UPDATE sales SET
+            dc_grand_total = ${grandTotal},
+            discount_type = ${req.body.discount_type || 'flat'},
+            discount_value = ${parseFloat(req.body.discount_value || 0)}
+          WHERE id = ${newSale[0].id}
+        `;
       } catch (_) {}
 
       // If counter customer, auto insert Tax Invoice record into invoices table
@@ -1058,11 +1070,13 @@ module.exports = async function handler(req, res) {
           await sql`
             INSERT INTO invoices (
               company_id, invoice_number, invoice_date, sale_id, customer_id, taxable_total,
-              cgst_total, sgst_total, igst_total, tax_total, grand_total, is_finalized
+              cgst_total, sgst_total, igst_total, tax_total, grand_total, is_finalized,
+              discount_amount, discount_type, discount_value
             ) VALUES (
               ${compId}, ${invNo}, ${invDateVal}, ${newSale[0].id},
               ${finalCustId ? parseInt(finalCustId) : null}, ${taxableSum}, ${cgst}, ${sgst},
-              ${igst}, ${taxSum}, ${grandTotal}, true
+              ${igst}, ${taxSum}, ${grandTotal}, true,
+              ${discVal}, ${req.body.discount_type || 'flat'}, ${parseFloat(req.body.discount_value || 0)}
             )
           `;
         } catch (invErr) {
@@ -1350,12 +1364,12 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // ═══════════════ ADD PART / FULL PAYMENT ═══════════════
+    // ═══════════════ ADD PART / FULL PAYMENT & SETTLEMENT DISCOUNT ═══════════════
     else if (action === "add-payment") {
       const {
         sale_id, payment_date, payment_mode, bank_sub_type, transaction_ref,
         cheque_dd_no, cheque_dd_date, receiving_bank, bank_account_id, amount, notes,
-        split_payments, denominations
+        split_payments, denominations, discount_amount, discount_type, discount_value
       } = req.body;
 
       const splitList = (Array.isArray(split_payments) ? split_payments : [])
@@ -1374,10 +1388,14 @@ module.exports = async function handler(req, res) {
 
       const payAmount = splitList.length > 0
         ? splitList.reduce((s, p) => s + p.amount, 0)
-        : parseFloat(amount || 0);
+        : Math.max(0, parseFloat(amount || 0));
 
-      if (!sale_id || payAmount <= 0) {
-        return res.status(400).json({ error: "Sale ID and valid payment amount required" });
+      const discAmount = Math.max(0, parseFloat(discount_amount || 0));
+      const discType = discount_type || 'flat';
+      const discVal = parseFloat(discount_value || 0);
+
+      if (!sale_id || (payAmount <= 0 && discAmount <= 0)) {
+        return res.status(400).json({ error: "Sale ID and valid payment amount or settlement discount required" });
       }
 
       const saleArr = await sql`SELECT * FROM sales WHERE id = ${parseInt(sale_id)}`;
@@ -1385,11 +1403,17 @@ module.exports = async function handler(req, res) {
 
       const sale = saleArr[0];
 
-      // Auto-migrate sale_payments columns if missing
+      // Auto-migrate sale_payments and sales/invoices columns if missing
       try {
         await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT REFERENCES bank_accounts(id) ON DELETE SET NULL`;
         await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(50)`;
         await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS denominations JSONB DEFAULT '{}'::jsonb`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_type VARCHAR(20) DEFAULT 'flat'`;
+        await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS discount_value NUMERIC(15,2) DEFAULT 0`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_type VARCHAR(20) DEFAULT 'flat'`;
+        await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount_value NUMERIC(15,2) DEFAULT 0`;
       } catch (_) {
         try {
           await sql`ALTER TABLE sale_payments ADD COLUMN IF NOT EXISTS bank_account_id INT`;
@@ -1397,58 +1421,142 @@ module.exports = async function handler(req, res) {
         } catch (__) {}
       }
 
+      let currentGrand = parseFloat(sale.grand_total || 0);
+
+      // Process settlement discount & recalculate GST / Taxable breakdown if discount provided
+      if (discAmount > 0) {
+        const prevDisc = parseFloat(sale.discount_amount || 0);
+        const totalDisc = Math.round((prevDisc + discAmount) * 100) / 100;
+        const oldGrand = currentGrand;
+        currentGrand = Math.max(0, Math.round((oldGrand - discAmount) * 100) / 100);
+        const ratio = oldGrand > 0 ? (currentGrand / oldGrand) : 1;
+
+        let updatedTaxable = Math.round((parseFloat(sale.taxable_amount || sale.total_amount || 0) * ratio) * 100) / 100;
+        let updatedCgst = Math.round((parseFloat(sale.cgst || 0) * ratio) * 100) / 100;
+        let updatedSgst = Math.round((parseFloat(sale.sgst || 0) * ratio) * 100) / 100;
+        let updatedIgst = Math.round((parseFloat(sale.igst || 0) * ratio) * 100) / 100;
+        let updatedTax = updatedCgst + updatedSgst + updatedIgst;
+
+        if (Math.abs((updatedTaxable + updatedTax) - currentGrand) > 0.01 && currentGrand > 0 && updatedTaxable > 0) {
+          updatedTaxable = Math.round((currentGrand - updatedTax) * 100) / 100;
+        }
+
+        // Update sales table with new totals and discount details
+        await sql`
+          UPDATE sales SET
+            discount_amount = ${totalDisc},
+            discount_type = ${discType},
+            discount_value = ${discVal},
+            grand_total = ${currentGrand},
+            taxable_amount = ${updatedTaxable},
+            tax_amount = ${updatedTax},
+            cgst = ${updatedCgst},
+            sgst = ${updatedSgst},
+            igst = ${updatedIgst}
+          WHERE id = ${sale.id}
+        `;
+
+        // Update invoices table if invoice was already raised
+        try {
+          await sql`
+            UPDATE invoices SET
+              discount_amount = ${totalDisc},
+              discount_type = ${discType},
+              discount_value = ${discVal},
+              grand_total = ${currentGrand},
+              taxable_total = ${updatedTaxable},
+              tax_total = ${updatedTax},
+              cgst_total = ${updatedCgst},
+              sgst_total = ${updatedSgst},
+              igst_total = ${updatedIgst}
+            WHERE sale_id = ${sale.id}
+          `;
+        } catch (invErr) {
+          console.warn("Could not update invoice totals on settlement discount:", invErr.message);
+        }
+
+        // Scale sale_items proportionally
+        try {
+          const saleItems = await sql`SELECT * FROM sale_items WHERE sale_id = ${sale.id}`;
+          for (const item of saleItems) {
+            const itmTaxable = Math.round((parseFloat(item.taxable_value || 0) * ratio) * 100) / 100;
+            const itmCgst = Math.round((parseFloat(item.cgst || 0) * ratio) * 100) / 100;
+            const itmSgst = Math.round((parseFloat(item.sgst || 0) * ratio) * 100) / 100;
+            const itmIgst = Math.round((parseFloat(item.igst || 0) * ratio) * 100) / 100;
+            const itmTotal = Math.round((parseFloat(item.total || 0) * ratio) * 100) / 100;
+            const qty = parseInt(item.quantity, 10) || 1;
+            const itmRate = Math.round((itmTaxable / qty) * 100) / 100;
+
+            await sql`
+              UPDATE sale_items SET
+                taxable_value = ${itmTaxable},
+                cgst = ${itmCgst},
+                sgst = ${itmSgst},
+                igst = ${itmIgst},
+                total = ${itmTotal},
+                rate = ${itmRate}
+              WHERE id = ${item.id}
+            `;
+          }
+        } catch (itemErr) {
+          console.warn("Could not scale sale_items on settlement discount:", itemErr.message);
+        }
+      }
+
       let newPay = null;
 
-      // Record payment in sale_payments safely (supports single or multi-mode split payments)
-      if (splitList.length > 0) {
-        for (let idx = 0; idx < splitList.length; idx++) {
-          const sp = splitList[idx];
-          const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
+      // Record payment in sale_payments safely if payAmount > 0
+      if (payAmount > 0) {
+        if (splitList.length > 0) {
+          for (let idx = 0; idx < splitList.length; idx++) {
+            const sp = splitList[idx];
+            const spDenom = sp.denominations || (sp.payment_mode === 'cash' ? denominations : null);
+            const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
+            const inserted = await recordSalePaymentSafely(sql, {
+              compId: sale.company_id,
+              saleId: sale.id,
+              invDateVal: payment_date || 'NOW()',
+              paymentMode: sp.payment_mode || 'cash',
+              bankSubType: sp.bank_sub_type || null,
+              transRef: sp.transaction_ref || null,
+              chequeDdNo: sp.cheque_dd_no || null,
+              chequeDdDate: sp.cheque_dd_date || null,
+              receivingBank: sp.receiving_bank || null,
+              bankAccountId: sp.bank_account_id ? parseInt(sp.bank_account_id) : null,
+              amount: sp.amount,
+              cashierId: user.id,
+              notes: sp.notes || (sp.payment_mode.toUpperCase() + ' payment collected'),
+              rcptNo: newRcptNo,
+              denomObj: spDenom
+            });
+            if (!newPay) newPay = inserted;
+          }
+        } else {
+          const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
           const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-          const inserted = await recordSalePaymentSafely(sql, {
+          newPay = await recordSalePaymentSafely(sql, {
             compId: sale.company_id,
             saleId: sale.id,
             invDateVal: payment_date || 'NOW()',
-            paymentMode: sp.payment_mode || 'cash',
-            bankSubType: sp.bank_sub_type || null,
-            transRef: sp.transaction_ref || null,
-            chequeDdNo: sp.cheque_dd_no || null,
-            chequeDdDate: sp.cheque_dd_date || null,
-            receivingBank: sp.receiving_bank || null,
-            bankAccountId: sp.bank_account_id ? parseInt(sp.bank_account_id) : null,
-            amount: sp.amount,
+            paymentMode: payment_mode || 'cash',
+            bankSubType: bank_sub_type || null,
+            transRef: transaction_ref || null,
+            chequeDdNo: cheque_dd_no || null,
+            chequeDdDate: cheque_dd_date || null,
+            receivingBank: receiving_bank || null,
+            bankAccountId: bank_account_id ? parseInt(bank_account_id) : null,
+            amount: payAmount,
             cashierId: user.id,
-            notes: sp.notes || (sp.payment_mode.toUpperCase() + ' payment collected'),
+            notes: notes || (discAmount > 0 ? `Payment collected with ₹${discAmount.toFixed(2)} settlement discount` : 'Part/Full payment collected'),
             rcptNo: newRcptNo,
-            denomObj: spDenom
+            denomObj: singleDenom
           });
-          if (!newPay) newPay = inserted;
-        }
-      } else {
-        const singleDenom = (payment_mode === 'cash' || !payment_mode) ? denominations : null;
-        const newRcptNo = await getNextFamilyReceiptNumber(sql, sale.company_id);
-        newPay = await recordSalePaymentSafely(sql, {
-          compId: sale.company_id,
-          saleId: sale.id,
-          invDateVal: payment_date || 'NOW()',
-          paymentMode: payment_mode || 'cash',
-          bankSubType: bank_sub_type || null,
-          transRef: transaction_ref || null,
-          chequeDdNo: cheque_dd_no || null,
-          chequeDdDate: cheque_dd_date || null,
-          receivingBank: receiving_bank || null,
-          bankAccountId: bank_account_id ? parseInt(bank_account_id) : null,
-          amount: payAmount,
-          cashierId: user.id,
-          notes: notes || 'Part/Full payment collected',
-          rcptNo: newRcptNo,
-          denomObj: singleDenom
-        });
-        if (singleDenom) {
-          const sJson = JSON.stringify(singleDenom);
-          try { await sql`UPDATE sales SET denominations = ${sJson}::jsonb WHERE id = ${sale.id}`; }
-          catch (_) {
-            try { await sql`UPDATE sales SET denominations = ${sJson} WHERE id = ${sale.id}`; } catch (__) {}
+          if (singleDenom) {
+            const sJson = JSON.stringify(singleDenom);
+            try { await sql`UPDATE sales SET denominations = ${sJson}::jsonb WHERE id = ${sale.id}`; }
+            catch (_) {
+              try { await sql`UPDATE sales SET denominations = ${sJson} WHERE id = ${sale.id}`; } catch (__) {}
+            }
           }
         }
       }
@@ -1458,8 +1566,8 @@ module.exports = async function handler(req, res) {
         SELECT COALESCE(SUM(amount), 0) as total_paid FROM sale_payments WHERE sale_id = ${sale.id}
       `;
       const totalPaid = parseFloat(sumRes[0].total_paid);
-      const grandTotal = parseFloat(sale.grand_total);
-      const newPending = Math.max(0, grandTotal - totalPaid);
+      const grandTotal = currentGrand;
+      const newPending = Math.max(0, Math.round((grandTotal - totalPaid) * 100) / 100);
 
       let newStatus = 'unpaid';
       if (newPending <= 0.01) newStatus = 'paid';
@@ -1475,7 +1583,7 @@ module.exports = async function handler(req, res) {
 
       // Trigger DLT SMS customer notification log
       const custPhone = sale.cell_phone || sale.phone;
-      if (custPhone) {
+      if (custPhone && payAmount > 0) {
         try {
           const modeStr = String(payment_mode || (splitList[0] ? splitList[0].payment_mode : 'payment')).toUpperCase();
           const smsText = `Dear ${sale.customer_name || 'Customer'}, received payment of Rs.${payAmount.toFixed(2)} via ${modeStr} for Invoice #${sale.challan_number || sale.id}. Remaining pending balance: Rs.${newPending.toFixed(2)}. Thank you!`;
@@ -1486,13 +1594,19 @@ module.exports = async function handler(req, res) {
         } catch (smsErr) {}
       }
 
+      const succMsg = payAmount > 0
+        ? `Payment of ₹${payAmount.toFixed(2)}${discAmount > 0 ? ` with ₹${discAmount.toFixed(2)} discount` : ''} recorded successfully!`
+        : `Settlement discount of ₹${discAmount.toFixed(2)} applied successfully!`;
+
       return res.status(200).json({
         success: true,
         payment: newPay || null,
         total_paid: totalPaid,
         pending_amount: newPending,
         status: newStatus,
-        message: `Payment of ₹${payAmount.toFixed(2)} recorded successfully!`
+        discount_amount: discAmount,
+        grand_total: currentGrand,
+        message: succMsg
       });
     }
 
@@ -1698,11 +1812,13 @@ module.exports = async function handler(req, res) {
       await sql`
         INSERT INTO invoices (
           company_id, invoice_number, invoice_date, sale_id, customer_id, taxable_total,
-          cgst_total, sgst_total, igst_total, tax_total, grand_total, is_finalized
+          cgst_total, sgst_total, igst_total, tax_total, grand_total, is_finalized,
+          discount_amount, discount_type, discount_value
         ) VALUES (
           ${compId}, ${invNo}, ${invDate}, ${sale.id},
           ${sale.customer_id ? parseInt(sale.customer_id) : null}, ${taxableTotal}, ${cgstTotal}, ${sgstTotal},
-          ${igstTotal}, ${taxTotal}, ${grandTotal}, true
+          ${igstTotal}, ${taxTotal}, ${grandTotal}, true,
+          ${parseFloat(sale.discount_amount || 0)}, ${sale.discount_type || 'flat'}, ${parseFloat(sale.discount_value || 0)}
         )
       `;
 

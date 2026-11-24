@@ -663,7 +663,7 @@ function renderSidebar() {
 
     Object.entries(grouped).forEach(([catKey, cat]) => {
       if (!cat.items || cat.items.length === 0) return;
-      nav.innerHTML += `<div class="nav-category" data-cat="${esc(catKey)}">${esc(cat.icon)} ${esc(cat.label)}</div>`;
+      nav.innerHTML += `<div class="nav-category" data-cat="${esc(catKey)}">${cat.icon ? `<span class="nav-cat-icon">${esc(cat.icon)}</span>` : ''}<span class="nav-cat-label">${esc(cat.label)}</span></div>`;
       cat.items.forEach((m) => {
         const cleanKey = esc((m.menu_key || '').trim());
         nav.innerHTML += `
@@ -699,7 +699,7 @@ function renderSidebar() {
 
     Object.entries(grouped).forEach(([catKey, cat]) => {
       if (cat.items.length === 0) return;
-      nav.innerHTML += `<div class="nav-category" data-cat="${esc(catKey)}">${esc(cat.icon)} ${esc(cat.label)}</div>`;
+      nav.innerHTML += `<div class="nav-category" data-cat="${esc(catKey)}">${cat.icon ? `<span class="nav-cat-icon">${esc(cat.icon)}</span>` : ''}<span class="nav-cat-label">${esc(cat.label)}</span></div>`;
       cat.items.forEach((m) => {
         const cleanKey = esc((m.menu_key || '').trim());
         nav.innerHTML += `
@@ -1138,7 +1138,7 @@ window.addEventListener("hashchange", () => {
 
 // ═══════════════ LOAD MODULES ═══════════════
 
-const ERP_MODULE_VERSION = "20261121_v10";
+const ERP_MODULE_VERSION = "20261124_v1";
 
 function loadModules() {
   // Load module scripts dynamically with cache-busting version query parameter

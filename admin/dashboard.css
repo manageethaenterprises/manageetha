@@ -194,30 +194,67 @@ body {
 
 /* Menu category headers */
 .nav-category {
-  padding: 16px 20px 6px;
-  font-size: 10px;
-  font-weight: 700;
+  padding: 8px 12px;
+  margin: 18px 12px 6px 12px;
+  font-size: 11px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: #475569;
-  transition: all 0.3s ease;
+  letter-spacing: 1.4px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 3.5px solid #ffffff;
+  border-radius: 6px;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.8), 0 0 16px rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1), inset 0 0 8px rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
 }
 
 .nav-category:first-child {
-  padding-top: 8px;
+  margin-top: 8px;
+}
+
+.nav-category:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  border-left-color: #ffffff;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.2), inset 0 0 10px rgba(255, 255, 255, 0.05);
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.95), 0 0 24px rgba(255, 255, 255, 0.6);
 }
 
 .nav-category.active-category {
-  color: #818cf8 !important;
+  color: #ffffff !important;
   font-weight: 800 !important;
   font-size: 11px !important;
-  letter-spacing: 1.2px;
-  background: rgba(99, 102, 241, 0.15);
-  padding: 8px 14px;
+  letter-spacing: 1.4px;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.35) 0%, rgba(255, 255, 255, 0.12) 100%) !important;
+  padding: 8px 12px;
   border-radius: 6px;
-  margin: 10px 12px 4px 12px;
-  border-left: 3px solid #6366f1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  margin: 18px 12px 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  border-left: 3.5px solid #ffffff !important;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.95), 0 0 22px rgba(255, 255, 255, 0.6) !important;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.25), 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+}
+
+.nav-cat-icon {
+  font-size: 13px;
+  margin-right: 8px;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.7));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-cat-label {
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Menu items */

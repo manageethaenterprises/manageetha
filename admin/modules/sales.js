@@ -1937,7 +1937,7 @@ function printTaxInvoice(sale, items, payments = [], returns = [], existingWin =
               </tr>
               <tr style="background:#fffbeb;font-size:10px;font-weight:700;color:#b45309;">
                 <td colspan="${hasDiscount ? 8 : 7}" style="text-align:right;">
-                  🏷️ Discount Allowed ${discType === 'percent' && discVal > 0 ? `(${discVal}%)` : ''}:
+                  🏷️ Discount ${discType === 'percent' && discVal > 0 ? `(${discVal}%)` : ''}:
                 </td>
                 <td style="text-align:right;color:#b45309;font-size:11px;">-₹${discountAmt.toFixed(2)}</td>
               </tr>
@@ -3731,7 +3731,7 @@ function printDeliveryChallan(sale, items, payments = [], returns = [], existing
               </tr>
               <tr style="background:#fffbeb;font-size:11px;font-weight:700;color:#b45309;">
                 <td colspan="5" style="text-align:right;">
-                  🏷️ Discount Allowed ${discType === 'percent' && discVal > 0 ? `(${discVal}%)` : ''}:
+                  🏷️ Discount ${discType === 'percent' && discVal > 0 ? `(${discVal}%)` : ''}:
                 </td>
                 <td style="text-align:right;color:#b45309;">-${formatCurrency(discountAmt)}</td>
               </tr>

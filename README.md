@@ -514,4 +514,4 @@ Ensure `DATABASE_URL` and `JWT_SECRET` are configured in your Vercel Project Env
 
 * **Application**: Commercial Business ERP System.
 * **Copyright**: © 2026 Geetha Enterprises / Manaswini Enterprises. All rights reserved.
-* **Support & Customization**: Managed and maintained internally by the platform administrator.
+* **Support & Customization**: Managed and maintained by [Inspenox](https://inspenox.in).
